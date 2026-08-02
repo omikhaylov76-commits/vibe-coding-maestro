@@ -17,7 +17,9 @@ describe('этапы 12–13: CI и документационные контр�
     expect(script).toMatch(/mkdtemp/);
     expect(script).toMatch(/project with spaces/i);
     for (const value of ['doctor', 'main', 'status', 'sentinel']) expect(script.toLowerCase()).toContain(value);
-    expect(script).not.toMatch(/powershell|cmd\.exe|\/bin\/sh/i);
+    expect(script).not.toMatch(/powershell|\/bin\/sh|shell:\s*true/i);
+    expect(script).toContain("process.env.ComSpec || 'cmd.exe'");
+    expect(script).toMatch(/args\.map\(quote\)/);
   });
 
   it('README документирует beginner flow и честный prerelease caveat', async () => {

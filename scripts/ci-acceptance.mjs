@@ -18,9 +18,12 @@ function run(command, args, cwd = root, options = {}) {
 }
 
 function npm(args, cwd = root) {
-  // On Windows npm is a .cmd wrapper. shell is safe here: command and every
-  // argument are generated internally; no user input reaches this function.
-  return run('npm', args, cwd, { shell: process.platform === 'win32' });
+  if (process.platform !== 'win32') return run('npm', args, cwd);
+  // npm is a .cmd wrapper on Windows. Quote every internally generated argument
+  // explicitly so temp paths containing spaces remain one argument.
+  const quote = (value) => `"${value.replaceAll('"', '""')}"`;
+  const command = `npm ${args.map(quote).join(' ')}`;
+  return run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], cwd);
 }
 
 try {

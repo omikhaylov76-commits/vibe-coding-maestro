@@ -10,6 +10,8 @@ const createCli = join(root, 'dist/bin/create-vibe-maestro.js');
 const maestroCli = join(root, 'dist/bin/vibe-maestro.js');
 const tempRoot = await mkdtemp(join(tmpdir(), 'maestro acceptance '));
 const target = join(tempRoot, 'project with spaces');
+let packDir;
+let installDir;
 
 function run(command, args, cwd = root, options = {}) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: options.shell === true });
@@ -46,9 +48,11 @@ try {
   assert.equal(run('git', ['branch', '--show-current'], target), 'main');
   assert.equal(run('git', ['status', '--porcelain'], target), '', 'status after second init must be clean');
 
-  const packDir = join(tempRoot, 'pack');
-  const installDir = join(tempRoot, 'installed');
-  await import('node:fs/promises').then(({ mkdir }) => Promise.all([mkdir(packDir), mkdir(installDir)]));
+  // Keep package-manager staging paths ASCII/no-space: cmd.exe/npm wrappers have
+  // platform-specific quoting. User-facing path-with-spaces is tested above and
+  // again as `packed project` below.
+  packDir = await mkdtemp(join(tmpdir(), 'vcm-pack-'));
+  installDir = await mkdtemp(join(tmpdir(), 'vcm-installed-'));
   const packed = JSON.parse(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', packDir]));
   const filename = packed[0]?.filename;
   assert.ok(filename, 'npm pack --json must return filename');
@@ -68,5 +72,9 @@ try {
 
   console.log('CI acceptance passed (source + packed install)');
 } finally {
-  await rm(tempRoot, { recursive: true, force: true });
+  await Promise.all([
+    rm(tempRoot, { recursive: true, force: true }),
+    packDir ? rm(packDir, { recursive: true, force: true }) : Promise.resolve(),
+    installDir ? rm(installDir, { recursive: true, force: true }) : Promise.resolve(),
+  ]);
 }

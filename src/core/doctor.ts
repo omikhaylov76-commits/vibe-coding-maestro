@@ -5,6 +5,7 @@ import { dirname, join, parse, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { CHECKSUMS_PATH, contentChecksum, isSafeProjectPath, loadChecksums, loadManifest, sha256 } from './manifest.js';
 import { TRUSTED_MANAGED_INVENTORY } from './inventory.js';
+import { canonicalizeSystemTempPrefix } from './platform-paths.js';
 
 const execFileAsync = promisify(execFile);
 export type FindingLevel = 'error' | 'warning';
@@ -201,7 +202,7 @@ async function checkSources(root: string, findings: DoctorFinding[]): Promise<vo
   } catch (cause) { findings.push(error('source-hashes-invalid', `Metadata source hashes повреждён: ${cause instanceof Error ? cause.message : String(cause)}`, metadataPath)); }
 }
 export async function doctorProject(rootInput: string): Promise<DoctorReport> {
-  const root = resolve(rootInput); const findings: DoctorFinding[] = [];
+  const root = await canonicalizeSystemTempPrefix(resolve(rootInput)); const findings: DoctorFinding[] = [];
   if (await absolutePathHasSymlink(root)) {
     findings.push(error('project-root-symlink', 'Путь к корню проекта не должен содержать symbolic link.', root));
     return { ok: false, root, findings };

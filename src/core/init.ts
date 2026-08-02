@@ -21,6 +21,7 @@ import type { ManagedEntry } from './manifest.js';
 import { normalizeTarget, readPackageJson, templatesDir } from './paths.js';
 import { renderTemplate } from './template.js';
 import { CONTENT_OWNED_FILES, LAZY_DIRS, TEMPLATE_FILES } from './inventory.js';
+import { canonicalizeSystemTempPrefix } from './platform-paths.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -180,7 +181,7 @@ async function initGitRepository(
  * - повторный запуск на неизменённом проекте не меняет ни один байт.
  */
 export async function initProject(options: InitOptions): Promise<InitResult> {
-  const target = normalizeTarget(options.target);
+  const target = await canonicalizeSystemTempPrefix(normalizeTarget(options.target));
   const force = options.force === true;
   const now = options.now ?? new Date();
   const touchedPaths = [...TEMPLATE_FILES, ...CONTENT_OWNED_FILES, ...LAZY_DIRS.map((path) => `${path}/.gitkeep`), GITIGNORE_PATH, MANIFEST_PATH, CHECKSUMS_PATH];

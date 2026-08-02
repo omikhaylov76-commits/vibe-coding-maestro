@@ -25,7 +25,7 @@ function npm(args, cwd = root) {
     ? value
     : `"${value.replaceAll('"', '""')}"`;
   const command = `npm ${args.map(quote).join(' ')}`;
-  return run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], cwd);
+  return run(process.env.ComSpec || 'cmd.exe', ['/d', '/c', command], cwd);
 }
 
 try {

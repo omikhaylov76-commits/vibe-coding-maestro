@@ -11,7 +11,6 @@ import { isManifest, sha256 } from '../src/core/manifest.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readJson, readUtf8 } from './helpers.js';
 
 const exec = promisify(execFile);
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const init = (target: string, git = false) => initProject({ target, startingPoint: 'idea', git, now: FIXED_NOW });
 const codes = (report: Awaited<ReturnType<typeof doctorProject>>) => report.findings.map((f) => f.code);
 
@@ -233,32 +232,4 @@ describe('cross-platform и distribution contracts', () => {
       expect(text).toContain('npx --package create-vibe-maestro@latest vibe-maestro doctor');
     }
   });
-});
-
-describe('packed install smoke', () => {
-  const insidePackLifecycle = process.env.npm_lifecycle_event === 'prepack' || process.env.npm_config_dry_run === 'true';
-  it.skipIf(process.env.VCM_PACK_SMOKE_CHILD === '1' || insidePackLifecycle)('ставит tarball без source repo и запускает оба bin/create/doctor', async () => {
-    const packDir = await makeTempDir('vcm-pack-');
-    const installDir = await makeTempDir('vcm-installed-');
-    const packed = await exec(npmCommand, ['pack', '--ignore-scripts', '--json', '--pack-destination', packDir], {
-      cwd: resolve('.'),
-      env: { ...process.env, VCM_PACK_SMOKE_CHILD: '1', npm_config_ignore_scripts: 'true' },
-    });
-    const metadata = JSON.parse(packed.stdout) as Array<{ filename: string }>;
-    const filename = metadata[0]?.filename;
-    if (!filename) throw new Error('npm pack --json не вернул filename');
-    const tarball = join(packDir, filename);
-    await writeFile(join(installDir, 'package.json'), '{"private":true}');
-    await exec(npmCommand, ['install', '--ignore-scripts', tarball], { cwd: installDir });
-    const installed = join(installDir, 'node_modules/create-vibe-maestro/dist/bin');
-    const createBin = join(installed, 'create-vibe-maestro.js');
-    const maestroBin = join(installed, 'vibe-maestro.js');
-    await exec(process.execPath, [createBin, '--help'], { cwd: installDir });
-    await exec(process.execPath, [maestroBin, '--version'], { cwd: installDir });
-    await exec(process.execPath, [createBin, '--target', './project', '--start', 'idea', '--yes', '--no-git'], { cwd: installDir });
-    await exec(process.execPath, [maestroBin, 'doctor', '--path', './project'], { cwd: installDir });
-    expect(existsSync(join(installDir, 'node_modules/create-vibe-maestro/templates/project/wiki/hot.md'))).toBe(true);
-    expect(existsSync(join(installDir, 'node_modules/create-vibe-maestro/schemas/manifest.schema.json'))).toBe(true);
-    await rm(tarball, { force: true });
-  }, 60_000);
 });

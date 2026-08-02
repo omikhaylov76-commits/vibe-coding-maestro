@@ -1,19 +1,26 @@
 import assert from 'node:assert/strict';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const createCli = join(root, 'dist/bin/create-vibe-maestro.js');
 const maestroCli = join(root, 'dist/bin/vibe-maestro.js');
 const tempRoot = await mkdtemp(join(tmpdir(), 'maestro acceptance '));
 const target = join(tempRoot, 'project with spaces');
 
-function run(command, args, cwd = root) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false });
+function run(command, args, cwd = root, options = {}) {
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: options.shell === true });
   assert.equal(result.status, 0, `${command} ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   return result.stdout.trim();
+}
+
+function npm(args, cwd = root) {
+  // On Windows npm is a .cmd wrapper. shell is safe here: command and every
+  // argument are generated internally; no user input reaches this function.
+  return run('npm', args, cwd, { shell: process.platform === 'win32' });
 }
 
 try {
@@ -33,7 +40,28 @@ try {
   run(process.execPath, [maestroCli, 'doctor', '--path', target]);
   assert.equal(run('git', ['branch', '--show-current'], target), 'main');
   assert.equal(run('git', ['status', '--porcelain'], target), '', 'status after second init must be clean');
-  console.log('CI acceptance passed');
+
+  const packDir = join(tempRoot, 'pack');
+  const installDir = join(tempRoot, 'installed');
+  await import('node:fs/promises').then(({ mkdir }) => Promise.all([mkdir(packDir), mkdir(installDir)]));
+  const packed = JSON.parse(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', packDir]));
+  const filename = packed[0]?.filename;
+  assert.ok(filename, 'npm pack --json must return filename');
+  const tarball = join(packDir, filename);
+  await writeFile(join(installDir, 'package.json'), '{"private":true}\n', 'utf8');
+  npm(['install', '--ignore-scripts', tarball], installDir);
+
+  const installedRoot = join(installDir, 'node_modules/create-vibe-maestro');
+  const installedCreate = join(installedRoot, 'dist/bin/create-vibe-maestro.js');
+  const installedMaestro = join(installedRoot, 'dist/bin/vibe-maestro.js');
+  await access(join(installedRoot, 'templates/project/wiki/hot.md'));
+  await access(join(installedRoot, 'schemas/manifest.schema.json'));
+  run(process.execPath, [installedCreate, '--help'], installDir);
+  run(process.execPath, [installedMaestro, '--version'], installDir);
+  run(process.execPath, [installedCreate, '--yes', '--no-git', '--target', './packed project', '--start', 'idea'], installDir);
+  run(process.execPath, [installedMaestro, 'doctor', '--path', './packed project'], installDir);
+
+  console.log('CI acceptance passed (source + packed install)');
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
 }

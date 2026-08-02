@@ -27,5 +27,5 @@
 Механическая проверка целостности памяти:
 
 ```
-npx {{SERVICE_COMMAND}} doctor
+npx --package create-vibe-maestro@latest vibe-maestro doctor --path .
 ```

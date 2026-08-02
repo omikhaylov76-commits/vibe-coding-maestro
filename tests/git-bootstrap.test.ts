@@ -78,14 +78,14 @@ describe('Git bootstrap в существующем репозитории', () 
     // wip.txt обязан остаться неотслеживаемым, README.md — изменённым, но не в индексе.
     const status = await git(target, ['status', '--porcelain']);
     expect(status).toContain('?? wip.txt');
-    expect(status).toMatch(/^ M README\.md$/m);
+    expect(status).toMatch(/^M README\.md$/m);
 
     const staged = await git(target, ['diff', '--cached', '--name-only']);
     expect(staged.split('\n').filter(Boolean)).not.toContain('wip.txt');
     expect(staged.split('\n').filter(Boolean)).not.toContain('README.md');
   });
 
-  it('индексирует созданные Maestro пути и предупреждает, что commit не сделан', async () => {
+  it('не индексирует созданные Maestro пути и предупреждает о ручном добавлении', async () => {
     const target = await existingRepo();
 
     const result = await initProject({
@@ -98,9 +98,9 @@ describe('Git bootstrap в существующем репозитории', () 
     });
 
     const staged = (await git(target, ['diff', '--cached', '--name-only'])).split('\n').filter(Boolean);
-    expect(staged).toContain('CLAUDE.md');
-    expect(staged).toContain('.maestro/manifest.json');
+    expect(staged).not.toContain('CLAUDE.md');
+    expect(staged).not.toContain('.maestro/manifest.json');
 
-    expect(result.warnings.join('\n')).toMatch(/commit/i);
+    expect(result.warnings.join('\n')).toMatch(/index не изменён/i);
   });
 });

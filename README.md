@@ -24,7 +24,16 @@ npx --package create-vibe-maestro@latest vibe-maestro doctor --path ./my-project
 - `.gitignore` дополняется построчно;
 - новый проект получает ветку `main`, стартовый commit и чистое дерево;
 - существующий Git-репозиторий не получает автоматический commit чужого WIP;
-- doctor проверяет manifest, checksums, managed-файлы, wiki-ссылки и отслеживаемые `.env`;
-- тексты нормализуются для переносимости Windows/macOS/Linux.
+- doctor строго проверяет UTF-8/frontmatter всех wiki Markdown, containment локальных ссылок, manifest/checksums/inventory, managed-файлы, Git dirty managed docs, tracked `.env`, contract `hot.md` ↔ active progress и непустой inbox (warning);
+- source-файлы проверяются по `.maestro/source-hashes.json` только когда этот отдельный versioned metadata-файл существует; ingestion не выполняется;
+- managed `.gitattributes` закрепляет LF, а существующий merged `.gitignore` сохраняет исходный EOL-стиль;
+- runtime поддерживает Node.js `>=20.10.0`; test toolchain закреплён на Vitest 2 для того же диапазона.
+
+## Граница доверия checksums
+
+Локальные SHA-256 обнаруживают случайный дрейф, но не могут криптографически
+предотвратить совместную подмену файла, manifest и checksums процессом с доступом
+на запись. Doctor строго валидирует metadata и сверяет обязательные системные пути
+с доверенным inventory текущей установленной версии пакета; цифровых подписей нет.
 
 Интерактивное меню, Cowork discovery/audit и Skill Curator будут добавляться следующими инкрементами после стабилизации ядра.

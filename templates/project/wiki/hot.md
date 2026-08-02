@@ -2,7 +2,10 @@
 project: {{PROJECT_NAME}}
 updated: ГГГГ-ММ-ДД
 starting_point: {{STARTING_POINT}}
+active_progress: none
 ---
+
+<!-- Contract: active_progress is none, or one wiki-relative progress path whose frontmatter has status: active. -->
 
 # Горячий контекст: {{PROJECT_NAME}}
 

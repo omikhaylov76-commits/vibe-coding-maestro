@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, parse, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { mergeGitignore, REQUIRED_GITIGNORE_ENTRIES } from './gitignore.js';
 import { CREATE_COMMAND, VERSION } from './meta.js';
@@ -20,34 +20,9 @@ import {
 import type { ManagedEntry } from './manifest.js';
 import { normalizeTarget, readPackageJson, templatesDir } from './paths.js';
 import { renderTemplate } from './template.js';
+import { LAZY_DIRS, TEMPLATE_FILES } from './inventory.js';
 
 const execFileAsync = promisify(execFile);
-
-/** Файлы-шаблоны: путь в проекте совпадает с путём внутри templates/project. */
-const TEMPLATE_FILES: readonly string[] = [
-  'CLAUDE.md',
-  'AGENTS.md',
-  'wiki/hot.md',
-  'wiki/index.md',
-  'wiki/log.md',
-  'wiki/roadmap.md',
-  'wiki/concepts/discovery.md',
-  'maestro/inbox/README.md',
-];
-
-/**
- * Каталоги, которые нужны структурно, но наполняются позже.
- * .gitkeep обязателен: без него пустой каталог не попадёт в Git и будет выглядеть «сиротой».
- */
-const LAZY_DIRS: readonly string[] = [
-  'maestro/sources',
-  'maestro/runbooks',
-  'wiki/progress',
-  'wiki/decisions',
-  'wiki/audits',
-  'wiki/handoffs',
-  'wiki/attic',
-];
 
 const GITIGNORE_PATH = '.gitignore';
 
@@ -56,6 +31,7 @@ const IGNORED_WHEN_EMPTY_CHECK: readonly string[] = ['.git', '.DS_Store'];
 
 /** Шаблон .gitattributes: фиксирует LF для текстовых файлов проекта. */
 const GITATTRIBUTES_PATH = '.gitattributes';
+const GITATTRIBUTES_CONTENT = '* text=auto eol=lf\n*.md text eol=lf\n*.json text eol=lf\n*.yml text eol=lf\n*.yaml text eol=lf\n';
 
 export interface InitOptions {
   target: string;
@@ -110,6 +86,38 @@ async function writeTextFile(absolutePath: string, content: string): Promise<voi
   await writeFile(absolutePath, content.replace(/\r\n/g, '\n'), 'utf8');
 }
 
+async function findSymlink(root: string, relativePath: string): Promise<string | null> {
+  let current = root;
+  for (const part of relativePath.split('/')) {
+    current = join(current, part);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) return current;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+  return null;
+}
+
+/** Проверяет все уже существующие компоненты абсолютного target до первого отсутствующего. */
+async function findAncestorSymlink(target: string): Promise<string | null> {
+  const absolute = resolve(target);
+  const root = parse(absolute).root;
+  let current = root;
+  const remainder = absolute.slice(root.length).split(/[\\/]+/).filter(Boolean);
+  for (const part of remainder) {
+    current = join(current, part);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) return current;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+  return null;
+}
+
 /**
  * Готовит Git, не присваивая чужую работу.
  *
@@ -143,18 +151,15 @@ async function initGitRepository(
       }
     }
 
-    // Только наши пути. Пакетами, чтобы не упереться в лимит длины командной строки.
+    if (repositoryExisted) {
+      warnings.push('Репозиторий Git уже существовал: index не изменён и commit не создан — добавьте файлы Maestro вручную.');
+      return;
+    }
+
+    // Только наши пути в новом репозитории. Пакетами, чтобы не упереться в лимит длины командной строки.
     const toAdd = [...ownedPaths].sort();
     for (let i = 0; i < toAdd.length; i += 50) {
       await execFileAsync('git', ['add', '--', ...toAdd.slice(i, i + 50)], { cwd: target });
-    }
-
-    if (repositoryExisted) {
-      warnings.push(
-        'Репозиторий Git уже существовал: файлы Maestro добавлены в индекс, но commit не создан — ' +
-          'зафиксируйте их сами, чтобы не смешать с вашей незакоммиченной работой.',
-      );
-      return;
     }
 
     await execFileAsync('git', ['commit', '-m', 'Инициализация проекта Vibe Coding Maestro'], {
@@ -178,8 +183,18 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   const target = normalizeTarget(options.target);
   const force = options.force === true;
   const now = options.now ?? new Date();
+  const touchedPaths = [...TEMPLATE_FILES, ...LAZY_DIRS.map((path) => `${path}/.gitkeep`), GITIGNORE_PATH, MANIFEST_PATH, CHECKSUMS_PATH];
+
+  const ancestorSymlink = await findAncestorSymlink(target);
+  if (ancestorSymlink !== null) {
+    return failure(target, options.name ?? basename(target), `Целевой путь содержит symbolic link (symlink): ${ancestorSymlink}`);
+  }
 
   if (existsSync(target)) {
+    const targetInfo = await lstat(target);
+    if (targetInfo.isSymbolicLink()) {
+      return failure(target, options.name ?? basename(target), `Целевая папка является symbolic link (symlink): ${target}`);
+    }
     const info = await stat(target);
     if (!info.isDirectory()) {
       return failure(
@@ -187,6 +202,20 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
         options.name ?? basename(target),
         `Цель существует, но это файл, а не папка: ${target}`,
       );
+    }
+    for (const relativePath of touchedPaths) {
+      if (await findSymlink(target, relativePath)) {
+        return failure(target, options.name ?? basename(target), `Затрагиваемый путь содержит symbolic link (symlink): ${relativePath}`);
+      }
+    }
+  }
+
+  if (existsSync(join(target, MANIFEST_PATH))) {
+    try {
+      const { loadManifest } = await import('./manifest.js');
+      await loadManifest(target);
+    } catch (error) {
+      return failure(target, options.name ?? basename(target), `Повреждён manifest; сначала запустите doctor: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -290,8 +319,8 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   }
 
   for (const relativePath of TEMPLATE_FILES) {
-    const source = await readTemplate(relativePath);
-    await materialize(relativePath, renderTemplate(source, vars));
+    const source = relativePath === GITATTRIBUTES_PATH ? GITATTRIBUTES_CONTENT : await readTemplate(relativePath);
+    await materialize(relativePath, relativePath === GITATTRIBUTES_PATH ? source : renderTemplate(source, vars));
   }
 
   for (const dir of LAZY_DIRS) {
@@ -307,7 +336,9 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     : null;
   const merge = mergeGitignore(existingGitignore, REQUIRED_GITIGNORE_ENTRIES);
   if (merge.changed) {
-    await writeTextFile(gitignoreAbsolute, merge.content);
+    // merged user file keeps its original EOL style; managed files use LF.
+    await mkdir(dirname(gitignoreAbsolute), { recursive: true });
+    await writeFile(gitignoreAbsolute, merge.content, 'utf8');
     if (existingGitignore === null) createdFiles.push(GITIGNORE_PATH);
     else mergedFiles.push(GITIGNORE_PATH);
     // Строки дописали мы — этот путь можно индексировать.

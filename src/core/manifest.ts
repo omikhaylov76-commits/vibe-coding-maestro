@@ -112,10 +112,38 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   };
 }
 
-function isManifest(value: unknown): value is Manifest {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Partial<Manifest>;
-  return typeof candidate.schemaVersion === 'number' && Array.isArray(candidate.managed);
+export function isSafeProjectPath(path: unknown): path is string {
+  if (typeof path !== 'string' || path === '' || path.includes('\\') || path.startsWith('/')) return false;
+  const parts = path.split('/');
+  return parts.every((part) => part !== '' && part !== '.' && part !== '..') && parts[0] !== '.git';
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  return actual.length === keys.length && [...keys].sort().every((key, index) => actual[index] === key);
+}
+
+export function isManifest(value: unknown): value is Manifest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (!exactKeys(candidate, ['schemaVersion', 'product', 'project', 'managed'])) return false;
+  if (candidate.schemaVersion !== MANIFEST_SCHEMA_VERSION || !Array.isArray(candidate.managed) || candidate.managed.length === 0) return false;
+  const product = candidate.product;
+  const project = candidate.project;
+  if (typeof product !== 'object' || product === null || Array.isArray(product) || !exactKeys(product as Record<string, unknown>, ['name', 'version', 'createdBy'])) return false;
+  if (typeof project !== 'object' || project === null || Array.isArray(project) || !exactKeys(project as Record<string, unknown>, ['name', 'startingPoint', 'createdAt'])) return false;
+  const p = product as Record<string, unknown>;
+  const j = project as Record<string, unknown>;
+  if (![p.name, p.version, p.createdBy, j.name, j.createdAt].every((item) => typeof item === 'string' && item.length > 0)) return false;
+  if (!['idea', 'materials', 'spec', 'code'].includes(String(j.startingPoint))) return false;
+  const seen = new Set<string>();
+  return candidate.managed.every((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item) || !exactKeys(item as Record<string, unknown>, ['path', 'kind'])) return false;
+    const entry = item as Record<string, unknown>;
+    if (!isSafeProjectPath(entry.path) || !['managed', 'merged', 'generated'].includes(String(entry.kind)) || seen.has(entry.path)) return false;
+    seen.add(entry.path);
+    return true;
+  });
 }
 
 export async function loadManifest(root: string): Promise<Manifest> {
@@ -140,9 +168,10 @@ export async function loadChecksums(root: string): Promise<Checksums | null> {
   try {
     const raw = await readFile(join(root, CHECKSUMS_PATH), 'utf8');
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return null;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) || !exactKeys(parsed as Record<string, unknown>, ['files'])) return null;
     const files = (parsed as { files?: unknown }).files;
-    if (typeof files !== 'object' || files === null) return null;
+    if (typeof files !== 'object' || files === null || Array.isArray(files)) return null;
+    if (!Object.entries(files as Record<string, unknown>).every(([path, hash]) => isSafeProjectPath(path) && typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) return null;
     return { files: files as Record<string, string> };
   } catch {
     return null;

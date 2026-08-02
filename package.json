@@ -1,0 +1,34 @@
+{
+  "name": "create-vibe-maestro",
+  "version": "0.1.0",
+  "description": "Vibe Coding Maestro — CLI, который готовит проект, файловую память и Git-защиту одной командой",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "bin": {
+    "create-vibe-maestro": "dist/bin/create-vibe-maestro.js",
+    "vibe-maestro": "dist/bin/vibe-maestro.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "schemas",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "npm test && npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.9",
+    "ajv": "8.20.0",
+    "typescript": "5.6.3",
+    "vitest": "4.1.10"
+  }
+}

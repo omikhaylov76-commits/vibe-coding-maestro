@@ -6,9 +6,20 @@ export const TEMPLATE_FILES: readonly string[] = [
   'wiki/index.md',
   'wiki/log.md',
   'wiki/roadmap.md',
-  'wiki/concepts/discovery.md',
   'maestro/inbox/README.md',
+  'maestro/runbooks/cowork-discovery.md',
+  'maestro/runbooks/cowork-audit.md',
+  '.claude/commands/build.md',
+  '.claude/commands/status.md',
+  '.claude/commands/wiki.md',
+  '.claude/commands/handoff.md',
+  '.claude/agents/code-reviewer.md',
   '.gitattributes',
+];
+
+/** Стартовые содержательные документы: Maestro создаёт, затем ими владеет проект. */
+export const CONTENT_OWNED_FILES: readonly string[] = [
+  'wiki/concepts/discovery.md',
 ];
 
 export const LAZY_DIRS: readonly string[] = [
@@ -23,6 +34,7 @@ export const LAZY_DIRS: readonly string[] = [
 
 export const TRUSTED_MANAGED_INVENTORY: Readonly<Record<string, 'managed' | 'merged' | 'generated'>> = {
   ...Object.fromEntries(TEMPLATE_FILES.map((path) => [path, 'managed' as const])),
+  ...Object.fromEntries(CONTENT_OWNED_FILES.map((path) => [path, 'generated' as const])),
   ...Object.fromEntries(LAZY_DIRS.map((path) => [`${path}/.gitkeep`, 'managed' as const])),
   '.gitignore': 'merged',
   '.maestro/manifest.json': 'generated',

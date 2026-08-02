@@ -1,6 +1,7 @@
 import { CREATE_COMMAND, isStartingPoint, PRODUCT_NAME, STARTING_POINTS, VERSION } from '../core/meta.js';
 import type { StartingPoint } from '../core/meta.js';
 import { CliIo, EXIT_OK, EXIT_USAGE, processIo } from './io.js';
+import type { PromptAdapter } from './prompt.js';
 
 interface CreateOptions {
   target: string;
@@ -9,6 +10,11 @@ interface CreateOptions {
   force: boolean;
   git: boolean;
   json: boolean;
+}
+
+export interface CreateCliRuntime {
+  isTty: boolean;
+  prompt?: PromptAdapter;
 }
 
 type ParseResult =
@@ -109,7 +115,11 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
   return { kind: 'run', options };
 }
 
-export async function runCreateCli(argv: readonly string[], io: CliIo = processIo): Promise<number> {
+export async function runCreateCli(
+  argv: readonly string[],
+  io: CliIo = processIo,
+  runtime: CreateCliRuntime = { isTty: Boolean(process.stdin.isTTY && process.stdout.isTTY) },
+): Promise<number> {
   const parsed = parseCreateArgs(argv);
 
   if (parsed.kind === 'version') {
@@ -120,7 +130,45 @@ export async function runCreateCli(argv: readonly string[], io: CliIo = processI
     io.out(HELP);
     return EXIT_OK;
   }
+  const automatic = argv.includes('--yes') || argv.includes('-y');
+  const needsTty =
+    parsed.kind === 'run' ||
+    (parsed.kind === 'error' && parsed.message.startsWith('Не указана папка проекта.'));
+  if (needsTty && !runtime.isTty && !automatic) {
+    io.err('Интерактивный режим требует TTY. Для автоматического запуска передайте --yes и --target <путь>.');
+    return EXIT_USAGE;
+  }
   if (parsed.kind === 'error') {
+    const wantsInteractive = argv.length === 0 && parsed.message.startsWith('Не указана папка проекта.');
+    if (wantsInteractive) {
+      if (!runtime.isTty) {
+        io.err('Интерактивный режим требует TTY. Для автоматического запуска передайте --yes и --target <путь>.');
+        return EXIT_USAGE;
+      }
+      try {
+        const prompt = runtime.prompt ?? (await import('./prompt.js')).createReadlinePrompt();
+        const answers = await prompt.ask();
+        if (answers.action === 'check') {
+          const { executeDoctorCommand } = await import('./doctor-run.js');
+          return executeDoctorCommand({ path: answers.target, json: false }, io);
+        }
+        const { executeCreate } = await import('./create-run.js');
+        return executeCreate(
+          {
+            target: answers.target,
+            name: answers.name,
+            startingPoint: answers.startingPoint,
+            force: answers.action === 'connect',
+            git: true,
+            json: false,
+          },
+          io,
+        );
+      } catch (error) {
+        io.err(error instanceof Error ? error.message : 'Интерактивный ввод прерван.');
+        return EXIT_USAGE;
+      }
+    }
     io.err(parsed.message);
     io.err(`Подсказка: ${CREATE_COMMAND} --help`);
     return EXIT_USAGE;

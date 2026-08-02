@@ -20,7 +20,7 @@ import {
 import type { ManagedEntry } from './manifest.js';
 import { normalizeTarget, readPackageJson, templatesDir } from './paths.js';
 import { renderTemplate } from './template.js';
-import { LAZY_DIRS, TEMPLATE_FILES } from './inventory.js';
+import { CONTENT_OWNED_FILES, LAZY_DIRS, TEMPLATE_FILES } from './inventory.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -183,7 +183,7 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   const target = normalizeTarget(options.target);
   const force = options.force === true;
   const now = options.now ?? new Date();
-  const touchedPaths = [...TEMPLATE_FILES, ...LAZY_DIRS.map((path) => `${path}/.gitkeep`), GITIGNORE_PATH, MANIFEST_PATH, CHECKSUMS_PATH];
+  const touchedPaths = [...TEMPLATE_FILES, ...CONTENT_OWNED_FILES, ...LAZY_DIRS.map((path) => `${path}/.gitkeep`), GITIGNORE_PATH, MANIFEST_PATH, CHECKSUMS_PATH];
 
   const ancestorSymlink = await findAncestorSymlink(target);
   if (ancestorSymlink !== null) {
@@ -321,6 +321,19 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   for (const relativePath of TEMPLATE_FILES) {
     const source = relativePath === GITATTRIBUTES_PATH ? GITATTRIBUTES_CONTENT : await readTemplate(relativePath);
     await materialize(relativePath, relativePath === GITATTRIBUTES_PATH ? source : renderTemplate(source, vars));
+  }
+
+  for (const relativePath of CONTENT_OWNED_FILES) {
+    managed.push({ path: relativePath, kind: 'generated' });
+    const absolutePath = join(target, relativePath);
+    if (!existsSync(absolutePath)) {
+      const source = await readTemplate(relativePath);
+      await writeTextFile(absolutePath, renderTemplate(source, vars));
+      createdFiles.push(relativePath);
+      ownedPaths.push(relativePath);
+    } else {
+      preservedFiles.push(relativePath);
+    }
   }
 
   for (const dir of LAZY_DIRS) {

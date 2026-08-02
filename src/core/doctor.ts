@@ -65,6 +65,29 @@ async function checkWiki(root: string, findings: DoctorFinding[]): Promise<void>
       }
     } catch (cause) { findings.push(error('text-unreadable', `Не удалось прочитать Markdown: ${cause instanceof Error ? cause.message : String(cause)}`, path)); }
   }
+  const auditStatuses = new Set(['open', 'resolved', 'waived']);
+  for (const [path, text] of decoded) {
+    if (!/^wiki\/audits\/[^/]+\.md$/.test(path)) continue;
+    const meta = frontmatter(text);
+    let malformed = !meta?.audit_id || !meta.status || !auditStatuses.has(meta.status);
+    const starts = [...text.matchAll(/^## Finding ([A-Za-z0-9][A-Za-z0-9._-]*)\s*$/gm)];
+    if (starts.length === 0) malformed = true;
+    const ids = new Set<string>();
+    for (let index = 0; index < starts.length; index += 1) {
+      const current = starts[index];
+      const id = current?.[1] ?? '';
+      const body = text.slice((current?.index ?? 0) + (current?.[0].length ?? 0), starts[index + 1]?.index ?? text.length);
+      const fields = (name: string): string[] => [...body.matchAll(new RegExp(`^- ${name}:\\s*(.*?)\\s*$`, 'gm'))].map((match) => match[1]?.trim() ?? '');
+      const severityValues = fields('severity'); const targetValues = fields('target'); const statusValues = fields('status'); const resolutionValues = fields('resolution');
+      const severity = severityValues[0]; const status = statusValues[0];
+      if (ids.has(id) || severityValues.length !== 1 || targetValues.length !== 1 || statusValues.length !== 1 || resolutionValues.length !== 1 || !['critical', 'high', 'medium', 'low'].includes(severity ?? '') || !targetValues[0] || !auditStatuses.has(status ?? '') || !resolutionValues[0]) malformed = true;
+      else if (meta?.status !== 'open' && status === 'open') malformed = true;
+      else if ((severity === 'critical' || severity === 'high') && status === 'open') findings.push(error('audit-blocking-finding', `Открытая ${severity} находка ${id} блокирует doctor.`, path));
+      ids.add(id);
+    }
+    if (/^## Finding /m.test(text) && starts.length === 0) malformed = true;
+    if (malformed) findings.push(error('audit-malformed', 'Audit требует audit_id, допустимый status и валидные findings.', path));
+  }
   const active = [...decoded.entries()].filter(([path, text]) => path.startsWith('wiki/progress/') && frontmatter(text)?.status === 'active').map(([path]) => path.slice('wiki/'.length));
   const hot = decoded.get('wiki/hot.md');
   if (hot !== undefined) {

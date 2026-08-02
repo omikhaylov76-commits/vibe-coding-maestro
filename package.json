@@ -15,6 +15,7 @@
     "dist",
     "templates",
     "schemas",
+    "registry",
     "README.md",
     "LICENSE"
   ],

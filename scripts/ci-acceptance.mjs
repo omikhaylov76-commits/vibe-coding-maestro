@@ -19,9 +19,11 @@ function run(command, args, cwd = root, options = {}) {
 
 function npm(args, cwd = root) {
   if (process.platform !== 'win32') return run('npm', args, cwd);
-  // npm is a .cmd wrapper on Windows. Quote every internally generated argument
-  // explicitly so temp paths containing spaces remain one argument.
-  const quote = (value) => `"${value.replaceAll('"', '""')}"`;
+  // npm is a .cmd wrapper on Windows. Quote internally generated arguments only
+  // when required, so paths with spaces stay intact but npm sees plain `pack`.
+  const quote = (value) => /^[A-Za-z0-9_./:=\\-]+$/.test(value)
+    ? value
+    : `"${value.replaceAll('"', '""')}"`;
   const command = `npm ${args.map(quote).join(' ')}`;
   return run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], cwd);
 }

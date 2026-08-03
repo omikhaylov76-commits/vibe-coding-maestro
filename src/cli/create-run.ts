@@ -1,8 +1,10 @@
+import { basename } from 'node:path';
 import { doctorProject } from '../core/doctor.js';
 import { initProject } from '../core/init.js';
 import type { StartingPoint } from '../core/meta.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
+import type { CliRenderer } from './renderer.js';
 
 export interface CreateRunOptions {
   target: string;
@@ -13,7 +15,7 @@ export interface CreateRunOptions {
   json: boolean;
 }
 
-export async function executeCreate(options: CreateRunOptions, io: CliIo): Promise<number> {
+export async function executeCreate(options: CreateRunOptions, io: CliIo, renderer?: CliRenderer): Promise<number> {
   const result = await initProject({
     target: options.target,
     startingPoint: options.startingPoint,
@@ -24,6 +26,7 @@ export async function executeCreate(options: CreateRunOptions, io: CliIo): Promi
 
   if (!result.ok) {
     if (options.json) io.out(JSON.stringify(result, null, 2));
+    else if (renderer) renderer.failure(result.error ?? 'Не удалось подготовить проект.');
     else io.err(result.error ?? 'Не удалось подготовить проект.');
     return EXIT_FAILED;
   }
@@ -33,11 +36,15 @@ export async function executeCreate(options: CreateRunOptions, io: CliIo): Promi
   if (options.json) {
     io.out(JSON.stringify(output, null, 2));
   } else {
-    io.out(`Проект подготовлен: ${result.target}`);
+    if (!renderer) io.out(`Проект подготовлен: ${result.target}`);
     for (const warning of result.warnings) {
-      io.err(`Предупреждение: ${warning}`);
+      if (renderer) renderer.warning(warning);
+      else io.err(`Предупреждение: ${warning}`);
     }
-    io.out(report.ok ? 'Doctor: всё сходится.' : `Doctor: найдено проблем — ${report.findings.length}.`);
+    if (renderer) {
+      if (report.ok) renderer.success({ action: options.force ? 'connect' : 'create', target: result.target, name: options.name ?? basename(result.target), doctorOk: true });
+      else renderer.failure(`Проверка нашла проблем: ${report.findings.length}.`);
+    } else io.out(report.ok ? 'Doctor: всё сходится.' : `Doctor: найдено проблем — ${report.findings.length}.`);
   }
   return report.ok ? EXIT_OK : EXIT_FAILED;
 }

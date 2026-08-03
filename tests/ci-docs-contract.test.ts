@@ -24,7 +24,7 @@ describe('этапы 12–13: CI и документационные контр�
 
   it('README документирует beginner flow и честный prerelease caveat', async () => {
     const readme = (await text('README.md')).toLowerCase();
-    for (const value of ['npx create-vibe-maestro', 'три шага', '--yes', 'idea', 'materials', 'spec', 'code', 'cowork', '/build', '/status', '/wiki', '/handoff', 'skills', 'не опубликован']) expect(readme).toContain(value);
+    for (const value of ['npx create-vibe-maestro', 'не больше трёх решений', 'рабочем столе', 'явный путь', 'третий вопрос не задаётся', 'no_color', '--yes', 'idea', 'materials', 'spec', 'code', 'cowork', '/build', '/status', '/wiki', '/handoff', 'skills', 'не опубликован']) expect(readme).toContain(value);
   });
 
   it('security, migration и contributing docs фиксируют требуемые границы', async () => {

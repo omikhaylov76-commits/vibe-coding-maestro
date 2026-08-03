@@ -150,7 +150,12 @@ export async function runCreateCli(
         const answers = await prompt.ask();
         if (answers.action === 'check') {
           const { executeDoctorCommand } = await import('./doctor-run.js');
-          return executeDoctorCommand({ path: answers.target, json: false }, io);
+          const code = await executeDoctorCommand({ path: answers.target, json: false }, io);
+          if (prompt.renderer) {
+            if (code === EXIT_OK) prompt.renderer.success({ action: 'check', target: answers.target, doctorOk: true });
+            else prompt.renderer.failure('Проверка нашла проблемы. Подробности указаны выше.');
+          }
+          return code;
         }
         const { executeCreate } = await import('./create-run.js');
         return executeCreate(
@@ -163,6 +168,7 @@ export async function runCreateCli(
             json: false,
           },
           io,
+          prompt.renderer,
         );
       } catch (error) {
         io.err(error instanceof Error ? error.message : 'Интерактивный ввод прерван.');

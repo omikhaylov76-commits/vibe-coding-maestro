@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalizeSystemTempPrefix } from '../src/core/platform-paths.js';
+import { canonicalizeVerifiedMacVarAlias } from '../src/core/platform-paths.js';
 
 describe('platform-owned path aliases', () => {
   it('канонизирует только подтверждённый системный macOS alias /var', async () => {
-    const result = await canonicalizeSystemTempPrefix('/var/folders/project', {
-      platform: 'darwin',
+    const result = await canonicalizeVerifiedMacVarAlias('/var/folders/project', 'darwin', {
       isSymlink: async (path) => path === '/var',
       realpath: async () => '/private/var',
     });
@@ -12,8 +11,7 @@ describe('platform-owned path aliases', () => {
   });
 
   it('не доверяет произвольному symlink prefix даже на macOS', async () => {
-    const result = await canonicalizeSystemTempPrefix('/tmp-link/project', {
-      platform: 'darwin',
+    const result = await canonicalizeVerifiedMacVarAlias('/tmp-link/project', 'darwin', {
       isSymlink: async () => true,
       realpath: async () => '/outside',
     });
@@ -21,13 +19,11 @@ describe('platform-owned path aliases', () => {
   });
 
   it('не канонизирует /var, если alias не symlink или ведёт не в /private/var', async () => {
-    const notLink = await canonicalizeSystemTempPrefix('/var/project', {
-      platform: 'darwin',
+    const notLink = await canonicalizeVerifiedMacVarAlias('/var/project', 'darwin', {
       isSymlink: async () => false,
       realpath: async () => '/private/var',
     });
-    const wrongTarget = await canonicalizeSystemTempPrefix('/var/project', {
-      platform: 'darwin',
+    const wrongTarget = await canonicalizeVerifiedMacVarAlias('/var/project', 'darwin', {
       isSymlink: async () => true,
       realpath: async () => '/user-controlled',
     });
@@ -36,7 +32,7 @@ describe('platform-owned path aliases', () => {
   });
 
   it('не применяет macOS alias policy на других платформах', async () => {
-    expect(await canonicalizeSystemTempPrefix('/var/project', { platform: 'linux' })).toBe('/var/project');
-    expect(await canonicalizeSystemTempPrefix('C:\\var\\project', { platform: 'win32' })).toMatch(/var/);
+    expect(await canonicalizeVerifiedMacVarAlias('/var/project', 'linux')).toBe('/var/project');
+    expect(await canonicalizeVerifiedMacVarAlias('C:\\var\\project', 'win32')).toBe('C:\\var\\project');
   });
 });

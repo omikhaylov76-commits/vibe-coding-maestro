@@ -1,21 +1,18 @@
 import { lstat, realpath } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 
 interface PlatformPathDeps {
-  platform?: NodeJS.Platform;
   isSymlink?: (path: string) => Promise<boolean>;
   realpath?: (path: string) => Promise<string>;
 }
 
-/**
- * macOS exposes the platform-owned alias /var -> /private/var. Canonicalize only
- * that exact verified alias. Environment-selected TMPDIR/TEMP/TMP paths are not
- * trusted and never receive an exception from no-follow checks.
- */
-export async function canonicalizeSystemTempPrefix(input: string, deps: PlatformPathDeps = {}): Promise<string> {
-  const absolute = resolve(input);
-  const platform = deps.platform ?? process.platform;
-  if (platform !== 'darwin' || (absolute !== '/var' && !absolute.startsWith(`/var${sep}`))) return absolute;
+/** Pure policy over an already absolute POSIX-style macOS path. */
+export async function canonicalizeVerifiedMacVarAlias(
+  absolute: string,
+  platform: NodeJS.Platform,
+  deps: PlatformPathDeps = {},
+): Promise<string> {
+  if (platform !== 'darwin' || (absolute !== '/var' && !absolute.startsWith('/var/'))) return absolute;
 
   const isSymlink = deps.isSymlink ?? (async (path: string) => (await lstat(path)).isSymbolicLink());
   const resolveRealpath = deps.realpath ?? realpath;
@@ -25,5 +22,16 @@ export async function canonicalizeSystemTempPrefix(input: string, deps: Platform
   } catch {
     return absolute;
   }
-  return resolve('/private/var', absolute.slice('/var'.length).replace(/^[/\\]+/, ''));
+  const suffix = absolute.slice('/var'.length).replace(/^\/+/, '');
+  return suffix === '' ? '/private/var' : `/private/var/${suffix}`;
+}
+
+/**
+ * macOS exposes the platform-owned alias /var -> /private/var. Canonicalize only
+ * that exact verified alias. Environment-selected TMPDIR/TEMP/TMP paths are not
+ * trusted and never receive an exception from no-follow checks.
+ */
+export async function canonicalizeSystemTempPrefix(input: string): Promise<string> {
+  const absolute = resolve(input);
+  return canonicalizeVerifiedMacVarAlias(absolute, process.platform);
 }

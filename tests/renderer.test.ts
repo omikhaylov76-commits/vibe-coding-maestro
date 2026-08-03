@@ -9,9 +9,32 @@ function render(options: Partial<RendererOptions> = {}) {
   return { renderer, text: () => chunks.join('') };
 }
 
-const ansi = /\x1b\[[0-9;]*m/;
+const ansi = /\x1b\[[0-9;]*m/g;
+
+function visibleWidth(text: string): number {
+  return [...text.replace(ansi, '')].reduce((width, char) => width + (/\p{Extended_Pictographic}/u.test(char) ? 2 : 1), 0);
+}
 
 describe('Guided First Run renderer', () => {
+  it('рисует просторную рамку шириной 88 колонок с ровным правым краем', () => {
+    const r = render({ columns: 100, env: { NO_COLOR: '1' } });
+    r.renderer.welcome();
+    const framed = r.text().split('\n').filter((line) => /^[╭│╰]/u.test(line));
+    expect(framed.length).toBeGreaterThan(3);
+    expect(framed.every((line) => visibleWidth(line) === 88)).toBe(true);
+    for (const line of framed.filter((value) => value.startsWith('│') && value.trim() !== '││')) {
+      expect(line.match(/\s+│$/u)?.[0].length ?? 0).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it('считает emoji по видимой ширине и сохраняет ровную рамку', () => {
+    const r = render({ columns: 100, env: { NO_COLOR: '1' } });
+    r.renderer.warning('готово 🚀');
+    r.renderer.success({ action: 'check', target: '/tmp/Проект-🚀', doctorOk: true });
+    const framed = r.text().split('\n').filter((line) => /^[╭│╰]/u.test(line));
+    expect(framed.every((line) => visibleWidth(line) === 88)).toBe(true);
+  });
+
   it('welcome одним экраном объясняет назначение, три шага, Desktop и управление', () => {
     const r = render();
     r.renderer.welcome();

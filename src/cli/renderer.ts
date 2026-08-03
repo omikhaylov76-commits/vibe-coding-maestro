@@ -33,15 +33,41 @@ export interface CliRenderer {
 type Write = (text: string) => void;
 
 const ESC = '\x1b[';
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+
+function displayWidth(text: string): number {
+  let width = 0;
+  for (const char of text.replace(ANSI_PATTERN, '')) {
+    if (/\p{Mark}|\u200d|\ufe0f/u.test(char)) continue;
+    const code = char.codePointAt(0)!;
+    const wide = /\p{Extended_Pictographic}/u.test(char)
+      || (code >= 0x1100 && (
+        code <= 0x115f || code === 0x2329 || code === 0x232a
+        || (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f)
+        || (code >= 0xac00 && code <= 0xd7a3)
+        || (code >= 0xf900 && code <= 0xfaff)
+        || (code >= 0xfe10 && code <= 0xfe19)
+        || (code >= 0xfe30 && code <= 0xfe6f)
+        || (code >= 0xff00 && code <= 0xff60)
+        || (code >= 0xffe0 && code <= 0xffe6)
+      ));
+    width += wide ? 2 : 1;
+  }
+  return width;
+}
+
+function padToDisplayWidth(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - displayWidth(text)));
+}
 
 function wrap(text: string, width: number): string[] {
-  if (text.length <= width) return [text];
+  if (displayWidth(text) <= width) return [text];
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let line = '';
   for (const word of words) {
     if (!line) { line = word; continue; }
-    if (`${line} ${word}`.length <= width) line += ` ${word}`;
+    if (displayWidth(`${line} ${word}`) <= width) line += ` ${word}`;
     else { lines.push(line); line = word; }
   }
   if (line) lines.push(line);
@@ -71,17 +97,21 @@ export function createRenderer(write: Write, options: RendererOptions): CliRende
       write('\n');
       return;
     }
-    const width = Math.min(76, columns - 2);
-    const inner = width - 4;
+    const width = Math.min(88, columns - 2);
+    const leftPadding = 2;
+    const rightPadding = 4;
+    const inner = width - leftPadding - rightPadding - 2;
     const top = options.unicode ? `╭${'─'.repeat(width - 2)}╮` : `+${'-'.repeat(width - 2)}+`;
     const bottom = options.unicode ? `╰${'─'.repeat(width - 2)}╯` : `+${'-'.repeat(width - 2)}+`;
     const side = options.unicode ? '│' : '|';
     write(`\n${top}\n`);
-    const titleLine = `  ${title}`.padEnd(width - 1);
-    write(`${side}${titlePaint(titleLine)}${side}\n`);
+    const titleLine = `${' '.repeat(leftPadding)}${title}`;
+    write(`${side}${titlePaint(padToDisplayWidth(titleLine, width - 2))}${side}\n`);
     write(`${side}${' '.repeat(width - 2)}${side}\n`);
     for (const item of lines) {
-      for (const line of wrap(item, inner)) write(`${side}  ${line.padEnd(inner)}  ${side}\n`);
+      for (const line of wrap(item, inner)) {
+        write(`${side}${' '.repeat(leftPadding)}${padToDisplayWidth(line, inner)}${' '.repeat(rightPadding)}${side}\n`);
+      }
     }
     write(`${bottom}\n\n`);
   };

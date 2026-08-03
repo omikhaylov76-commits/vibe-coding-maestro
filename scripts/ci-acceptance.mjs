@@ -13,21 +13,16 @@ const target = join(tempRoot, 'project with spaces');
 let packDir;
 let installDir;
 
-function run(command, args, cwd = root, options = {}) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: options.shell === true });
+function run(command, args, cwd = root) {
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: false });
   assert.equal(result.status, 0, `${command} ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   return result.stdout.trim();
 }
 
 function npm(args, cwd = root) {
-  if (process.platform !== 'win32') return run('npm', args, cwd);
-  // npm is a .cmd wrapper on Windows. Quote internally generated arguments only
-  // when required, so paths with spaces stay intact but npm sees plain `pack`.
-  const quote = (value) => /^[A-Za-z0-9_./:=\\~\-]+$/.test(value)
-    ? value
-    : `"${value.replaceAll('"', '""')}"`;
-  const command = `npm ${args.map(quote).join(' ')}`;
-  return run(process.env.ComSpec || 'cmd.exe', ['/d', '/c', command], cwd);
+  const npmCli = process.env.npm_execpath;
+  assert.ok(npmCli, 'ci-acceptance must be launched through `npm run acceptance`');
+  return run(process.execPath, [npmCli, ...args], cwd);
 }
 
 try {
@@ -48,9 +43,8 @@ try {
   assert.equal(run('git', ['branch', '--show-current'], target), 'main');
   assert.equal(run('git', ['status', '--porcelain'], target), '', 'status after second init must be clean');
 
-  // Keep package-manager staging paths ASCII/no-space: cmd.exe/npm wrappers have
-  // platform-specific quoting. User-facing path-with-spaces is tested above and
-  // again as `packed project` below.
+  // Keep package-manager staging separate from user-facing path tests. Paths
+  // with spaces are tested above and again as `packed project` below.
   packDir = await mkdtemp(join(tmpdir(), 'vcm-pack-'));
   installDir = await mkdtemp(join(tmpdir(), 'vcm-installed-'));
   const packed = JSON.parse(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', packDir]));

@@ -28,4 +28,4 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm pack --dry-run --json
-      - run: node scripts/ci-acceptance.mjs
+      - run: npm run acceptance

@@ -9,7 +9,7 @@ describe('этапы 12–13: CI и документационные контр�
   it('CI покрывает три ОС, Node 20/22 и все обязательные gates', async () => {
     const ci = await text('.github/workflows/ci.yml');
     for (const value of ['ubuntu-latest', 'macos-latest', 'windows-latest', '20', '22']) expect(ci).toContain(value);
-    for (const command of ['npm ci', 'npm audit --audit-level=low', 'npm test', 'npm run typecheck', 'npm run build', 'npm pack --dry-run --json', 'node scripts/ci-acceptance.mjs']) expect(ci).toContain(command);
+    for (const command of ['npm ci', 'npm audit --audit-level=low', 'npm test', 'npm run typecheck', 'npm run build', 'npm pack --dry-run --json', 'npm run acceptance']) expect(ci).toContain(command);
   });
 
   it('acceptance использует Node API и проверяет путь с пробелом, doctor, main, clean и sentinel', async () => {
@@ -17,9 +17,9 @@ describe('этапы 12–13: CI и документационные контр�
     expect(script).toMatch(/mkdtemp/);
     expect(script).toMatch(/project with spaces/i);
     for (const value of ['doctor', 'main', 'status', 'sentinel']) expect(script.toLowerCase()).toContain(value);
-    expect(script).not.toMatch(/powershell|\/bin\/sh|shell:\s*true/i);
-    expect(script).toContain("process.env.ComSpec || 'cmd.exe'");
-    expect(script).toMatch(/args\.map\(quote\)/);
+    expect(script).not.toMatch(/powershell|cmd\.exe|comspec|\/bin\/sh|shell:\s*true/i);
+    expect(script).toContain('process.env.npm_execpath');
+    expect(script).toMatch(/process\.execPath, \[npmCli, \.\.\.args\]/);
   });
 
   it('README документирует beginner flow и честный prerelease caveat', async () => {

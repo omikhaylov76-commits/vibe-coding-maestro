@@ -24,6 +24,7 @@
     "typecheck": "tsc -p tsconfig.check.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "acceptance": "node scripts/ci-acceptance.mjs",
     "prepack": "npm test && npm run typecheck && npm run build"
   },
   "devDependencies": {

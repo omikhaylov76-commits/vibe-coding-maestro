@@ -3,7 +3,7 @@ import { readPackageJson } from './paths.js';
 export const PRODUCT_NAME = 'Vibe Coding Maestro';
 export const CREATE_COMMAND = 'create-vibe-maestro';
 export const SERVICE_COMMAND = 'vibe-maestro';
-export const MANIFEST_SCHEMA_VERSION = 1;
+export const MANIFEST_SCHEMA_VERSION = 2;
 
 export const VERSION: string = readPackageJson().version;
 

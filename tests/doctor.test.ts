@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -18,7 +18,53 @@ async function fresh(git = false) {
   return target;
 }
 
-describe('doctorProject', () => {
+describe('doctor', () => {
+  it('fail-closed отклоняет extra и duplicate canonical entries', async () => {
+    const target = await fresh(false);
+    const path = join(target, MANIFEST_PATH);
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.managed.push({ path: 'user-file.md', kind: 'managed' });
+    manifest.inventory.push({ path: 'user-file.md', ownership: 'managed' });
+    await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const report = await doctorProject(target);
+    expect(report.ok).toBe(false);
+    expect(report.findings.some((finding) => finding.code === 'manifest-inventory-extra')).toBe(true);
+  });
+
+  it('fail-closed отклоняет manifest с подложной canonical identity', async () => {
+    const target = await fresh(false);
+    const path = join(target, MANIFEST_PATH);
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.product.name = 'forged-product';
+    await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const report = await doctorProject(target);
+
+    expect(report.ok).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: 'manifest-canonical-mismatch',
+      path: MANIFEST_PATH,
+    }));
+  });
+
+  it('обнаруживает symlink в merged .gitignore', async () => {
+    const target = await fresh(false);
+    const outside = join(target, 'outside.txt');
+    await writeFile(outside, 'outside\n', 'utf8');
+    await rm(join(target, '.gitignore'));
+    await symlink(outside, join(target, '.gitignore'));
+
+    const report = await doctorProject(target);
+
+    expect(report.ok).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      level: 'critical',
+      code: 'managed-symlink',
+      path: '.gitignore',
+    }));
+  });
+
   it('свежий проект проходит без замечаний', async () => {
     const target = await fresh(false);
     const report = await doctorProject(target);
@@ -36,9 +82,9 @@ describe('doctorProject', () => {
 
   it('находит изменённый managed-файл', async () => {
     const target = await fresh();
-    await writeFile(join(target, 'wiki/hot.md'), 'изменено', 'utf8');
+    await writeFile(join(target, 'wiki/index.md'), 'изменено', 'utf8');
     const report = await doctorProject(target);
-    expect(report.findings.some((f) => f.code === 'managed-modified')).toBe(true);
+    expect(report.findings.some((f) => f.code === 'managed-modified' && f.path === 'wiki/index.md')).toBe(true);
   });
 
   it('сообщает о повреждённом manifest без stacktrace', async () => {

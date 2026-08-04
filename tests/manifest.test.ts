@@ -26,8 +26,9 @@ async function init(target: string, overrides: Record<string, unknown> = {}) {
 interface Manifest {
   schemaVersion: number;
   product: { name: string; version: string; createdBy: string };
-  project: { name: string; startingPoint: string; createdAt: string };
+  project: { id: string; name: string; startingPoint: string; createdAt: string; depth: string };
   managed: { path: string; kind: string }[];
+  inventory: { path: string; ownership: string }[];
 }
 
 describe('манифест: схема', () => {
@@ -55,6 +56,78 @@ describe('манифест: схема', () => {
     expect(manifest.product.name).toBe('create-vibe-maestro');
     expect(manifest.project.startingPoint).toBe('code');
     expect(manifest.project.createdAt).toBe(FIXED_NOW.toISOString());
+    expect(manifest.schemaVersion).toBe(2);
+    expect(manifest.project.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(manifest.project.depth).toBe('standard');
+  });
+
+  it('сохраняет projectId и depth при повторном init', async () => {
+    const target = await makeTempDir();
+    await init(target, { depth: 'advanced' });
+    const before = await readJson<Manifest>(target, MANIFEST_PATH);
+    await init(target, { depth: 'light' });
+    const after = await readJson<Manifest>(target, MANIFEST_PATH);
+
+    expect(after.project.id).toBe(before.project.id);
+    expect(after.project.depth).toBe('advanced');
+  });
+
+  it('отклоняет неизвестный depth до создания metadata', async () => {
+    const target = await makeTempDir();
+    const result = await init(target, { depth: 'wide' });
+    expect(result.ok).toBe(false);
+    await expect(readFile(join(target, MANIFEST_PATH), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('публикует canonical ownership inventory вместе с v1 managed contract', async () => {
+    const target = await makeTempDir();
+    await init(target);
+    const manifest = await readJson<Manifest>(target, MANIFEST_PATH);
+    const ownership = new Map(manifest.inventory.map((entry) => [entry.path, entry.ownership]));
+
+    expect(manifest.managed.length).toBeGreaterThan(0);
+    expect(ownership.get('wiki/index.md')).toBe('managed');
+    expect(ownership.get('wiki/hot.md')).toBe('project-owned');
+    expect(ownership.get('.maestro/manifest.json')).toBe('generated');
+    expect(ownership.get('maestro/sources/.gitkeep')).toBe('immutable');
+  });
+
+  it('делает inventory аддитивным по depth, сохраняя safety rails', async () => {
+    const manifests: Record<string, Manifest> = {};
+    for (const depth of ['light', 'standard', 'advanced']) {
+      const target = await makeTempDir();
+      await init(target, { depth });
+      manifests[depth] = await readJson<Manifest>(target, MANIFEST_PATH);
+    }
+
+    const paths = (depth: string) => new Set(manifests[depth]!.inventory.map((entry) => entry.path));
+    const light = paths('light');
+    const standard = paths('standard');
+    const advanced = paths('advanced');
+
+    expect(light.size).toBeLessThan(standard.size);
+    expect(standard.size).toBeLessThan(advanced.size);
+    expect([...light].every((path) => standard.has(path))).toBe(true);
+    expect([...standard].every((path) => advanced.has(path))).toBe(true);
+    for (const required of ['.maestro/manifest.json', '.maestro/checksums.json', 'maestro/sources/.gitkeep', 'wiki/hot.md', 'wiki/log.md']) {
+      expect(light.has(required)).toBe(true);
+    }
+    expect(light.has('wiki/audits/.gitkeep')).toBe(false);
+    expect(standard.has('wiki/audits/.gitkeep')).toBe(true);
+    expect(standard.has('wiki/lessons/.gitkeep')).toBe(false);
+    expect(advanced.has('wiki/lessons/.gitkeep')).toBe(true);
+  });
+
+  it('не ослабляет symlink preflight при повторном init Advanced без явного depth', async () => {
+    const target = await makeTempDir();
+    await init(target, { depth: 'advanced' });
+    await writeFile(join(target, 'outside.txt'), 'outside\n', 'utf8');
+    const lessonsKeep = join(target, 'wiki/lessons/.gitkeep');
+    await import('node:fs/promises').then(({ rm, symlink }) => rm(lessonsKeep).then(() => symlink(join(target, 'outside.txt'), lessonsKeep)));
+
+    const result = await init(target);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('symlink');
   });
 
   it('checksums.json содержит sha256 для каждого managed-файла', async () => {
@@ -101,9 +174,12 @@ describe('различение managed и пользовательских фа�
     await init(target);
     const manifest = await loadManifest(target);
 
-    expect(classifyFile(manifest, 'wiki/hot.md')).toBe('managed');
+    expect(classifyFile(manifest, 'wiki/index.md')).toBe('managed');
     expect(classifyFile(manifest, '.gitignore')).toBe('merged');
     expect(classifyFile(manifest, MANIFEST_PATH)).toBe('generated');
+    // Стартовые содержательные документы отдаются проекту: schema v1 представляет
+    // такое владение как `generated`, поэтому Maestro их не перезаписывает.
+    expect(classifyFile(manifest, 'wiki/hot.md')).toBe('generated');
     expect(classifyFile(manifest, 'wiki/progress/моя-фича.md')).toBe('user');
     expect(classifyFile(manifest, 'src/index.ts')).toBe('user');
   });

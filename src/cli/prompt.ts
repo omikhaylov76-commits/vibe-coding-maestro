@@ -4,9 +4,9 @@ import type { StartingPoint } from '../core/meta.js';
 import { resolveProjectInput, runtimeDesktopOptions } from './desktop.js';
 import { createRenderer, runtimeRendererOptions, type CliRenderer } from './renderer.js';
 
-export type InteractiveAction = 'create' | 'connect' | 'check';
+export type InteractiveAction = 'create' | 'check';
 export type InteractiveAnswers =
-  | { action: 'create' | 'connect'; target: string; name: string; startingPoint: StartingPoint; usedDesktopDefault: boolean }
+  | { action: 'create'; target: string; name: string; startingPoint: StartingPoint; usedDesktopDefault: boolean }
   | { action: 'check'; target: string };
 
 export interface PromptAdapter {
@@ -225,10 +225,9 @@ export function createReadlinePrompt(input: ReadStream = process.stdin as ReadSt
       renderer.welcome();
       const action = await selectChoice(input, output, renderer, 'Что вы хотите сделать?', [
         { value: 'create', label: 'Создать новый проект' },
-        { value: 'connect', label: 'Подключить существующий проект' },
-        { value: 'check', label: 'Проверить проект' },
+        { value: 'check', label: 'Проверить canonical project' },
       ], capabilities);
-      const question = action === 'create' ? 'Как назовём проект? Можно указать полный путь.' : action === 'connect' ? 'Где находится существующий проект?' : 'Какой проект проверить?';
+      const question = action === 'create' ? 'Как назовём проект? Можно указать полный путь.' : 'Какой canonical project проверить?';
       const hint = action === 'create' ? 'Например: Мой проект. Тогда папка появится на Рабочем столе.' : 'Перетащите папку сюда или вставьте путь.';
       const raw = await askLine(input, output, renderer, question, hint, capabilities);
       const project = await resolveProjectInput(raw, runtimeDesktopOptions(action));
@@ -244,7 +243,7 @@ export function createReadlinePrompt(input: ReadStream = process.stdin as ReadSt
         { value: 'code', label: 'Есть код — проект уже разрабатывается' },
       ], capabilities);
       renderer.preview({ action, target: project.target, name: project.name, usedDesktopDefault: project.usedDesktopDefault });
-      renderer.progress(action === 'connect' ? 'Подключаем Maestro, сохраняя ваши файлы…' : 'Создаём структуру проекта…');
+      renderer.progress('Создаём структуру canonical project…');
       return { action, target: project.target, name: project.name, startingPoint, usedDesktopDefault: project.usedDesktopDefault };
     },
   };

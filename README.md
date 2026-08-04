@@ -1,714 +1,274 @@
 # Vibe Coding Maestro
 
-**Vibe Coding Maestro** помогает вести AI-разработку так, чтобы проект не терял контекст между сессиями, а человек понимал, что происходит и где лежит актуальная информация.
+<p align="center">
+  <strong>Keep AI coding context in the repo—not in yesterday’s chat.</strong>
+</p>
 
-Maestro создаёт готовую структуру проекта, файловую память, правила работы для AI-агентов, безопасную Git-основу и механическую проверку `doctor`. Он не пишет продукт вместо вас и не принимает архитектурные решения. Его задача — дать человеку, Cowork, Claude Code, Codex, Cursor и другим инструментам одну понятную систему координат.
+<p align="center">
+  Open-source project memory and guardrails for long-running AI coding work.<br>
+  Ordinary Markdown in Git, shared by people and different AI coding tools.
+</p>
 
-> **Статус:** prerelease/alpha. Рабочий MVP готов, прошёл локальные проверки и CI на Ubuntu, macOS и Windows с Node.js 20/22. Пакет пока не опубликован в npm. Команды с `@latest` показывают запланированный публичный интерфейс. До публикации проект запускается из клонированного репозитория.
+<p align="center">
+  <a href="https://github.com/omikhaylov76-commits/vibe-coding-maestro/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/omikhaylov76-commits/vibe-coding-maestro/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+</p>
 
-## Содержание
+<p align="center">
+  <a href="docs/USER_GUIDE.md">Подробное руководство на русском</a>
+  ·
+  <a href="#quick-start-from-source">Quick start</a>
+  ·
+  <a href="#safety-by-default">Safety</a>
+  ·
+  <a href="#documentation">Documentation</a>
+</p>
 
-- [Зачем нужен Maestro](#зачем-нужен-maestro)
-- [Какую проблему он решает](#какую-проблему-он-решает)
-- [Как устроен полный рабочий цикл](#как-устроен-полный-рабочий-цикл)
-- [Роли человека, Cowork и AI-инженера](#роли-человека-cowork-и-ai-инженера)
-- [Самый простой запуск](#самый-простой-запуск)
-- [Что создаётся в проекте](#что-создаётся-в-проекте)
-- [Как работает файловая память](#как-работает-файловая-память)
-- [Команды Claude Code](#команды-claude-code)
-- [Что проверяет doctor](#что-проверяет-doctor)
-- [Безопасность и Git](#безопасность-и-git)
-- [Skill Inventory](#skill-inventory)
-- [Новый и существующий проект](#новый-и-существующий-проект)
-- [Автоматический запуск и JSON](#автоматический-запуск-и-json)
-- [Честные ограничения](#честные-ограничения)
-- [Разработка и проверка](#разработка-и-проверка)
+> [!IMPORTANT]
+> **0.2.0-beta.1 is an unreleased beta.** The npm package is not published yet, so `npx create-vibe-maestro@latest` is not a working installation command today. Use the source install below. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
-## Зачем нужен Maestro
+When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
-AI-инструменты хорошо пишут код, анализируют материалы и находят ошибки. Но в долгой работе возникает другая проблема: каждый новый чат или агент видит только часть истории.
+- a new session has to rediscover the project;
+- decisions survive in old conversations but not in the repository;
+- the plan, code, and documentation quietly drift apart;
+- different agents receive different instructions;
+- nobody can quickly prove which files and rules are still intact.
 
-Обычно это приводит к знакомому циклу:
+Vibe Coding Maestro creates one durable, Git-native place for that context. It gives the project shared Markdown memory, canonical working protocols, thin entry files for AI tools, and a deterministic `doctor` that checks mechanical integrity without calling an LLM.
 
-1. новая сессия заново изучает проект;
-2. человек повторяет уже принятые решения;
-3. план, код и документация начинают расходиться;
-4. важные ограничения остаются в старом чате;
-5. один агент переписывает файл, который должен был только читать;
-6. через неделю никто точно не помнит, где остановилась работа.
+It is **not another coding agent or IDE**. Keep using Claude Code, Codex, Cursor, or your preferred tools. Maestro gives them—and you—the same map.
 
-Maestro выносит рабочий контекст из чатов в обычные Markdown-файлы внутри проекта. Эти файлы читаются человеком и любым AI-инструментом, который умеет работать с файловой системой.
+## See the workflow in 20 seconds
 
-В результате новая сессия начинает не с полного повторного исследования, а с короткой последовательности:
+![Vibe Coding Maestro: from a lost AI session to shared project memory and a green doctor check](docs/assets/quick-demo.gif)
+
+The demo uses the real 0.2 beta CLI surface and output. It does not pretend that the npm package has already been published.
+
+## Quick start from source
+
+**Requirements:** Node.js 20.10 or newer, npm, and Git.
+
+```bash
+# 1. Get the beta source
+git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git && cd vibe-coding-maestro
+
+# 2. Install and build
+npm ci && npm run build
+
+# 3. Create a new canonical project
+node dist/bin/create-vibe-maestro.js \
+  --yes \
+  --target "../My Project" \
+  --name "My Project" \
+  --start idea \
+  --depth standard
+```
+
+Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. Then verify it again at any time:
+
+```bash
+node dist/bin/vibe-maestro.js doctor --path "../My Project"
+```
+
+Expected result:
+
+```text
+Vibe Coding Maestro doctor: всё сходится.
+```
+
+Prefer a guided setup? Run the CLI without flags:
+
+```bash
+node dist/bin/create-vibe-maestro.js
+```
+
+The Guided First Run explains where files will be created and asks for no more than three decisions. A simple project name creates the folder on your Desktop; an explicit path always wins. Set `NO_COLOR=1` if you need plain output.
+
+> [!WARNING]
+> **Core 0.2 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine. It refuses to modify a non-empty, non-canonical directory—even with `--force`. Safe conversion of existing projects belongs to a separate future Converter.
+
+## What you get
+
+A Standard project starts with a structure like this:
+
+```text
+My Project/
+├── AGENTS.md          # universal entry for compatible AI agents
+├── CLAUDE.md          # Claude Code entry
+├── .claude/commands/  # /status, /build, /wiki, /handoff adapters
+├── protocols/         # canonical rules for planning, building and handoff
+├── wiki/              # shared project memory, decisions, progress and audits
+├── maestro/           # inbox and human-controlled discovery/audit runbooks
+└── .maestro/          # manifest, ownership inventory and integrity metadata
+```
+
+The important part is not the number of files. It is the reading path every new session receives:
 
 ```text
 wiki/hot.md
 → discovery
-→ открытые аудиты
+→ open audits
 → roadmap
-→ текущий progress
+→ current progress
 ```
 
-Это помогает экономить не только токены, но и время: меньше повторных объяснений, повторного чтения и повторных ошибок.
+From there, `protocols/build.md` routes the agent through the relevant rules, plan, tests, evidence, review, and handoff. The next session can continue from repository state instead of relying on a private chat transcript.
 
-## Какую проблему он решает
+### Before and after
 
-Maestro соединяет четыре вещи, которые обычно живут отдельно:
+| Before Maestro | With Maestro |
+|---|---|
+| Decisions are scattered across chats | Confirmed context lives in Markdown and Git |
+| Each agent gets a different explanation | `AGENTS.md`, `CLAUDE.md`, and adapters route to canonical protocols |
+| “Where did we stop?” requires a long recap | `wiki/hot.md` and handoffs hold the current state and next step |
+| Drift is noticed manually, often late | `doctor` checks known mechanical invariants deterministically |
+| Ownership is implicit | Managed, project-owned, generated, merged, and immutable paths are explicit |
 
-- **исследование продукта** — что мы строим, для кого, где факты, а где предположения;
-- **реализацию** — код, тесты, сборку и технические решения;
-- **память** — актуальный контекст, прогресс, решения и история;
-- **проверку** — механические инварианты, аудиты и Git-состояние.
+## A normal working cycle
 
-Главная идея проста:
+1. Put notes or source material in `maestro/inbox/`.
+2. Use the included discovery runbook to separate sources, assumptions, MVP, non-goals, and open questions.
+3. Review the result as a human and save approved context in the wiki.
+4. Let an AI coding tool read `AGENTS.md` or its native adapter before it plans or edits.
+5. Build with tests and live evidence.
+6. Run `doctor`.
+7. Create a handoff so the next session starts with the exact current state.
+8. Record independent audit findings with stable IDs; open `high` or `critical` findings block a green doctor result.
 
-> Чаты и ответы моделей временные. Файлы проекта — общая долговременная память.
+Claude Code projects also receive four thin commands:
 
-При этом память не превращается в одну бесконечную заметку. У каждого типа информации есть своё место и владелец.
+- `/status` — read current context without changing files;
+- `/build` — follow the canonical build protocol;
+- `/wiki` — reconcile allowed project memory;
+- `/handoff` — record the state and update `wiki/hot.md`.
 
-## Как устроен полный рабочий цикл
+## Safety by default
 
-```text
-1. Maestro создаёт или подключает проект
-                    ↓
-2. Человек складывает материалы в maestro/inbox/
-                    ↓
-3. Cowork проводит discovery и возвращает Markdown
-                    ↓
-4. Человек проверяет diff и сохраняет discovery в wiki/
-                    ↓
-5. Claude Code или другой AI-инженер читает контекст
-                    ↓
-6. /build: код → тесты → проверки → обновление памяти
-                    ↓
-7. /handoff: фиксируется состояние для следующей сессии
-                    ↓
-8. Cowork проводит независимый audit
-                    ↓
-9. Open high/critical findings блокируют doctor
-                    ↓
-10. Исправления проверены, findings закрыты по стабильным ID
-```
+Maestro is deliberately conservative around existing data and Git state:
 
-### Шаг 1. Создать или подключить проект
+- it refuses a non-empty, non-canonical destination before writing;
+- a copied or forged manifest is not enough—the canonical identity, inventory, and actual tree must agree;
+- `--force` only repeats initialization for a valid canonical project;
+- repeat initialization is not an implicit repair command: an incomplete canonical tree is rejected without writing;
+- user-owned files are not silently overwritten or deleted;
+- protected paths and their parents are checked for symlinks, including dangling links;
+- Git bootstrap uses `main`, does not run `git add -A` over unrelated work, and does not change global Git configuration;
+- `doctor` is deterministic, has versioned JSON output, and makes no LLM call;
+- `doctor --strict` also treats warnings as blocking;
+- audit findings must be resolved with evidence; `waived` is not accepted by the 0.2 beta contract;
+- there is intentionally no `doctor --fix` that could overwrite useful work.
 
-Интерактивный мастер просит принять не больше трёх решений:
+`doctor` checks known mechanical boundaries such as manifest identity, ownership inventory, managed checksums, protocol contracts, wiki links, source integrity, tracked environment files, audit structure, blocking findings, and protected-path symlinks.
 
-1. что сделать: создать, подключить или проверить;
-2. как называется проект или где он находится;
-3. с чего начинается работа: идея, материалы, требования или существующий код.
+These protections reduce accidental damage. They do **not** make Maestro a sandbox, backup system, digital signature, or proof that the code and product decisions are correct. Read the complete [threat model](docs/THREAT_MODEL.md).
 
-Если при создании ввести только название, Maestro создаст папку на Рабочем столе. Явный путь всегда имеет приоритет.
+## Choose a depth
 
-### Шаг 2. Собрать исходные материалы
+All depths are projections of one canonical system, not separate products.
 
-Заметки, ссылки, документы и другие входящие материалы регистрируются через:
+| Depth | Best for | What changes |
+|---|---|---|
+| `light` | Small experiments and short projects | Minimal continuity and integrity surface |
+| `standard` | Most solo and small-team projects | Full planning, progress, review, and handoff path; default |
+| `advanced` | Longer or higher-risk work | Additional architecture, seams, audit, and lessons contracts |
 
-```text
-maestro/inbox/
-```
+Choose non-interactively with `--depth light|standard|advanced`. The Guided First Run uses `standard` by default so a new user does not have to decide immediately.
 
-Это зона входящих данных, а не долговременная wiki. Материалы сначала изучаются, затем подтверждённые выводы переносятся в подходящие документы.
+## When Maestro helps—and when it does not
 
-### Шаг 3. Провести Cowork Discovery
+### Maestro is a good fit when
 
-Готовый runbook находится в:
+- an AI-assisted project lasts more than a few sessions;
+- you switch between people, models, or coding interfaces;
+- you repeatedly explain the same constraints and decisions;
+- Git state, ownership, auditability, and safe handoff matter;
+- you want portable Markdown rather than provider-locked chat memory.
 
-```text
-maestro/runbooks/cowork-discovery.md
-```
+### Maestro is probably unnecessary when
 
-Cowork должен отделить:
+- the task is a one-off script or a short disposable prototype;
+- you do not use Git or filesystem-aware AI tools;
+- you want an autonomous agent that designs and writes the product for you;
+- you need to retrofit an existing non-canonical repository today;
+- you need enterprise access control, cloud sync, SSO, or a hosted dashboard.
 
-- источники и подтверждённые факты;
-- предположения;
-- минимальный проверяемый объём продукта;
-- то, что не входит в текущий этап;
-- открытые вопросы.
+Maestro also cannot replace project tests, backups, code review, or human judgment.
 
-Cowork возвращает Markdown, но не изменяет проект напрямую.
+## Integration status
 
-### Шаг 4. Импортировать discovery под контролем человека
+The core format is vendor-neutral; integration depth is not identical across tools.
 
-Человек проверяет результат и сохраняет одобренный текст в:
+| Interface | Level in 0.2 beta | What is available |
+|---|---|---|
+| Humans | Native | Plain Markdown, Git diffs, explicit ownership, runbooks |
+| Claude Code | Native adapter | `CLAUDE.md`, four project commands, code-reviewer adapter |
+| Codex and other `AGENTS.md` tools | Generic adapter | Universal `AGENTS.md` entry into canonical protocols |
+| Cursor and other filesystem-aware tools | Generic | They can read the same Markdown; no dedicated adapter yet |
+| Cowork-style research/audit | Runbook | Copyable discovery and independent-audit workflows; human imports the result |
 
-```text
-wiki/concepts/discovery.md
-```
+“Generic” means the shared files are usable; it does not claim the same tested UX as the native Claude Code adapter.
 
-Так исследователь не получает право незаметно менять проект, а важные выводы проходят человеческий review.
+## Automation and CI
 
-### Шаг 5. Начать реализацию
-
-AI-инженер читает:
-
-1. `wiki/hot.md`;
-2. `wiki/concepts/discovery.md`;
-3. открытые документы из `wiki/audits/`;
-4. `wiki/roadmap.md`;
-5. текущие progress-файлы.
-
-После этого он реализует согласованный шаг, запускает тесты, typecheck, build и doctor, а затем обновляет разрешённые разделы wiki.
-
-### Шаг 6. Передать контекст следующей сессии
-
-Команда `/handoff` создаёт отдельный документ с:
-
-- целью;
-- подтверждёнными фактами;
-- сделанными изменениями;
-- результатами проверок;
-- открытыми аудитами;
-- рисками;
-- точным следующим шагом.
-
-Только `handoff` имеет право обновлять `wiki/hot.md`. Благодаря этому горячий контекст не переписывается случайной командой.
-
-### Шаг 7. Провести независимый аудит
-
-Runbook:
-
-```text
-maestro/runbooks/cowork-audit.md
-```
-
-Audit хранится в:
-
-```text
-wiki/audits/<audit-id>.md
-```
-
-Каждая находка получает стабильный ID, severity, target, status и resolution. Открытые findings уровня `critical` и `high` блокируют успешный doctor.
-
-## Роли человека, Cowork и AI-инженера
-
-Maestro намеренно разделяет ответственность.
-
-### Человек
-
-Человек принимает решения и контролирует границы:
-
-- выбирает цель проекта;
-- подтверждает discovery;
-- просматривает diff;
-- импортирует результаты Cowork;
-- принимает или отклоняет архитектурные решения;
-- проверяет закрытие audit findings;
-- решает, какие внешние skills и команды можно запускать.
-
-### Cowork
-
-Cowork — исследователь и независимый аудитор.
-
-Он:
-
-- изучает материалы;
-- отделяет факты от гипотез;
-- формирует discovery;
-- проверяет результат работы;
-- создаёт структурированные findings.
-
-Он не пишет код и не изменяет файлы проекта напрямую. Результат всегда возвращается человеку в виде Markdown.
-
-### Claude Code, Codex, Cursor или другой AI-инженер
-
-AI-инженер:
-
-- читает подтверждённый контекст;
-- планирует согласованный технический шаг;
-- пишет код через тесты;
-- запускает проектные проверки;
-- создаёт progress и technical decisions;
-- закрывает findings по стабильным ID после исправления;
-- готовит handoff.
-
-Он не переписывает discovery и исходный текст аудитов.
-
-### Maestro
-
-Maestro не является ещё одним «умным агентом». Это установщик, структура и механический контролёр.
-
-Он:
-
-- создаёт предсказуемые файлы;
-- закрепляет ownership;
-- считает checksums;
-- подготавливает Git;
-- проверяет инварианты;
-- сообщает о расхождениях без обращения к LLM.
-
-## Самый простой запуск
-
-После публикации в npm основной командой будет:
+For scripts, pass every decision explicitly:
 
 ```bash
-npx create-vibe-maestro@latest
-```
-
-Сейчас, до публикации:
-
-```bash
-git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git
-cd vibe-coding-maestro
-npm ci
-npm run build
-node dist/bin/create-vibe-maestro.js
-```
-
-При запуске появится Guided First Run с коротким объяснением и меню:
-
-```text
-1. Создать новый проект
-2. Подключить существующий проект
-3. Проверить проект
-```
-
-Для нового проекта можно ввести просто:
-
-```text
-Мой проект
-```
-
-Папка появится на Рабочем столе:
-
-```text
-~/Desktop/Мой проект
-```
-
-Можно сразу указать другое место:
-
-```text
-~/Documents/Projects/Мой проект
-```
-
-или абсолютный путь:
-
-```text
-/Users/me/Projects/Мой проект
-C:\Projects\Мой проект
-```
-
-После успешного создания Maestro показывает полный путь и следующие действия. Цвет отключается стандартной переменной:
-
-```bash
-NO_COLOR=1 node dist/bin/create-vibe-maestro.js
-```
-
-Без цвета сохраняются текстовые маркеры `OK`, `!` и `X`.
-
-## Исходная точка проекта
-
-Maestro предлагает четыре starting point:
-
-- `idea` — пока есть только замысел; сначала нужно определить рамки и критерии успеха;
-- `materials` — уже есть заметки, ссылки или файлы; сначала нужно зарегистрировать sources и провести discovery;
-- `spec` — требования сформулированы; сначала нужно проверить roadmap, ограничения и открытые вопросы;
-- `code` — код уже существует; сначала нужна карта системы и аудит текущего состояния.
-
-Starting point записывается в проект и помогает агентам понять, с какого состояния начинается работа. Это не жёсткий workflow и не запрет менять план позже.
-
-## Что создаётся в проекте
-
-Упрощённое дерево:
-
-```text
-My Project/
-├── AGENTS.md
-├── CLAUDE.md
-├── .gitattributes
-├── .gitignore
-├── .claude/
-│   ├── commands/
-│   │   ├── build.md
-│   │   ├── status.md
-│   │   ├── wiki.md
-│   │   └── handoff.md
-│   └── agents/
-│       └── code-reviewer.md
-├── .maestro/
-│   ├── manifest.json
-│   ├── checksums.json
-│   └── source-hashes.json       # создаётся, когда зарегистрированы sources
-├── maestro/
-│   ├── inbox/
-│   │   └── README.md
-│   ├── runbooks/
-│   │   ├── cowork-discovery.md
-│   │   └── cowork-audit.md
-│   └── skills/                  # project-local skills, если они добавлены
-└── wiki/
-    ├── index.md
-    ├── hot.md
-    ├── roadmap.md
-    ├── log.md
-    ├── concepts/
-    │   └── discovery.md
-    ├── progress/
-    ├── decisions/
-    ├── handoffs/
-    ├── audits/
-    └── attic/
-```
-
-Некоторые каталоги создаются лениво, когда впервые нужны. Это сохраняет структуру понятной и не заставляет пользователя заполнять пустые разделы заранее.
-
-### `AGENTS.md` и `CLAUDE.md`
-
-Это двери для AI-инструментов. В них записаны:
-
-- порядок чтения контекста;
-- ownership файлов;
-- правила памяти;
-- ограничения;
-- команда doctor.
-
-Содержание намеренно совпадает. `AGENTS.md` предназначен для инструментов, поддерживающих общий формат, а `CLAUDE.md` — для Claude Code.
-
-### `.maestro/`
-
-Служебная зона Maestro:
-
-- `manifest.json` описывает установленную структуру;
-- `checksums.json` хранит hashes управляемых файлов;
-- `source-hashes.json` фиксирует зарегистрированные source-файлы.
-
-Эти файлы не являются цифровой подписью. Они помогают обнаружить случайный дрейф и несогласованные изменения.
-
-### `maestro/runbooks/`
-
-Здесь лежат готовые инструкции для внешних исследовательских процессов. Сейчас есть discovery и audit.
-
-### `wiki/`
-
-Это общая файловая память проекта. Она не привязана к одному провайдеру или модели и остаётся обычным Markdown в Git.
-
-## Как работает файловая память
-
-### `wiki/hot.md`
-
-Короткий контекст, который нужен прямо сейчас:
-
-- текущая цель;
-- подтверждённое состояние;
-- главный блокер;
-- точный следующий шаг.
-
-Это не полный журнал. Файл должен оставаться компактным. Обновлять его разрешено только через `/handoff`.
-
-### `wiki/concepts/discovery.md`
-
-Подтверждённые рамки продукта:
-
-- sources;
-- assumptions;
-- MVP;
-- non-goals;
-- open questions.
-
-Cowork готовит текст, человек импортирует его после review, AI-инженер читает, но не переписывает.
-
-### `wiki/progress/`
-
-Текущее выполнение: что делается, что завершено, какие проверки пройдены и что мешает продолжению. Этой зоной владеет AI-инженер.
-
-### `wiki/decisions/`
-
-Значимые технические решения. В хорошем decision-файле есть контекст, выбранный вариант, альтернативы и последствия.
-
-### `wiki/handoffs/`
-
-Передача состояния между сессиями. Handoff позволяет следующему чату продолжить работу без пересказа всей истории.
-
-### `wiki/audits/`
-
-Независимые проверки с findings по стабильным ID. Исходный текст и ID не переписываются; после исправления обновляются только status и resolution соответствующей находки.
-
-### `wiki/log.md`
-
-Append-only история важных событий. Старые записи не редактируются и не удаляются.
-
-### `wiki/attic/`
-
-Устаревшие материалы. История переносится сюда вместо удаления, если она больше не нужна в активной памяти.
-
-## Команды Claude Code
-
-После создания проекта доступны проектные команды.
-
-### `/status`
-
-Читает hot context, roadmap, discovery и открытые аудиты. Возвращает краткий статус:
-
-- текущая цель;
-- что сделано;
-- какие проверки пройдены;
-- блокеры;
-- следующий шаг.
-
-Файлы не изменяет.
-
-### `/build`
-
-Реализует согласованный шаг:
-
-1. читает контекст и открытые аудиты;
-2. пишет или обновляет тесты;
-3. вносит изменение;
-4. запускает test/typecheck/build;
-5. запускает doctor;
-6. обновляет разрешённые части wiki.
-
-### `/wiki`
-
-Сверяет факты работы с файловой памятью.
-
-Разрешено:
-
-- обновлять `wiki/progress/`;
-- создавать technical decisions;
-- добавлять append-only записи в log;
-- переносить устаревшее в attic.
-
-Запрещено:
-
-- изменять `wiki/hot.md`;
-- переписывать discovery;
-- изменять исходный текст и ID аудитов.
-
-### `/handoff`
-
-Создаёт передачу контекста, обновляет `wiki/hot.md` и добавляет append-only запись в log. Это единственная команда, которой разрешено менять hot context.
-
-## Что проверяет doctor
-
-Doctor — детерминированная проверка без LLM. Он не решает, хороша ли архитектура или верна ли бизнес-идея. Он проверяет то, что можно проверить механически.
-
-Команда после публикации:
-
-```bash
-npx --package create-vibe-maestro@latest vibe-maestro doctor --path .
-```
-
-Локально из репозитория:
-
-```bash
-node dist/bin/vibe-maestro.js doctor --path "/path/to/project"
-```
-
-Doctor проверяет:
-
-- существование и структуру manifest;
-- строгую runtime-валидность metadata;
-- checksums управляемых файлов;
-- trusted inventory;
-- UTF-8 и frontmatter wiki Markdown;
-- локальные wiki-ссылки и выход за границы проекта;
-- согласованность `hot.md` и активного progress;
-- inbox и source inventory;
-- source hashes;
-- отслеживаемые Git-файлы `.env`;
-- изменённые managed documents;
-- структуру audit-файлов;
-- открытые findings уровня `critical` и `high`;
-- symlink-компоненты в защищённых путях.
-
-Если open high/critical finding существует, doctor завершается с ошибкой. После проверенного исправления статус находки меняется на `resolved` или `waived` с заполненным resolution.
-
-У doctor намеренно нет `--fix`. Автоматическое восстановление управляемых файлов могло бы перезаписать полезную пользовательскую работу.
-
-## Безопасность и Git
-
-### Новый проект
-
-Если Git разрешён, Maestro:
-
-- выполняет `git init -b main`;
-- создаёт стартовый commit;
-- при необходимости задаёт служебную identity только локально для этого репозитория;
-- не изменяет глобальные настройки Git;
-- оставляет рабочее дерево чистым.
-
-### Существующий Git-репозиторий
-
-Maestro не выполняет `git add -A` и не коммитит пользовательский WIP. Существующий index не должен незаметно измениться.
-
-### Существующие файлы
-
-Maestro не принимает существующий файл за собственный managed-файл и не перезаписывает его молча. Для подключения непустого проекта требуется явный сценарий, а конфликты остаются видимыми.
-
-### Symlink-защита
-
-Защищённые операции проверяют target, его предков и управляемые пути. Symlink-компоненты обрабатываются fail-closed, включая dangling links.
-
-Это снижает риск случайной записи за пределами проекта, но не превращает Maestro в sandbox и не защищает от враждебного процесса с теми же правами.
-
-Полная модель угроз: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
-
-## Skill Inventory
-
-Maestro умеет читать metadata project-local skills:
-
-```bash
-npx --package create-vibe-maestro@latest vibe-maestro skills --path .
-```
-
-Локально:
-
-```bash
-node dist/bin/vibe-maestro.js skills --path "/path/to/project"
-```
-
-Skill Inventory:
-
-- сканирует только разрешённые project-local каталоги;
-- читает `SKILL.md` как данные;
-- не исполняет найденный код;
-- не следует symlink;
-- не устанавливает skills;
-- не обращается к сети;
-- сообщает о malformed frontmatter и других предупреждениях;
-- может показать рекомендации из trusted registry.
-
-Trusted registry сейчас намеренно пуст. В него не добавляются placeholder или непроверенные источники.
-
-## Новый и существующий проект
-
-### Создать новый
-
-Подходит, если проекта ещё нет или нужна чистая основа.
-
-Результат:
-
-- новая папка;
-- структура Maestro;
-- файловая память;
-- runbooks и команды;
-- Git `main` и стартовый commit, если Git включён;
-- green doctor.
-
-### Подключить существующий
-
-Подходит для уже начатого проекта. Maestro добавляет собственную структуру, не забирая ownership исходного кода и пользовательских документов.
-
-Перед подключением рекомендуется:
-
-1. сохранить backup или отдельную ветку;
-2. понять текущий `git status`;
-3. проверить diff после установки;
-4. запустить проектные тесты;
-5. запустить doctor.
-
-Политика миграции между версиями структуры описана в [`docs/MIGRATION_V1.md`](docs/MIGRATION_V1.md). Автоматического мигратора, который переписывает существующие документы, сейчас нет.
-
-### Проверить проект
-
-Интерактивный пункт «Проверить проект» просит только путь: третий вопрос не задаётся. Starting point для doctor не нужен.
-
-## Автоматический запуск и JSON
-
-Для CI или скриптов решения передаются явно:
-
-```bash
-npx create-vibe-maestro@latest \
+node dist/bin/create-vibe-maestro.js \
   --yes \
-  --target "./My Project" \
+  --target "../My Project" \
   --name "My Project" \
-  --start idea
+  --start materials \
+  --depth standard \
+  --json
 ```
 
-Доступные опции:
-
-```text
---target <путь>      куда создать или подключить проект
---name <имя>         отображаемое название
---start <состояние>  idea | materials | spec | code
---force              разрешить работу с непустой папкой
---no-git             не создавать Git-репозиторий и стартовый commit
---yes, -y            отключить интерактивный режим
---json               вывести машиночитаемый результат
---help, -h           показать справку
---version, -v        показать версию
-```
-
-`--yes` не показывает welcome и не ждёт пользовательского ввода. JSON-режим не добавляет цвет, панели или лишний текст в stdout.
-
-## Честные ограничения
-
-Maestro полезен, но не решает всё.
-
-Он не является:
-
-- sandbox для запуска недоверенного кода;
-- цифровой подписью файлов;
-- заменой backup;
-- защитой от скомпрометированного npm, Git, Node.js или ОС;
-- семантическим доказательством правильности кода;
-- автоматическим архитектором;
-- гарантией, что AI не ошибётся;
-- универсальным мигратором любого существующего проекта.
-
-Doctor обнаруживает известные механические расхождения. Он не понимает бизнес-смысл кода и не заменяет тесты, code review и человеческое решение.
-
-Maestro также не устанавливает внешние skills, plugins или MCP-серверы автоматически. Подключение внешнего кода должно быть отдельным осознанным действием с проверкой происхождения, версии, лицензии и checksum.
-
-## Разработка и проверка
-
-Требования:
-
-```text
-Node.js >= 20.10.0
-Git
-npm
-```
-
-Установка:
+Useful service commands:
 
 ```bash
-git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git
-cd vibe-coding-maestro
-npm ci
+node dist/bin/vibe-maestro.js doctor --path "../My Project" --json
+node dist/bin/vibe-maestro.js doctor --path "../My Project" --strict
+node dist/bin/vibe-maestro.js skills --path "../My Project"
 ```
 
-Обязательные локальные проверки:
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, and symlink boundaries. CI is configured for Ubuntu, macOS, and Windows with Node.js 20 and 22.
 
-```bash
-npm audit --audit-level=low
-npm test
-npm run typecheck
-npm run build
-npm run acceptance
-npm pack --dry-run --json
-```
+## Current beta scope
 
-CI выполняет матрицу:
-
-```text
-Ubuntu  × Node 20 / 22
-macOS   × Node 20 / 22
-Windows × Node 20 / 22
-```
-
-Acceptance создаёт настоящий проект, проверяет doctor, Git `main`, чистое дерево, повторный init и установку собранного npm tarball.
-
-Правила разработки: [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Текущий этап проекта
-
-Рабочий prerelease MVP завершён и проверен:
+Available now in the source beta:
 
 - Guided First Run;
-- создание на Desktop по простому названию;
-- подключение и проверка существующего проекта;
-- manifest/checksums/doctor;
-- Git bootstrap;
-- Cowork Discovery/Audit;
-- команды Claude Code;
-- Skill Inventory;
-- cross-platform CI;
-- source и packed-install acceptance.
+- fresh canonical project creation;
+- `light`, `standard`, and `advanced` depth projections;
+- shared project memory and handoffs;
+- canonical protocols with thin adapters;
+- manifest, ownership inventory, checksums, and deterministic doctor;
+- safe Git bootstrap;
+- discovery and independent-audit runbooks;
+- project-local skill inventory;
+- JSON and strict CI modes;
+- source and packed-install acceptance.
 
-Следующий этап — реальная работа на собственных проектах, сбор обратной связи и только затем публичный npm prerelease.
+Not available yet:
 
-## Лицензия
+- npm installation;
+- safe conversion of existing non-canonical projects;
+- English-generated templates;
+- cloud sync, accounts, team dashboard, or billing;
+- automatic installation or execution of third-party skills;
+- a guarantee that an AI agent will not make mistakes.
 
-MIT. См. [`LICENSE`](LICENSE).
+The next step is real dogfooding and a small number of guided beta installations. Public npm release comes only after those workflows hold up outside the repository.
+
+## Documentation
+
+- [Detailed user guide (Russian)](docs/USER_GUIDE.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Canonical-only boundary and future Converter](docs/MIGRATION_V1.md)
+- [Contributing and local release gates](CONTRIBUTING.md)
+
+Found a confusing step or a safety problem? Please [open an issue](https://github.com/omikhaylov76-commits/vibe-coding-maestro/issues/new) with the command you ran, expected result, actual result, OS, Node version, and a redacted tree or log. Never include credentials or private source material.
+
+## License
+
+[MIT](LICENSE). The project memory format, core CLI, doctor, base protocols, and security fixes remain open source.

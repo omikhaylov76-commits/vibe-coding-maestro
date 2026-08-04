@@ -14,11 +14,14 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   --path <путь>       корень проверяемого проекта (по умолчанию текущая папка)
   --json              детерминированный машиночитаемый отчёт
 
+Опции doctor:
+  --strict            считать warning блокирующим
+
 Общие опции:
   --help, -h          эта справка
   --version, -v       версия`;
 
-interface CommandOptions { path: string; json: boolean }
+interface CommandOptions { path: string; json: boolean; strict?: boolean }
 type ParseResult =
   | { kind: 'version' }
   | { kind: 'help' }
@@ -38,6 +41,11 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
     switch (arg) {
       case '--help': case '-h': return { kind: 'help' };
       case '--json': options.json = true; break;
+      case '--strict': {
+        if (first !== 'doctor') return { kind: 'error', message: `Флаг ${arg} доступен только для doctor.` };
+        options.strict = true;
+        break;
+      }
       case '--path': {
         const value = argv[i + 1];
         if (value === undefined || value.startsWith('--')) return { kind: 'error', message: `Флаг ${arg} требует значение.` };

@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Независимая механическая и содержательная проверка изменений
+description: Независимое ревью по каноническому audit protocol
 ---
 
-Проверяй diff относительно требований, тесты, безопасность и регрессии. Сначала прочитай hot, discovery и открытые аудиты. Не исправляй код. Выдавай findings со стабильными ID, severity, target, status и resolution.
+Проведи независимое ревью строго по `protocols/audit.md`; сначала spec compliance, затем quality/security, с evidence и стабильными finding ID.

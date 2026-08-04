@@ -43,14 +43,12 @@ describe('Guided First Run: имя или путь', () => {
     expect(result.target).toBe('/Users/me/Documents/Мой проект');
   });
 
-  it('connect и check всегда трактуют простую строку как путь от cwd', async () => {
-    for (const mode of ['connect', 'check'] as const) {
-      const result = await resolveProjectInput('existing', {
-        mode, platform: 'darwin', home: '/Users/me', cwd: '/Users/me/Projects',
-      });
-      expect(result.target).toBe('/Users/me/Projects/existing');
-      expect(result.usedDesktopDefault).toBe(false);
-    }
+  it('check всегда трактует простую строку как путь от cwd', async () => {
+    const result = await resolveProjectInput('existing', {
+      mode: 'check', platform: 'darwin', home: '/Users/me', cwd: '/Users/me/Projects',
+    });
+    expect(result.target).toBe('/Users/me/Projects/existing');
+    expect(result.usedDesktopDefault).toBe(false);
   });
 
   it('Windows plain name использует USERPROFILE/Desktop через win32 semantics', async () => {

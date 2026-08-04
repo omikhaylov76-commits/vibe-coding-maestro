@@ -1,5 +1,7 @@
 import { CREATE_COMMAND, isStartingPoint, PRODUCT_NAME, STARTING_POINTS, VERSION } from '../core/meta.js';
 import type { StartingPoint } from '../core/meta.js';
+import { DEPTHS } from '../core/manifest.js';
+import type { ProjectDepth } from '../core/manifest.js';
 import { CliIo, EXIT_OK, EXIT_USAGE, processIo } from './io.js';
 import type { PromptAdapter } from './prompt.js';
 
@@ -10,6 +12,7 @@ interface CreateOptions {
   force: boolean;
   git: boolean;
   json: boolean;
+  depth: ProjectDepth;
 }
 
 export interface CreateCliRuntime {
@@ -32,7 +35,8 @@ const HELP = `${PRODUCT_NAME} — подготовка проекта одной
   --target <путь>     куда создать проект (можно указать первым позиционным аргументом)
   --name <имя>        название проекта (по умолчанию — имя папки)
   --start <состояние> исходное состояние идеи: ${STARTING_POINTS.join(' | ')} (по умолчанию idea)
-  --force             разрешить запись в непустую папку
+  --depth <глубина>   canonical depth: ${DEPTHS.join(' | ')} (по умолчанию standard)
+  --force             только повторный запуск валидного canonical project; не обходит границу непустой папки
   --no-git            не выполнять git init и стартовый commit
   --yes, -y           неинтерактивный режим (все ответы взяты из флагов)
   --json              машиночитаемый отчёт
@@ -49,6 +53,7 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
     force: false,
     git: true,
     json: false,
+    depth: 'standard',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -74,7 +79,8 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
         break;
       case '--target':
       case '--name':
-      case '--start': {
+      case '--start':
+      case '--depth': {
         const value = argv[i + 1];
         if (value === undefined || value.startsWith('--')) {
           return { kind: 'error', message: `Флаг ${arg} требует значение.` };
@@ -82,7 +88,7 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
         i += 1;
         if (arg === '--target') options.target = value;
         else if (arg === '--name') options.name = value;
-        else {
+        else if (arg === '--start') {
           if (!isStartingPoint(value)) {
             return {
               kind: 'error',
@@ -90,6 +96,11 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
             };
           }
           options.startingPoint = value;
+        } else {
+          if (!DEPTHS.includes(value as ProjectDepth)) {
+            return { kind: 'error', message: `Неизвестное значение --depth: ${value}. Допустимо: ${DEPTHS.join(', ')}.` };
+          }
+          options.depth = value as ProjectDepth;
         }
         break;
       }
@@ -163,9 +174,10 @@ export async function runCreateCli(
             target: answers.target,
             name: answers.name,
             startingPoint: answers.startingPoint,
-            force: answers.action === 'connect',
+            force: false,
             git: true,
             json: false,
+            depth: 'standard',
           },
           io,
           prompt.renderer,

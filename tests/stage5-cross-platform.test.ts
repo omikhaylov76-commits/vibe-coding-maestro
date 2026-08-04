@@ -118,9 +118,15 @@ describe('этап 5: полный механический doctor', () => {
   it('проверяет Git dirty только для managed docs', async () => {
     const root = await makeTempDir();
     await init(root, true);
+    // wiki/index.md — managed-документ: правка в рабочем дереве обязана быть видна.
+    await writeFile(join(root, 'wiki/index.md'), `${await readUtf8(root, 'wiki/index.md')}dirty\n`);
+    // wiki/log.md принадлежит проекту по содержанию, поэтому его правка не dirty.
     await writeFile(join(root, 'wiki/log.md'), `${await readUtf8(root, 'wiki/log.md')}dirty\n`);
     const report = await doctorProject(root);
     expect(codes(report)).toContain('git-managed-dirty');
+    const dirty = report.findings.filter((f) => f.code === 'git-managed-dirty').map((f) => f.path);
+    expect(dirty).toContain('wiki/index.md');
+    expect(dirty).not.toContain('wiki/log.md');
   });
 
   it('проверяет source hashes только при наличии отдельного metadata file', async () => {
@@ -201,14 +207,13 @@ describe('этап 5: полный механический doctor', () => {
 });
 
 describe('cross-platform и distribution contracts', () => {
-  it('создаёт managed .gitattributes и сохраняет CRLF существующего .gitignore', async () => {
+  it('создаёт managed .gitattributes и канонический .gitignore', async () => {
     const root = await makeTempDir();
-    await writeFile(join(root, '.gitignore'), 'custom/\r\n');
-    await initProject({ target: root, startingPoint: 'idea', force: true, git: false, now: FIXED_NOW });
+    await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW });
     expect(await readUtf8(root, '.gitattributes')).toContain('* text=auto eol=lf');
     const bytes = await readFile(join(root, '.gitignore'));
-    expect(bytes.toString()).toContain('custom/\r\n');
-    expect(bytes.toString().replace(/\r\n/g, '')).not.toContain('\n');
+    expect(bytes.toString()).toContain('node_modules/\n');
+    expect(bytes.toString()).not.toContain('\r\n');
   });
 
   it('runtime validator и shipped schema принимают/отвергают одинаковые fixtures', async () => {
@@ -217,13 +222,18 @@ describe('cross-platform и distribution contracts', () => {
     const valid = await readJson<unknown>(root, '.maestro/manifest.json');
     const schema = JSON.parse(await readFile(resolve('schemas/manifest.schema.json'), 'utf8'));
     const validate = new Ajv().compile(schema);
-    const invalids = [
+    const structuralInvalids = [
       { ...(valid as object), schemaVersion: 999 },
       { ...(valid as object), extra: true },
       { ...(valid as any), managed: [{ path: '../x', kind: 'managed' }] },
-      { ...(valid as any), managed: [{ path: 'x', kind: 'managed' }, { path: 'x', kind: 'managed' }] },
     ];
-    for (const fixture of [valid, ...invalids]) expect(isManifest(fixture)).toBe(validate(fixture));
+    for (const fixture of [valid, ...structuralInvalids]) expect(isManifest(fixture)).toBe(validate(fixture));
+
+    // Draft-07 не выражает уникальность по одному свойству объекта. Schema
+    // проверяет форму, а runtime canonical guard — семантическую уникальность path.
+    const duplicatePath = { ...(valid as any), managed: [{ path: 'x', kind: 'managed' }, { path: 'x', kind: 'generated' }] };
+    expect(validate(duplicatePath)).toBe(true);
+    expect(isManifest(duplicatePath)).toBe(false);
   });
 
   it('шаблоны содержат рабочую one-package doctor command', async () => {

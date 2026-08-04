@@ -5,10 +5,11 @@ import { EXIT_FAILED, EXIT_OK } from './io.js';
 export interface DoctorRunOptions {
   path: string;
   json: boolean;
+  strict?: boolean;
 }
 
 export async function executeDoctorCommand(options: DoctorRunOptions, io: CliIo): Promise<number> {
-  const report = await doctorProject(options.path);
+  const report = await doctorProject(options.path, { strict: options.strict });
   if (options.json) {
     io.out(JSON.stringify(report, null, 2));
   } else if (report.ok) {

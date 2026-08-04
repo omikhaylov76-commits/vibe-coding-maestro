@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
-export type ProjectInputMode = 'create' | 'connect' | 'check';
+export type ProjectInputMode = 'create' | 'check';
 
 interface DesktopOptions {
   platform: NodeJS.Platform;

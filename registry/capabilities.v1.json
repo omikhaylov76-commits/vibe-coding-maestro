@@ -1,0 +1,305 @@
+{
+  "schemaVersion": 1,
+  "capabilities": [
+    {
+      "id": "human-authority",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-1-rules.md",
+      "contractId": "VCM-HUMAN-AUTHORITY",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Человек утверждает границы, остановки и разрушительные действия."
+    },
+    {
+      "id": "destructive-confirmation",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-1-rules.md",
+      "contractId": "VCM-DESTRUCTIVE-CONFIRMATION",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Разрушительные и внешние действия требуют отдельного явного подтверждения."
+    },
+    {
+      "id": "role-capability-declaration",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-1-rules.md",
+      "contractId": "VCM-ROLE-CAPABILITIES",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Каждая роль объявляет разрешения, запреты и требуемое evidence."
+    },
+    {
+      "id": "clarification-gate",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-1-rules.md",
+      "contractId": "VCM-CLARIFICATION",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Неясность блокирует реализацию явным статусом NEEDS CLARIFICATION."
+    },
+    {
+      "id": "constitution-check",
+      "status": "adapt",
+      "ownerPath": "protocols/build/step-2-spec.md",
+      "contractId": "VCM-CONSTITUTION",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Спецификация проверяется против канона и человеческих ограничений."
+    },
+    {
+      "id": "spec-delta",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-2-spec.md",
+      "contractId": "VCM-SPEC-DELTA",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Изменения требований оформляются как проверяемая разница спецификации."
+    },
+    {
+      "id": "complexity-tracking",
+      "status": "adapt",
+      "ownerPath": "protocols/build/step-3-architecture.md",
+      "contractId": "VCM-COMPLEXITY",
+      "depths": [
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Сложность и стыки фиксируются до разрастания реализации."
+    },
+    {
+      "id": "design-before-code",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-3-architecture.md",
+      "contractId": "VCM-DESIGN-BEFORE-CODE",
+      "depths": [
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Пользовательский сценарий и архитектурные границы согласуются до production code."
+    },
+    {
+      "id": "seam-analysis",
+      "status": "keep",
+      "ownerPath": "protocols/seams.md",
+      "contractId": "VCM-SEAMS",
+      "depths": [
+        "advanced"
+      ],
+      "rationale": "Риски границ компонентов получают владельца и проверку."
+    },
+    {
+      "id": "task-context-capsule",
+      "status": "keep",
+      "ownerPath": "protocols/context-budget.md",
+      "contractId": "VCM-TASK-CAPSULE",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Каждая задача получает минимальный детерминированный контекст."
+    },
+    {
+      "id": "context-budget",
+      "status": "adapt",
+      "ownerPath": "protocols/context-budget.md",
+      "contractId": "VCM-CONTEXT-BUDGET",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Контекст собирается hot-first с явным byte и line budget."
+    },
+    {
+      "id": "tdd-feature-loop",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "contractId": "VCM-TDD-LOOP",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Код проходит RED GREEN REFACTOR и полный регрессионный прогон."
+    },
+    {
+      "id": "live-evidence",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "contractId": "VCM-LIVE-EVIDENCE",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Готовность подтверждается фактическим выводом проверок."
+    },
+    {
+      "id": "deterministic-verification",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "contractId": "VCM-DETERMINISTIC-VERIFICATION",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Механические проверки воспроизводимы на неизменном дереве и разных окружениях."
+    },
+    {
+      "id": "quality-gate",
+      "status": "keep",
+      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "contractId": "VCM-QUALITY-GATE",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Работа завершается только после применимых тестов, сборки, doctor и artifact checks."
+    },
+    {
+      "id": "plan-audit",
+      "status": "keep",
+      "ownerPath": "protocols/build/audit-plan.md",
+      "contractId": "VCM-PLAN-AUDIT",
+      "depths": [
+        "standard",
+        "advanced"
+      ],
+      "rationale": "План проверяется независимо до дорогостоящей реализации."
+    },
+    {
+      "id": "independent-review",
+      "status": "keep",
+      "ownerPath": "protocols/audit.md",
+      "contractId": "VCM-INDEPENDENT-REVIEW",
+      "depths": [
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Результат получает независимую проверку спецификации и качества."
+    },
+    {
+      "id": "advanced-council",
+      "status": "adapt",
+      "ownerPath": "protocols/build/audit-phase.md",
+      "contractId": "VCM-ADVANCED-COUNCIL",
+      "depths": [
+        "advanced"
+      ],
+      "rationale": "Спорные выводы нескольких ролей сводятся в один вердикт."
+    },
+    {
+      "id": "hot-first-status",
+      "status": "keep",
+      "ownerPath": "protocols/status.md",
+      "contractId": "VCM-HOT-FIRST",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Любая сессия начинается с актуального горячего контекста."
+    },
+    {
+      "id": "controlled-handoff",
+      "status": "keep",
+      "ownerPath": "protocols/handoff.md",
+      "contractId": "VCM-HANDOFF",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Handoff атомарно обновляет hot и добавляет журнал без переписывания истории."
+    },
+    {
+      "id": "project-wiki",
+      "status": "keep",
+      "ownerPath": "protocols/wiki.md",
+      "contractId": "VCM-WIKI",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Долговременные факты и решения имеют устойчивые проектные пути."
+    },
+    {
+      "id": "icebox",
+      "status": "keep",
+      "ownerPath": "protocols/wiki.md",
+      "contractId": "VCM-ICEBOX",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Отложенный scope хранится отдельно и не просачивается в активную работу."
+    },
+    {
+      "id": "discovery-before-code",
+      "status": "keep",
+      "ownerPath": "protocols/discovery.md",
+      "contractId": "VCM-DISCOVERY",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Исследование и рамки продукта предшествуют написанию кода."
+    },
+    {
+      "id": "evidence-lessons",
+      "status": "adapt",
+      "ownerPath": "protocols/lessons.md",
+      "contractId": "VCM-LESSONS",
+      "depths": [
+        "advanced"
+      ],
+      "rationale": "Уроки остаются недоверенными данными до evidence и review."
+    },
+    {
+      "id": "retrospective",
+      "status": "adapt",
+      "ownerPath": "protocols/lessons.md",
+      "contractId": "VCM-RETROSPECTIVE",
+      "depths": [
+        "advanced"
+      ],
+      "rationale": "Ретроспектива отделяет подтверждённый повторяемый опыт от случайного наблюдения."
+    },
+    {
+      "id": "claude-deny-list",
+      "status": "reject",
+      "ownerPath": null,
+      "contractId": null,
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Vendor deny-list не является sandbox или канонической границей безопасности."
+    }
+  ]
+}

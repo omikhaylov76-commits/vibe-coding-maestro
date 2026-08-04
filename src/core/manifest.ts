@@ -1,8 +1,10 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, sep } from 'node:path';
-import { MANIFEST_SCHEMA_VERSION } from './meta.js';
+import { CREATE_COMMAND, MANIFEST_SCHEMA_VERSION } from './meta.js';
 import type { StartingPoint } from './meta.js';
+import { canonicalManagedKind, canonicalOwnershipInventory } from './inventory.js';
+import { readPackageJson } from './paths.js';
 
 /** Служебный каталог проекта и пути внутри него (относительные, POSIX). */
 export const MAESTRO_DIR = '.maestro';
@@ -19,6 +21,10 @@ export type ManagedKind = 'managed' | 'merged' | 'generated';
 
 /** Классификация любого пути в проекте: известные виды плюс пользовательский файл. */
 export type FileClass = ManagedKind | 'user';
+export const DEPTHS = ['light', 'standard', 'advanced'] as const;
+export type ProjectDepth = (typeof DEPTHS)[number];
+export type Ownership = 'managed' | 'generated' | 'project-owned' | 'immutable';
+export interface InventoryEntry { path: string; ownership: Ownership }
 
 export interface ManagedEntry {
   path: string;
@@ -28,8 +34,9 @@ export interface ManagedEntry {
 export interface Manifest {
   schemaVersion: number;
   product: { name: string; version: string; createdBy: string };
-  project: { name: string; startingPoint: StartingPoint; createdAt: string };
+  project: { id: string; name: string; startingPoint: StartingPoint; createdAt: string; depth: ProjectDepth };
   managed: ManagedEntry[];
+  inventory: InventoryEntry[];
 }
 
 export interface Checksums {
@@ -93,6 +100,9 @@ export interface BuildManifestInput {
   productVersion: string;
   createdBy: string;
   managed: readonly ManagedEntry[];
+  projectId?: string;
+  depth?: ProjectDepth;
+  inventory: readonly InventoryEntry[];
 }
 
 export function buildManifest(input: BuildManifestInput): Manifest {
@@ -104,11 +114,14 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       createdBy: input.createdBy,
     },
     project: {
+      id: input.projectId ?? randomUUID(),
       name: input.projectName,
       startingPoint: input.startingPoint,
       createdAt: input.createdAt,
+      depth: input.depth ?? 'standard',
     },
     managed: input.managed.map((entry) => ({ path: entry.path, kind: entry.kind })),
+    inventory: input.inventory.map((entry) => ({ path: entry.path, ownership: entry.ownership })),
   };
 }
 
@@ -126,24 +139,46 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
 export function isManifest(value: unknown): value is Manifest {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  if (!exactKeys(candidate, ['schemaVersion', 'product', 'project', 'managed'])) return false;
+  if (!exactKeys(candidate, ['schemaVersion', 'product', 'project', 'managed', 'inventory'])) return false;
   if (candidate.schemaVersion !== MANIFEST_SCHEMA_VERSION || !Array.isArray(candidate.managed) || candidate.managed.length === 0) return false;
   const product = candidate.product;
   const project = candidate.project;
   if (typeof product !== 'object' || product === null || Array.isArray(product) || !exactKeys(product as Record<string, unknown>, ['name', 'version', 'createdBy'])) return false;
-  if (typeof project !== 'object' || project === null || Array.isArray(project) || !exactKeys(project as Record<string, unknown>, ['name', 'startingPoint', 'createdAt'])) return false;
+  if (typeof project !== 'object' || project === null || Array.isArray(project) || !exactKeys(project as Record<string, unknown>, ['id', 'name', 'startingPoint', 'createdAt', 'depth'])) return false;
   const p = product as Record<string, unknown>;
   const j = project as Record<string, unknown>;
   if (![p.name, p.version, p.createdBy, j.name, j.createdAt].every((item) => typeof item === 'string' && item.length > 0)) return false;
   if (!['idea', 'materials', 'spec', 'code'].includes(String(j.startingPoint))) return false;
+  if (typeof j.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(j.id)) return false;
+  if (!DEPTHS.includes(j.depth as ProjectDepth)) return false;
   const seen = new Set<string>();
-  return candidate.managed.every((item) => {
+  const managedValid = candidate.managed.every((item) => {
     if (typeof item !== 'object' || item === null || Array.isArray(item) || !exactKeys(item as Record<string, unknown>, ['path', 'kind'])) return false;
     const entry = item as Record<string, unknown>;
     if (!isSafeProjectPath(entry.path) || !['managed', 'merged', 'generated'].includes(String(entry.kind)) || seen.has(entry.path)) return false;
     seen.add(entry.path);
     return true;
   });
+  if (!managedValid || !Array.isArray(candidate.inventory) || candidate.inventory.length === 0) return false;
+  const inventorySeen = new Set<string>();
+  return candidate.inventory.every((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item) || !exactKeys(item as Record<string, unknown>, ['path', 'ownership'])) return false;
+    const entry = item as Record<string, unknown>;
+    if (!isSafeProjectPath(entry.path) || !['managed', 'generated', 'project-owned', 'immutable'].includes(String(entry.ownership)) || inventorySeen.has(String(entry.path))) return false;
+    inventorySeen.add(String(entry.path));
+    return true;
+  });
+}
+
+export function isCanonicalManifest(manifest: Manifest): boolean {
+  const expectedInventory = canonicalOwnershipInventory(manifest.project.depth);
+  if (manifest.product.name !== readPackageJson().name || manifest.product.createdBy !== CREATE_COMMAND) return false;
+  if (manifest.inventory.length !== Object.keys(expectedInventory).length || manifest.managed.length !== Object.keys(expectedInventory).length) return false;
+
+  const inventory = new Map(manifest.inventory.map((entry) => [entry.path, entry.ownership]));
+  const managed = new Map(manifest.managed.map((entry) => [entry.path, entry.kind]));
+  return Object.entries(expectedInventory).every(([path, ownership]) =>
+    inventory.get(path) === ownership && managed.get(path) === canonicalManagedKind(path, ownership));
 }
 
 export async function loadManifest(root: string): Promise<Manifest> {

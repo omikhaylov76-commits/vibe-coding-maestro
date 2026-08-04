@@ -32,16 +32,17 @@ describe('этап 7: интерактивный create-vibe-maestro', () => {
     expect(c.stdout()).toContain('Проект подготовлен');
   });
 
-  it('подключает непустой существующий проект, не заставляя UI проникать в init core', async () => {
+  it('отклоняет create в непустом non-Maestro проекте', async () => {
     const target = await makeTempDir();
     const { writeFile } = await import('node:fs/promises');
     await writeFile(`${target}/app.ts`, 'export {};\n');
-    const prompt = adapter({ action: 'connect', target, name: 'Existing', startingPoint: 'code', usedDesktopDefault: false });
+    const prompt = adapter({ action: 'create', target, name: 'Existing', startingPoint: 'code', usedDesktopDefault: false });
     const c = collect();
 
     const code = await runCreateCli([], c.io, { isTty: true, prompt });
 
-    expect(code).toBe(0);
+    expect(code).toBe(1);
+    expect(c.stderr()).toMatch(/не является каноническим проектом/i);
   });
 
   it('действие check запускает doctor, но не изменяет проект', async () => {

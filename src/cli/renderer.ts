@@ -6,14 +6,14 @@ export interface RendererOptions {
 }
 
 export interface PreviewModel {
-  action: 'create' | 'connect' | 'check';
+  action: 'create' | 'check';
   target: string;
   name?: string;
   usedDesktopDefault?: boolean;
 }
 
 export interface SuccessModel {
-  action: 'create' | 'connect' | 'check';
+  action: 'create' | 'check';
   target: string;
   name?: string;
   doctorOk: boolean;
@@ -130,7 +130,7 @@ export function createRenderer(write: Write, options: RendererOptions): CliRende
       panel('VIBE CODING MAESTRO', columns < 36 ? [lines[0]!, lines[3]!, lines[6]!] : lines);
     },
     preview(model): void {
-      const heading = model.action === 'check' ? 'ПРОВЕРЯЕМ ПРОЕКТ' : model.action === 'connect' ? 'ПОДКЛЮЧАЕМ MAESTRO' : 'СОЗДАЁМ ПРОЕКТ';
+      const heading = model.action === 'check' ? 'ПРОВЕРЯЕМ ПРОЕКТ' : 'СОЗДАЁМ ПРОЕКТ';
       write(`\n${info(`> ${heading}`)}\n`);
       if (model.name) write(`  Проект: ${model.name}\n`);
       write(`  Папка:  ${model.target}\n`);
@@ -144,7 +144,7 @@ export function createRenderer(write: Write, options: RendererOptions): CliRende
         panel('OK  ПРОВЕРКА ПРОЙДЕНА', [`Проект: ${model.target}`, 'Структура Maestro в порядке.'], 'success');
         return;
       }
-      const title = model.action === 'connect' ? 'OK  MAESTRO ПОДКЛЮЧЁН' : 'OK  ПРОЕКТ ГОТОВ';
+      const title = 'OK  ПРОЕКТ ГОТОВ';
       panel(title, [
         model.name ? `Название: ${model.name}` : '',
         'Проект находится здесь:',

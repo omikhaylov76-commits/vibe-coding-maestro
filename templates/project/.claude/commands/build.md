@@ -1,1 +1,1 @@
-Сначала прочитай `wiki/hot.md`, discovery и открытые аудиты. Реализуй согласованный шаг через тесты, затем выполни проектные test/typecheck/build и doctor. Не скрывай ошибки и обнови wiki.
+Следуй `protocols/build.md`. Начни с `wiki/hot.md`, соблюдай depth из manifest и верни live evidence выполненных проверок.

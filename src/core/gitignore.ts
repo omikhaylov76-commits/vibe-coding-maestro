@@ -6,9 +6,9 @@ import { PRODUCT_NAME } from './meta.js';
  */
 export const REQUIRED_GITIGNORE_ENTRIES: readonly string[] = [
   'node_modules/',
-  'dist/',
-  'build/',
-  'coverage/',
+  '/dist/',
+  '/build/',
+  '/coverage/',
   '.env',
   '.env.*',
   '!.env.example',

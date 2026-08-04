@@ -13,14 +13,16 @@ import {
   MAESTRO_DIR,
   MANIFEST_PATH,
   buildManifest,
-  tryLoadManifest,
+  isCanonicalManifest,
+  loadManifest,
   writeChecksums,
   writeManifest,
 } from './manifest.js';
-import type { ManagedEntry } from './manifest.js';
+import { DEPTHS } from './manifest.js';
+import type { ManagedEntry, Manifest, ProjectDepth } from './manifest.js';
 import { normalizeTarget, readPackageJson, templatesDir } from './paths.js';
 import { renderTemplate } from './template.js';
-import { CONTENT_OWNED_FILES, LAZY_DIRS, TEMPLATE_FILES } from './inventory.js';
+import { canonicalOwnershipInventory, CONTENT_OWNED_FILES, lazyDirsForDepth, TEMPLATE_FILES } from './inventory.js';
 import { canonicalizeSystemTempPrefix } from './platform-paths.js';
 
 const execFileAsync = promisify(execFile);
@@ -41,6 +43,7 @@ export interface InitOptions {
   force?: boolean;
   git?: boolean;
   now?: Date;
+  depth?: ProjectDepth;
 }
 
 export interface InitResult {
@@ -75,6 +78,24 @@ function isoDate(now: Date): string {
 async function isDirectoryEmpty(dir: string): Promise<boolean> {
   const entries = await readdir(dir);
   return entries.every((entry) => IGNORED_WHEN_EMPTY_CHECK.includes(entry));
+}
+
+/**
+ * Manifest описывает ожидаемый канон, но сам по себе не доказывает, что этот
+ * канон действительно установлен в target. До повторного init каждый путь из
+ * trusted inventory уже должен существовать как обычный файл. Иначе copied
+ * manifest смог бы превратить чужую неполную папку в "canonical project".
+ */
+async function hasCompleteCanonicalTree(root: string, manifest: Manifest): Promise<boolean> {
+  for (const entry of manifest.inventory) {
+    try {
+      if (!(await lstat(join(root, entry.path))).isFile()) return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+  return true;
 }
 
 async function readTemplate(relativePath: string): Promise<string> {
@@ -182,9 +203,13 @@ async function initGitRepository(
  */
 export async function initProject(options: InitOptions): Promise<InitResult> {
   const target = await canonicalizeSystemTempPrefix(normalizeTarget(options.target));
-  const force = options.force === true;
   const now = options.now ?? new Date();
-  const touchedPaths = [...TEMPLATE_FILES, ...CONTENT_OWNED_FILES, ...LAZY_DIRS.map((path) => `${path}/.gitkeep`), GITIGNORE_PATH, MANIFEST_PATH, CHECKSUMS_PATH];
+  if (options.depth !== undefined && !DEPTHS.includes(options.depth)) {
+    return failure(target, options.name ?? basename(target), `Неизвестная глубина проекта: ${String(options.depth)}`);
+  }
+  // Preflight проверяет максимальный canonical inventory: фактическая глубина
+  // существующего проекта читается позже, а symlink нельзя пропустить до чтения metadata.
+  const touchedPaths = [...TEMPLATE_FILES, ...CONTENT_OWNED_FILES, ...lazyDirsForDepth('advanced').map((path) => `${path}/.gitkeep`), GITIGNORE_PATH, MANIFEST_PATH, CHECKSUMS_PATH];
 
   const ancestorSymlink = await findAncestorSymlink(target);
   if (ancestorSymlink !== null) {
@@ -211,23 +236,32 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     }
   }
 
+  let previousManifest = null;
   if (existsSync(join(target, MANIFEST_PATH))) {
     try {
-      const { loadManifest } = await import('./manifest.js');
-      await loadManifest(target);
+      previousManifest = await loadManifest(target);
     } catch (error) {
       return failure(target, options.name ?? basename(target), `Повреждён manifest; сначала запустите doctor: ${error instanceof Error ? error.message : String(error)}`);
     }
+    if (
+      !isCanonicalManifest(previousManifest)
+      || previousManifest.project.name !== basename(target)
+      || !(await hasCompleteCanonicalTree(target, previousManifest))
+    ) {
+      return failure(
+        target,
+        options.name ?? basename(target),
+        `Папка не является каноническим проектом Vibe Coding Maestro: ${target}. Core не преобразует foreign или неполные проекты; используйте новую пустую папку.`,
+      );
+    }
   }
 
-  const previousManifest = existsSync(target) ? await tryLoadManifest(target) : null;
   const isExistingProject = previousManifest !== null;
-
-  if (existsSync(target) && !isExistingProject && !force && !(await isDirectoryEmpty(target))) {
+  if (existsSync(target) && !isExistingProject && !(await isDirectoryEmpty(target))) {
     return failure(
       target,
       options.name ?? basename(target),
-      `Папка не пуста: ${target}. Повторите с --force, если хотите добавить проект в неё.`,
+      `Папка не пуста и не является каноническим проектом Vibe Coding Maestro: ${target}. Core не изменяет существующие проекты; создайте новую пустую папку.`,
     );
   }
 
@@ -243,6 +277,9 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   const projectName = previousManifest?.project.name ?? folderName;
   const startingPoint = previousManifest?.project.startingPoint ?? options.startingPoint;
   const createdAt = previousManifest?.project.createdAt ?? now.toISOString();
+  const projectId = previousManifest?.project.id;
+  const depth = previousManifest?.project.depth ?? options.depth ?? 'standard';
+  const lazyDirs = lazyDirsForDepth(depth);
 
   const createdFiles: string[] = [];
   const preservedFiles: string[] = [];
@@ -278,11 +315,11 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
    * и было бы молча перезаписано при первой же смене шаблона.
    */
   async function materialize(relativePath: string, content: string): Promise<void> {
-    managed.push({ path: relativePath, kind: 'managed' });
     const absolutePath = join(target, relativePath);
     const expected = checksumForContent(relativePath, content);
 
     if (!existsSync(absolutePath)) {
+      managed.push({ path: relativePath, kind: 'managed' });
       await writeTextFile(absolutePath, content);
       createdFiles.push(relativePath);
       nextChecksums[relativePath] = expected;
@@ -292,12 +329,15 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
 
     const recorded = previousChecksums[relativePath];
     if (recorded === undefined) {
-      // Путь существовал до нас и никогда не был нашим: он целиком пользовательский.
-      // Ни записи, ни контрольной суммы — иначе мы «узаконим» чужой файл.
+      // Legacy-поле `managed` не имеет project-owned. `generated` — честное
+      // совместимое представление: файл присутствует в inventory, но checksum
+      // и право перезаписи Maestro ему не приписываются.
+      managed.push({ path: relativePath, kind: 'generated' });
       preservedFiles.push(relativePath);
       return;
     }
 
+    managed.push({ path: relativePath, kind: 'managed' });
     const actual = await checksumForFile(relativePath, absolutePath);
     if (actual === expected) {
       nextChecksums[relativePath] = expected;
@@ -337,7 +377,7 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     }
   }
 
-  for (const dir of LAZY_DIRS) {
+  for (const dir of lazyDirs) {
     await mkdir(join(target, dir), { recursive: true });
     await materialize(`${dir}/.gitkeep`, '');
   }
@@ -372,6 +412,9 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     productVersion: VERSION,
     createdBy: CREATE_COMMAND,
     managed,
+    projectId,
+    depth,
+    inventory: Object.entries(canonicalOwnershipInventory(depth)).map(([path, ownership]) => ({ path, ownership })),
   });
 
   await writeManifest(target, manifest);

@@ -1,6 +1,6 @@
 {
   "name": "create-vibe-maestro",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Vibe Coding Maestro — CLI, который готовит проект, файловую память и Git-защиту одной командой",
   "type": "module",
   "license": "MIT",
@@ -16,6 +16,7 @@
     "templates",
     "schemas",
     "registry",
+    "docs",
     "README.md",
     "LICENSE"
   ],

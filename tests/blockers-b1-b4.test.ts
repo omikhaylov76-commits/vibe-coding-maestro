@@ -83,32 +83,6 @@ describe('B1: init не следует по symlink', () => {
   });
 });
 
-describe('B2: существующий Git index неприкосновенен', () => {
-  it('сохраняет index побайтово и семантически при merged WIP и уже staged WIP', async () => {
-    const target = await makeTempDir();
-    await exec('git', ['init', '-b', 'main'], { cwd: target });
-    await exec('git', ['config', 'user.name', 'User'], { cwd: target });
-    await exec('git', ['config', 'user.email', 'user@example.test'], { cwd: target });
-    await writeFile(join(target, '.gitignore'), 'base/\n', 'utf8');
-    await writeFile(join(target, 'staged.txt'), 'base\n', 'utf8');
-    await exec('git', ['add', '.gitignore', 'staged.txt'], { cwd: target });
-    await exec('git', ['commit', '-m', 'base'], { cwd: target });
-    await writeFile(join(target, '.gitignore'), 'base/\nPRIVATE-WIP/\n', 'utf8');
-    await writeFile(join(target, 'staged.txt'), 'already staged WIP\n', 'utf8');
-    await exec('git', ['add', 'staged.txt'], { cwd: target });
-    const indexPath = join(target, '.git', 'index');
-    const beforeBytes = await readFile(indexPath);
-    const beforeCached = (await exec('git', ['diff', '--cached', '--binary'], { cwd: target })).stdout;
-
-    const result = await init(target, true, true);
-
-    expect(result.ok).toBe(true);
-    expect(await readFile(indexPath)).toEqual(beforeBytes);
-    expect((await exec('git', ['diff', '--cached', '--binary'], { cwd: target })).stdout).toBe(beforeCached);
-    expect(await readFile(join(target, '.gitignore'), 'utf8')).toContain('PRIVATE-WIP/');
-  });
-});
-
 describe('B3/B4: строгая runtime-валидация metadata', () => {
   it('manifest с unsupported version/null/опасными и повторными paths даёт findings, не throw', async () => {
     const target = await fresh();
@@ -139,10 +113,10 @@ describe('B3/B4: строгая runtime-валидация metadata', () => {
   it('каждый managed entry обязан иметь checksum', async () => {
     const target = await fresh();
     const checksums = JSON.parse(await readFile(join(target, CHECKSUMS_PATH), 'utf8')) as { files: Record<string, string> };
-    delete checksums.files['wiki/hot.md'];
+    delete checksums.files['wiki/index.md'];
     await writeFile(join(target, CHECKSUMS_PATH), JSON.stringify(checksums), 'utf8');
     const report = await doctorProject(target);
-    expect(report.findings.some((f) => f.code === 'managed-checksum-missing' && f.path === 'wiki/hot.md')).toBe(true);
+    expect(report.findings.some((f) => f.code === 'managed-checksum-missing' && f.path === 'wiki/index.md')).toBe(true);
   });
 
   it('trusted package inventory обнаруживает удаление обязательного системного path из manifest', async () => {

@@ -40,6 +40,7 @@ status: ${auditStatus}
 ## Finding AUD-2026-001-F001
 - severity: ${severity}
 - target: src/auth.ts
+- evidence: tests/auth.test.ts:42 reproduces the finding
 - status: ${findingStatus}
 - resolution: ${findingStatus === 'open' ? 'pending' : 'fixed or explicitly accepted'}
 `;
@@ -78,38 +79,31 @@ describe('этапы 8–10: contracts/workflows', () => {
     expect(manifest.managed).toContainEqual({ path, kind: 'generated' });
   });
 
-  it('AGENTS/CLAUDE задают ownership, чтение hot/discovery/open audits и команды', async () => {
+  it('AGENTS/CLAUDE являются тонкими дверями к canonical workflow', async () => {
     const target = await fresh();
     for (const path of ['AGENTS.md', 'CLAUDE.md']) {
       const text = await readFile(join(target, path), 'utf8');
       expect(text).toContain('wiki/hot.md');
-      expect(text).toContain('wiki/concepts/discovery.md');
-      expect(text).toContain('wiki/audits');
-      expect(text.toLowerCase()).toContain('ownership');
-      for (const command of ['build', 'status', 'wiki', 'handoff']) expect(text).toContain(command);
+      expect(text).toContain('protocols/build.md');
+      expect(text).toContain('protocols/wiki.md');
+      expect(text.split('\n').length).toBeLessThanOrEqual(18);
     }
   });
 
-  it('фиксирует непересекающуюся матрицу ownership во всех workflow', async () => {
+  it('фиксирует ownership у canonical owners без дублирования в adapters', async () => {
     const target = await fresh();
-    for (const path of ['AGENTS.md', 'CLAUDE.md']) {
-      const text = (await readFile(join(target, path), 'utf8')).toLowerCase();
-      expect(text).toContain('cowork');
-      expect(text).toContain('wiki/concepts/discovery.md');
-      expect(text).toContain('wiki/audits/');
-      expect(text).toMatch(/claude code[^\n]*wiki\/progress/);
-      expect(text).toMatch(/claude code[^\n]*wiki\/decisions/);
-      expect(text).toMatch(/hot\.md[^\n]*только[^\n]*handoff/);
-      expect(text).toMatch(/log\.md[^\n]*append-only/);
-    }
-    const wiki = (await readFile(join(target, '.claude/commands/wiki.md'), 'utf8')).toLowerCase();
-    expect(wiki).toContain('wiki/progress/');
-    expect(wiki).toContain('wiki/decisions/');
-    expect(wiki).toContain('append-only');
-    expect(wiki).not.toMatch(/обновляй[^\n]*hot/);
-    expect(wiki).not.toMatch(/редактируй[^\n]*(discovery|audits)/);
-    const handoff = (await readFile(join(target, '.claude/commands/handoff.md'), 'utf8')).toLowerCase();
-    expect(handoff).toMatch(/единственн[^\n]*команд[^\n]*hot\.md/);
+    const wiki = (await readFile(join(target, 'protocols/wiki.md'), 'utf8')).toLowerCase();
+    expect(wiki).toContain('wiki/progress');
+    expect(wiki).toContain('wiki/decisions');
+    expect(wiki).toContain('wiki/log.md');
+    expect(wiki).toContain('дополняется');
+    expect(wiki).toMatch(/wiki\/hot\.md[^\n]*только handoff/);
+
+    const discovery = (await readFile(join(target, 'protocols/discovery.md'), 'utf8')).toLowerCase();
+    expect(discovery).toContain('не пишет production code');
+    const audit = (await readFile(join(target, 'protocols/audit.md'), 'utf8')).toLowerCase();
+    expect(audit).toContain('независим');
+
     for (const runbook of ['cowork-discovery.md', 'cowork-audit.md']) {
       const text = (await readFile(join(target, 'maestro/runbooks', runbook), 'utf8')).toLowerCase();
       expect(text).toContain('не изменяет файлы проекта');
@@ -149,10 +143,34 @@ describe('этапы 8–10: contracts/workflows', () => {
     expect(report.findings.some((f) => f.code === 'audit-malformed')).toBe(true);
   });
 
-  it.each(['resolved', 'waived'] as const)('doctor пропускает %s critical finding', async (status) => {
+  it.each([
+    ['отсутствующее', (body: string) => body.replace('- evidence: tests/auth.test.ts:42 reproduces the finding\n', '')],
+    ['пустое', (body: string) => body.replace('- evidence: tests/auth.test.ts:42 reproduces the finding', '- evidence:   ')],
+    ['повторяющееся', (body: string) => body.replace('- evidence: tests/auth.test.ts:42 reproduces the finding', '- evidence: tests/auth.test.ts:42 reproduces the finding\n- evidence: duplicate')],
+  ])('doctor отвергает %s evidence у finding', async (_kind, mutate) => {
     const target = await fresh();
-    const report = await audit(target, `${status}.md`, validAudit(status, status, 'critical'));
+    const report = await audit(target, 'evidence.md', mutate(validAudit('resolved', 'resolved', 'critical')));
+    expect(report.ok).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: 'audit-malformed',
+      path: 'wiki/audits/evidence.md',
+    }));
+  });
+
+  it('doctor пропускает только resolved critical finding', async () => {
+    const target = await fresh();
+    const report = await audit(target, 'resolved.md', validAudit('resolved', 'resolved', 'critical'));
     expect(report.ok).toBe(true);
     expect(report.findings).toEqual([]);
+  });
+
+  it('doctor не позволяет waived скрыть critical finding', async () => {
+    const target = await fresh();
+    const report = await audit(target, 'waived.md', validAudit('waived', 'waived', 'critical'));
+    expect(report.ok).toBe(false);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: 'audit-malformed',
+      path: 'wiki/audits/waived.md',
+    }));
   });
 });

@@ -372,6 +372,8 @@ describe('полный guided-прогон через fake TTY не содерж
     expect(text).not.toMatch(ANY_ESC);
     expect(text).toContain('VIBE CODING MAESTRO');
     expect(text).toContain('1. Создать новый проект');
+    expect(text).toContain('2. Проверить canonical project');
+    expect(text).not.toContain('Подключить существующий проект');
   });
 
   it('в capable-терминале перерисовка со стрелками сохраняется', async () => {
@@ -388,13 +390,11 @@ describe('полный guided-прогон через fake TTY не содерж
     await waitFor(() => CURSOR_CONTROL.test(output.text()), 'управление курсором');
     input.write('\r');
 
-    await waitFor(() => output.text().includes('Где находится существующий проект?'), 'второй вопрос');
+    await waitFor(() => output.text().includes('Какой canonical project проверить?'), 'второй вопрос');
     input.write('Demo\n');
-    await waitFor(() => output.text().includes('С чего вы начинаете?'), 'третий вопрос');
-    input.write('1');
 
     const result = await answer;
-    expect(result.action).toBe('connect');
+    expect(result.action).toBe('check');
     expect(output.text()).toMatch(CURSOR_CONTROL);
   });
 });

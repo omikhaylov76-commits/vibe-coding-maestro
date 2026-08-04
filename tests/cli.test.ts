@@ -1,7 +1,10 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runCreateCli } from '../src/cli/create.js';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { PRODUCT_NAME, VERSION } from '../src/core/meta.js';
+import { makeTempDir } from './helpers.js';
 
 /**
  * Этап 1: CLI-каркас.
@@ -48,6 +51,21 @@ describe('create-vibe-maestro CLI', () => {
     const code = await runCreateCli(['--yes'], c.io);
     expect(code).toBe(2);
     expect(c.stderr()).toContain('--target');
+  });
+
+  it.each(['light', 'standard', 'advanced'] as const)('создаёт canonical project depth=%s через --depth', async (depth) => {
+    const target = `${await makeTempDir('cli-depth-')}/${depth}`;
+    const c = collect();
+    expect(await runCreateCli(['--yes', '--no-git', '--target', target, '--depth', depth, '--json'], c.io)).toBe(0);
+    const manifest = JSON.parse(await readFile(join(target, '.maestro/manifest.json'), 'utf8'));
+    expect(manifest.project.depth).toBe(depth);
+  });
+
+  it('отклоняет неизвестный --depth до записи проекта', async () => {
+    const target = `${await makeTempDir('cli-depth-invalid-')}/bad`;
+    const c = collect();
+    expect(await runCreateCli(['--yes', '--target', target, '--depth', 'huge'], c.io)).toBe(2);
+    expect(c.stderr()).toContain('light, standard, advanced');
   });
 });
 

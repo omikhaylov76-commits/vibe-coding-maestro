@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import { doctorProject } from '../core/doctor.js';
 import { initProject } from '../core/init.js';
 import type { StartingPoint } from '../core/meta.js';
+import type { ProjectDepth } from '../core/manifest.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
 import type { CliRenderer } from './renderer.js';
@@ -13,6 +14,7 @@ export interface CreateRunOptions {
   force: boolean;
   git: boolean;
   json: boolean;
+  depth: ProjectDepth;
 }
 
 export async function executeCreate(options: CreateRunOptions, io: CliIo, renderer?: CliRenderer): Promise<number> {
@@ -21,6 +23,7 @@ export async function executeCreate(options: CreateRunOptions, io: CliIo, render
     startingPoint: options.startingPoint,
     force: options.force,
     git: options.git,
+    depth: options.depth,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
 
@@ -42,7 +45,7 @@ export async function executeCreate(options: CreateRunOptions, io: CliIo, render
       else io.err(`Предупреждение: ${warning}`);
     }
     if (renderer) {
-      if (report.ok) renderer.success({ action: options.force ? 'connect' : 'create', target: result.target, name: options.name ?? basename(result.target), doctorOk: true });
+      if (report.ok) renderer.success({ action: 'create', target: result.target, name: options.name ?? basename(result.target), doctorOk: true });
       else renderer.failure(`Проверка нашла проблем: ${report.findings.length}.`);
     } else io.out(report.ok ? 'Doctor: всё сходится.' : `Doctor: найдено проблем — ${report.findings.length}.`);
   }

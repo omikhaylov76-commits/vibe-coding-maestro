@@ -134,7 +134,49 @@ describe('initProject: несуществующая папка', () => {
 });
 
 describe('initProject: непустая чужая папка', () => {
-  it('без --force ничего не меняет и возвращает понятную ошибку', async () => {
+  it.each(['foreign-product', 'incomplete-inventory'] as const)('не принимает structurally-valid подложный manifest: %s', async (variant) => {
+    const canonical = await makeTempDir('canonical-source-');
+    await init(canonical);
+    const manifest = await readJson<any>(canonical, '.maestro/manifest.json');
+
+    const target = await makeTempDir(`forged-${variant}-`);
+    await writeFile(join(target, 'app.ts'), 'export const foreign = true;\n', 'utf8');
+    await mkdir(join(target, '.maestro'), { recursive: true });
+    if (variant === 'foreign-product') manifest.product.name = 'not-maestro';
+    else {
+      manifest.managed = manifest.managed.slice(0, 1);
+      manifest.inventory = manifest.inventory.slice(0, 1);
+    }
+    await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+    const before = await snapshotTree(target);
+
+    const result = await init(target, { force: true });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/не является каноническим проектом/i);
+    expect(await snapshotTree(target)).toEqual(before);
+  });
+
+  it('не принимает скопированный canonical manifest при неполном фактическом дереве и одинаковом basename', async () => {
+    const canonicalParent = await makeTempDir('canonical-copy-source-');
+    const canonical = join(canonicalParent, 'same-project');
+    await init(canonical);
+    const manifest = await readJson<any>(canonical, '.maestro/manifest.json');
+
+    const targetParent = await makeTempDir('forged-complete-manifest-');
+    const target = join(targetParent, 'same-project');
+    await mkdir(join(target, '.maestro'), { recursive: true });
+    await writeFile(join(target, 'app.ts'), 'export const foreign = true;\n', 'utf8');
+    await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+    const before = await snapshotTree(target);
+
+    const result = await init(target, { force: true });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/не является каноническим проектом|неполное.*дерево/i);
+    expect(await snapshotTree(target)).toEqual(before);
+  });
+  it('ничего не меняет и возвращает понятную ошибку', async () => {
     const target = await makeTempDir();
     await writeFile(join(target, 'важное.txt'), 'мои данные\n', 'utf8');
     await mkdir(join(target, 'src'), { recursive: true });
@@ -145,20 +187,22 @@ describe('initProject: непустая чужая папка', () => {
     const after = await snapshotTree(target);
 
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/--force/);
+    expect(result.error).toMatch(/не является каноническим проектом/i);
     expect(after).toEqual(before);
     expect(existsSync(join(target, '.maestro'))).toBe(false);
   });
 
-  it('с --force создаёт структуру и не удаляет чужие файлы', async () => {
+  it('--force не обходит каноническую границу и не пишет ни байта', async () => {
     const target = await makeTempDir();
     await writeFile(join(target, 'важное.txt'), 'мои данные\n', 'utf8');
+    const before = await snapshotTree(target);
 
     const result = await init(target, { force: true });
 
-    expect(result.ok).toBe(true);
-    expect(await readUtf8(target, 'важное.txt')).toBe('мои данные\n');
-    expect(existsSync(join(target, '.maestro/manifest.json'))).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/не является каноническим проектом/i);
+    expect(await snapshotTree(target)).toEqual(before);
+    expect(existsSync(join(target, '.maestro'))).toBe(false);
   });
 
   it('игнорирует .git и .DS_Store при проверке пустоты', async () => {
@@ -172,6 +216,22 @@ describe('initProject: непустая чужая папка', () => {
 });
 
 describe('initProject: повторный запуск', () => {
+  it('принимает canonical manifest старой product.version и обновляет его текущей версией', async () => {
+    const target = await makeTempDir();
+    await init(target);
+    const manifest = await readJson<any>(target, '.maestro/manifest.json');
+    manifest.product.version = '0.1.0-old';
+    await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+
+    const result = await init(target);
+
+    expect(result.ok).toBe(true);
+    const updated = await readJson<any>(target, '.maestro/manifest.json');
+    expect(updated.product.version).not.toBe('0.1.0-old');
+    expect(updated.project.id).toBe(manifest.project.id);
+    expect(updated.project.depth).toBe(manifest.project.depth);
+  });
+
   it('идемпотентен на неизменённом проекте', async () => {
     const target = await makeTempDir();
     await init(target);
@@ -210,15 +270,18 @@ describe('initProject: повторный запуск', () => {
     expect(await readUtf8(target, 'my-code.ts')).toBe('const a = 1;\n');
   });
 
-  it('восстанавливает удалённый managed-файл', async () => {
+  it('не достраивает неполное canonical-дерево и не пишет ни байта', async () => {
     const target = await makeTempDir();
     await init(target);
     await rm(join(target, 'wiki/index.md'));
+    const before = await snapshotTree(target);
 
     const second = await init(target);
 
-    expect(second.createdFiles).toContain('wiki/index.md');
-    expect(existsSync(join(target, 'wiki/index.md'))).toBe(true);
+    expect(second.ok).toBe(false);
+    expect(second.error).toMatch(/не является каноническим проектом|неполное.*дерево/i);
+    expect(existsSync(join(target, 'wiki/index.md'))).toBe(false);
+    expect(await snapshotTree(target)).toEqual(before);
   });
 
   it('даже с --force сохраняет изменённый пользователем managed-файл', async () => {
@@ -234,57 +297,6 @@ describe('initProject: повторный запуск', () => {
   });
 });
 
-describe('initProject: предсуществующий пользовательский managed-путь', () => {
-  /**
-   * Регрессия: файл, существовавший до нас, нельзя «узаконить» контрольной суммой.
-   * Иначе на следующем запуске он выглядит как наш неизменённый файл
-   * и молча перезаписывается при первой же смене шаблона.
-   */
-  it('не записывает checksum чужого содержимого при --force', async () => {
-    const target = await makeTempDir();
-    const mine = '# Мой CLAUDE.md, написанный до Maestro\n';
-    await writeFile(join(target, 'CLAUDE.md'), mine, 'utf8');
-
-    const first = await init(target, { force: true, name: 'Имя А' });
-
-    expect(first.ok).toBe(true);
-    expect(first.preservedFiles).toContain('CLAUDE.md');
-    expect(await readUtf8(target, 'CLAUDE.md')).toBe(mine);
-
-    const checksums = await readJson<{ files: Record<string, string> }>(target, CHECKSUMS_PATH);
-    expect(checksums.files['CLAUDE.md']).toBeUndefined();
-    expect(checksums.files['CLAUDE.md']).not.toBe(sha256(mine));
-  });
-
-  it('после смены шаблона всё равно не перезаписывает его даже с --force', async () => {
-    const target = await makeTempDir();
-    const mine = '# Мой CLAUDE.md, написанный до Maestro\n';
-    await writeFile(join(target, 'CLAUDE.md'), mine, 'utf8');
-
-    await init(target, { force: true, name: 'Имя А' });
-    // Другое отображаемое имя — другой рендер шаблона, т.е. «шаблон обновился».
-    const second = await init(target, { force: true, name: 'Имя Б' });
-
-    expect(second.ok).toBe(true);
-    expect(await readUtf8(target, 'CLAUDE.md')).toBe(mine);
-    expect(second.preservedFiles).toContain('CLAUDE.md');
-  });
-
-  it('сохраняет чужой файл и при третьем запуске подряд', async () => {
-    const target = await makeTempDir();
-    const mine = 'мои заметки\n';
-    await mkdir(join(target, 'wiki'), { recursive: true });
-    await writeFile(join(target, 'wiki/hot.md'), mine, 'utf8');
-
-    await init(target, { force: true, name: 'A' });
-    await init(target, { force: true, name: 'B' });
-    const third = await init(target, { force: true, name: 'C' });
-
-    expect(third.ok).toBe(true);
-    expect(await readUtf8(target, 'wiki/hot.md')).toBe(mine);
-  });
-});
-
 describe('initProject: .gitignore', () => {
   it('создаёт .gitignore с обязательными записями', async () => {
     const target = await makeTempDir();
@@ -296,21 +308,6 @@ describe('initProject: .gitignore', () => {
     }
   });
 
-  it('сохраняет существующий .gitignore с node_modules/ и dist/ и не дублирует их', async () => {
-    const target = await makeTempDir();
-    const existing = ['# проект', 'node_modules/', 'dist/', 'мои-секреты/'].join('\n') + '\n';
-    await writeFile(join(target, '.gitignore'), existing, 'utf8');
-
-    const result = await init(target, { force: true });
-
-    const content = await readUtf8(target, '.gitignore');
-    expect(result.ok).toBe(true);
-    expect(content.startsWith(existing)).toBe(true);
-    expect(content).toContain('мои-секреты/');
-    expect(content.match(/^node_modules\/$/gm)).toHaveLength(1);
-    expect(content.match(/^dist\/$/gm)).toHaveLength(1);
-    expect(content.match(/^\.env$/gm)).toHaveLength(1);
-  });
 
   it('не меняет .gitignore при повторном init', async () => {
     const target = await makeTempDir();

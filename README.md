@@ -97,6 +97,34 @@ The Guided First Run explains where files will be created and asks for no more t
 > [!WARNING]
 > **Core 0.2 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine. It refuses to modify a non-empty, non-canonical directory—even with `--force`. Safe conversion of existing projects belongs to a separate future Converter.
 
+## Что дальше после создания проекта
+
+Вы создали проект, открыли папку в Claude Code и Cowork. Что теперь?
+
+### 1. Опишите идею агенту
+
+Просто скажите Claude Code, что вы хотите построить. Он сам прочитает `CLAUDE.md` → `wiki/hot.md` → протоколы.
+
+### 2. Положите материалы в `maestro/inbox/`
+
+Скриншоты, заметки, требования — всё, что описывает продукт. Cowork разберёт их и вернёт структурированный Markdown для `wiki/`.
+
+### 3. Работайте по циклу
+
+| Команда | Что делает |
+|---|---|
+| `/build` | Читает контекст, пишет код и тесты, обновляет память |
+| `/handoff` | Сохраняет состояние — следующая сессия продолжит с того же места |
+| `doctor` | Проверяет целостность структуры и файлов |
+
+### 4. Подключайте Cowork когда нужно
+
+- Discovery входящих материалов
+- Архитектурный аудит
+- Независимая проверка после реализации
+
+Всё состояние проекта живёт в Markdown внутри Git. Новая сессия агента начинает не с нуля, а с `wiki/hot.md` и последнего handoff.
+
 ## What you get
 
 A Standard project starts with a structure like this:

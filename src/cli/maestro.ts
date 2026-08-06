@@ -12,6 +12,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 Команды:
   doctor              механическая проверка целостности проекта (без LLM и токенов)
   skills              безопасная инвентаризация локальных SKILL.md и рекомендации
+  sources             read-only инвентаризация существующих исходников для планирования
   upgrade             предложение обновления канонического проекта прошлой версии
   preflight           механическая проверка права начинать код по активному плану
 
@@ -21,6 +22,12 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 
 Опции doctor:
   --strict            считать warning блокирующим
+
+Опции sources:
+  --source <путь>     существующий исходник; флаг можно повторять
+  --write             записать снимок в проект; без флага не пишется ничего
+  --replace           заменить прежний снимок этой же команды (решение человека)
+  --output <путь>     project-relative путь снимка внутри maestro/sources/
 
 Опции upgrade:
   --apply             выполнить обновление; без флага это только dry-run
@@ -33,7 +40,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   --help, -h          эта справка
   --version, -v       версия`;
 
-const COMMANDS = ['doctor', 'skills', 'upgrade', 'preflight'] as const;
+const COMMANDS = ['doctor', 'skills', 'sources', 'upgrade', 'preflight'] as const;
 type Command = (typeof COMMANDS)[number];
 
 export interface CommandOptions {
@@ -43,6 +50,10 @@ export interface CommandOptions {
   apply?: boolean;
   scale?: PlanScale;
   quickCriteria?: string[];
+  sources?: string[];
+  write?: boolean;
+  replace?: boolean;
+  output?: string;
 }
 
 type ParseResult =
@@ -106,6 +117,36 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         i += 1;
         break;
       }
+      case '--source': {
+        const message = only(arg, 'sources');
+        if (message !== null) return { kind: 'error', message };
+        const source = value();
+        if (source === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        (options.sources ??= []).push(source);
+        i += 1;
+        break;
+      }
+      case '--write': {
+        const message = only(arg, 'sources');
+        if (message !== null) return { kind: 'error', message };
+        options.write = true;
+        break;
+      }
+      case '--replace': {
+        const message = only(arg, 'sources');
+        if (message !== null) return { kind: 'error', message };
+        options.replace = true;
+        break;
+      }
+      case '--output': {
+        const message = only(arg, 'sources');
+        if (message !== null) return { kind: 'error', message };
+        const output = value();
+        if (output === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        options.output = output;
+        i += 1;
+        break;
+      }
       case '--path': {
         const path = value();
         if (path === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
@@ -116,6 +157,18 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
       default:
         if (arg.startsWith('-')) return { kind: 'error', message: `Неизвестный аргумент: ${arg}` };
         return { kind: 'error', message: `Лишний аргумент: ${arg}` };
+    }
+  }
+  if (first === 'sources') {
+    if ((options.sources ?? []).length === 0) {
+      return { kind: 'error', message: 'Команда sources требует хотя бы один --source <путь>.' };
+    }
+    // Замена — исключение поверх исключения: она осмысленна только вместе с записью.
+    if (options.replace === true && options.write !== true) {
+      return { kind: 'error', message: 'Флаг --replace имеет смысл только вместе с --write.' };
+    }
+    if (options.output !== undefined && options.write !== true) {
+      return { kind: 'error', message: 'Флаг --output имеет смысл только вместе с --write.' };
     }
   }
   return { kind: first, options };
@@ -133,6 +186,10 @@ export async function runMaestroCli(argv: readonly string[], io: CliIo = process
   if (parsed.kind === 'upgrade') {
     const { executeUpgradeCommand } = await import('./upgrade-run.js');
     return executeUpgradeCommand(parsed.options, io);
+  }
+  if (parsed.kind === 'sources') {
+    const { executeSourcesCommand } = await import('./sources-run.js');
+    return executeSourcesCommand({ ...parsed.options, sources: parsed.options.sources ?? [] }, io);
   }
   if (parsed.kind === 'preflight') {
     const { executePreflightCommand } = await import('./preflight-run.js');

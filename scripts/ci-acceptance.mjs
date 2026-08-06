@@ -87,6 +87,26 @@ try {
     assert.equal(report.ok, true, `fresh packed ${depth} project must pass doctor`);
   }
 
+  // Planning Gate Phase 4: инвентаризация существующего исходника доезжает до
+  // установленного пакета, по умолчанию не пишет и не перезаписывает снимок молча.
+  const inventoryProject = './packed standard project';
+  const inventoryArtifact = join(installDir, inventoryProject, 'maestro/sources/source-inventory.json');
+  const sourceProject = './packed source project';
+  run(process.execPath, [installedCreate, '--yes', '--no-git', '--target', sourceProject, '--start', 'idea'], installDir);
+  const sourceArgs = ['sources', '--path', inventoryProject, '--source', join(installDir, sourceProject)];
+  const analyzed = JSON.parse(run(process.execPath, [installedMaestro, ...sourceArgs, '--json'], installDir));
+  assert.equal(analyzed.reportVersion, 1, 'packed sources JSON must publish reportVersion=1');
+  assert.equal(analyzed.ownership, 'READ_ONLY_SOURCE', 'packed sources must declare read-only ownership');
+  assert.equal(analyzed.write, null, 'packed sources must not write by default');
+  await assert.rejects(access(inventoryArtifact), 'default packed sources run must stay zero-write');
+
+  run(process.execPath, [installedMaestro, ...sourceArgs, '--write'], installDir);
+  await access(inventoryArtifact);
+  const afterWrite = JSON.parse(run(process.execPath, [installedMaestro, 'doctor', '--path', inventoryProject, '--json'], installDir));
+  assert.equal(afterWrite.ok, true, 'written source inventory must keep packed doctor green');
+  const rewrite = runResult(process.execPath, [installedMaestro, ...sourceArgs, '--write'], installDir);
+  assert.notEqual(rewrite.status, 0, 'second packed --write must refuse silent overwrite');
+
   const canonicalManifestText = await readFile(join(installDir, './packed standard project', '.maestro/manifest.json'), 'utf8');
 
   const incompleteParent = './packed incomplete parent';

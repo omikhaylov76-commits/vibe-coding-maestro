@@ -2,12 +2,13 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { isSafeProjectPath, sha256 } from '../manifest.js';
+// Владелец путей — контракт исходников; doctor только применяет его.
+import { SOURCES_DIR, SOURCE_HASHES_PATH } from '../sources/contract.js';
 import { pathHasSymlink } from './fs-utils.js';
 import { critical, error } from './types.js';
 import type { DoctorFinding } from './types.js';
 
-export const SOURCE_HASHES_PATH = '.maestro/source-hashes.json';
-export const SOURCES_DIR = 'maestro/sources';
+export { SOURCES_DIR, SOURCE_HASHES_PATH };
 
 async function sourceFiles(root: string, dir: string, findings: DoctorFinding[]): Promise<string[]> {
   const relativeDir = relative(root, dir).split(sep).join('/');

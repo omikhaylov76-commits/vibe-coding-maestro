@@ -5,6 +5,7 @@ import { absolutePathHasSymlink, pathHasSymlink } from './fs-utils.js';
 import { checkGit } from './git.js';
 import { checkInbox } from './inbox.js';
 import { checkInventory, checkManagedFiles } from './managed.js';
+import { checkPlans } from './plans.js';
 import { checkProtocols } from './protocols.js';
 import { checkSources } from './sources.js';
 import { checkWiki } from './wiki.js';
@@ -51,7 +52,7 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   const { managedDocs } = await checkManagedFiles(root, manifest, checksums, findings);
 
   await checkProtocols(root, findings);
-  await checkWiki(root, findings);
+  checkPlans(root, await checkWiki(root, findings), findings);
   await checkGit(root, managedDocs, findings);
   await checkInbox(root, findings);
   await checkSources(root, findings);

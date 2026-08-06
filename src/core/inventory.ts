@@ -3,6 +3,8 @@ export const TEMPLATE_FILES: readonly string[] = [
   'CLAUDE.md',
   'AGENTS.md',
   'wiki/index.md',
+  'wiki/plans/README.md',
+  'wiki/plans/TEMPLATE.md',
   'maestro/inbox/README.md',
   'maestro/runbooks/cowork-discovery.md',
   'maestro/runbooks/cowork-audit.md',
@@ -35,6 +37,7 @@ export const CONTENT_OWNED_FILES: readonly string[] = [
   'wiki/log.md',
   'wiki/roadmap.md',
   'wiki/concepts/discovery.md',
+  'wiki/plans/0001-starter.md',
 ];
 
 export const LAZY_DIRS: readonly string[] = [

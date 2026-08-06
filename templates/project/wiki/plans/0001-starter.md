@@ -16,6 +16,9 @@ supersedes: null
 approved_by: null
 approved_at: null
 active_phase: null
+blocking_questions: 1
+spec_delta: none
+current_slice: null
 ---
 
 # Первый план проекта {{PROJECT_NAME}}
@@ -57,3 +60,7 @@ active_phase: null
 Когда план готов, человек переводит его в `approved` и проставляет
 `approved_by` и `approved_at`. После этого план можно сделать `active` и
 объявить в `active_plan` в [hot.md](../hot.md).
+
+Пока открыт вопрос из раздела «Что известно», `blocking_questions: 1` держит
+build gate закрытым, а `current_slice: null` означает, что разрешённой порции
+ещё нет. Оба поля обновляет человек вместе с утверждением плана.

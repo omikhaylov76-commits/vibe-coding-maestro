@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { isSafeProjectPath } from '../manifest.js';
-import { isExternalSourceRef, validatePlanFrontmatter } from '../plan.js';
+import { ACTIVE_PLAN_NONE, isExternalSourceRef, isWikiRelativePlanRef, validatePlanFrontmatter } from '../plan.js';
 import type { PlanDocument } from '../plan.js';
 import { frontmatter } from './text.js';
 import { error } from './types.js';
@@ -22,11 +21,6 @@ function planFileName(path: string): string | null {
   const match = /^wiki\/plans\/([^/]+\.md)$/.exec(path);
   const name = match?.[1];
   return name === undefined || NON_PLAN_FILES.has(name) ? null : name;
-}
-
-/** active_plan указывается относительно wiki/ — так же, как active_progress. */
-function isWikiRelativePlanRef(value: string): boolean {
-  return value.endsWith('.md') && isSafeProjectPath(value);
 }
 
 /**
@@ -77,8 +71,8 @@ export function checkPlans(root: string, decoded: ReadonlyMap<string, string>, f
    * с проектом, в котором каталога планов ещё не существовало. Ломать такие
    * проекты можно только осознанным migration/version решением, а не молча.
    */
-  const declared = hotMeta.active_plan ?? 'none';
-  if (declared !== 'none' && (!isWikiRelativePlanRef(declared) || !existsSync(join(root, 'wiki', declared)))) {
+  const declared = hotMeta.active_plan ?? ACTIVE_PLAN_NONE;
+  if (declared !== ACTIVE_PLAN_NONE && (!isWikiRelativePlanRef(declared) || !existsSync(join(root, 'wiki', declared)))) {
     findings.push(error('hot-active-plan-invalid', 'Contract: hot.md active_plan должен быть none либо существующим wiki-относительным путём к плану.', HOT_PATH));
     return;
   }
@@ -88,7 +82,7 @@ export function checkPlans(root: string, decoded: ReadonlyMap<string, string>, f
     findings.push(error('plan-multiple-active', `В project scope допустим не более одного active плана; найдены: ${active.join(', ')}.`));
     return;
   }
-  const expected = active.length === 0 ? 'none' : active[0]!.slice('wiki/'.length);
+  const expected = active.length === 0 ? ACTIVE_PLAN_NONE : active[0]!.slice('wiki/'.length);
   if (declared !== expected) {
     findings.push(error('hot-active-plan-mismatch', 'Contract: hot.md active_plan должен быть none либо путём единственного плана со status: active.', HOT_PATH));
   }

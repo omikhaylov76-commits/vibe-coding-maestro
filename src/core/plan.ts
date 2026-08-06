@@ -38,6 +38,24 @@ export const PLAN_REQUIRED_KEYS = [
 /** Общие для wiki поля документа: допустимы, но контрактом плана не управляются. */
 export const PLAN_OPTIONAL_KEYS = ['type', 'title'] as const;
 
+/**
+ * Машиночитаемые поля build gate.
+ *
+ * Свободный текст плана не парсится: «открытых вопросов нет» и «spec delta нет»
+ * должны быть объявлены полем, а не фразой в теле, иначе проверка превращается в
+ * хрупкий grep. Поля необязательны — черновик имеет право их не иметь. Их
+ * ОТСУТСТВИЕ у утверждённого плана не делает документ невалидным, но закрывает
+ * build gate: см. `core/preflight.ts`. Doctor проверяет документ, preflight —
+ * право на исполнение; смешивать эти две роли нельзя.
+ */
+export const PLAN_GATE_KEYS = ['blocking_questions', 'spec_delta', 'current_slice', 'current_phase_approved'] as const;
+
+export const PLAN_SPEC_DELTAS = ['none', 'open', 'resolved'] as const;
+export type PlanSpecDelta = (typeof PLAN_SPEC_DELTAS)[number];
+
+/** Явное «поля нет» и «фаза утверждена» во frontmatter, который умеет только строки. */
+export const PLAN_PHASE_APPROVALS = ['yes', 'no'] as const;
+
 /** Явное «поля нет» во frontmatter, который умеет только строки. */
 export const PLAN_NULL = 'null';
 
@@ -57,6 +75,12 @@ export interface PlanDocument {
   approvedBy: string | null;
   approvedAt: string | null;
   activePhase: string | null;
+  /** null означает «поле не объявлено»: для build gate это не то же самое, что 0. */
+  blockingQuestions: number | null;
+  specDelta: PlanSpecDelta | null;
+  /** Ровно одна разрешённая порция. null — не объявлена либо явное `null`. */
+  currentSlice: string | null;
+  currentPhaseApproved: boolean | null;
 }
 
 /** Код совпадает с doctor finding code: диагностика одна и та же в обоих слоях. */
@@ -78,7 +102,8 @@ const PLAN_ID = /^PLAN-[0-9]{4,}$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const APPROVAL_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const PROFILE_TOKEN = /^[A-Z][A-Z0-9_]*$/;
-const ACTIVE_PHASE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const ACTIVE_PHASE_TOKEN = /^[\p{L}\p{N}][\p{L}\p{N}._/-]*$/u;
+const NON_NEGATIVE_INTEGER = /^(?:0|[1-9][0-9]*)$/;
 /** Внешняя provenance-ссылка опознаётся по URI-схеме и намеренно не проверяется на диске. */
 const EXTERNAL_SOURCE = /^[a-z][a-z0-9+.-]*:/i;
 
@@ -104,6 +129,17 @@ export function isApprovalTimestamp(value: string): boolean {
 
 export function isExternalSourceRef(value: string): boolean {
   return EXTERNAL_SOURCE.test(value);
+}
+
+/** Значение `active_plan`, означающее «активного плана нет». */
+export const ACTIVE_PLAN_NONE = 'none';
+
+/**
+ * Ссылка на активный план в `hot.md`: путь относительно `wiki/`, как active_progress.
+ * Владелец правила — контракт плана; doctor и preflight читают его отсюда.
+ */
+export function isWikiRelativePlanRef(value: string): boolean {
+  return value.endsWith('.md') && isProjectRelativeSourceRef(value);
 }
 
 /**
@@ -182,6 +218,17 @@ function nullableField(
   return { value: raw };
 }
 
+/** Счётчик gate-поля: только неотрицательное целое, без `null` и без «нет». */
+function intField(meta: Readonly<Record<string, string>>, field: string, issues: PlanIssue[]): number | null {
+  const value = meta[field];
+  if (value === undefined) return null;
+  if (!NON_NEGATIVE_INTEGER.test(value)) {
+    issues.push(issue('plan-schema-invalid', field, `Поле ${field} должно быть неотрицательным целым числом.`));
+    return null;
+  }
+  return Number(value);
+}
+
 function dateField(meta: Readonly<Record<string, string>>, field: string, issues: PlanIssue[]): string | null {
   const value = meta[field];
   if (value === undefined) return null;
@@ -202,7 +249,7 @@ function dateField(meta: Readonly<Record<string, string>>, field: string, issues
  */
 export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>): PlanValidation {
   const issues: PlanIssue[] = [];
-  const allowed = new Set<string>([...PLAN_REQUIRED_KEYS, ...PLAN_OPTIONAL_KEYS]);
+  const allowed = new Set<string>([...PLAN_REQUIRED_KEYS, ...PLAN_OPTIONAL_KEYS, ...PLAN_GATE_KEYS]);
 
   for (const key of PLAN_REQUIRED_KEYS) {
     if (!(key in meta)) issues.push(issue('plan-schema-invalid', key, `Обязательное поле плана отсутствует: ${key}.`));
@@ -241,6 +288,11 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
   const approvedAt = nullableField(meta, 'approved_at', isApprovalTimestamp, 'допустимо null, дата YYYY-MM-DD или UTC-отметка времени', issues);
   const activePhase = nullableField(meta, 'active_phase', (value) => ACTIVE_PHASE_TOKEN.test(value), 'допустимо null или идентификатор фазы', issues);
 
+  const blockingQuestions = intField(meta, 'blocking_questions', issues);
+  const specDelta = enumField(meta, 'spec_delta', PLAN_SPEC_DELTAS, issues);
+  const currentSlice = nullableField(meta, 'current_slice', (value) => ACTIVE_PHASE_TOKEN.test(value), 'допустимо null или идентификатор порции', issues);
+  const currentPhaseApproved = enumField(meta, 'current_phase_approved', PLAN_PHASE_APPROVALS, issues);
+
   if (status !== null && approvedBy !== null && approvedAt !== null) {
     const hasApproval = approvedBy.value !== null && approvedAt.value !== null;
     if (APPROVAL_REQUIRED_STATUSES.includes(status) && !hasApproval) {
@@ -256,6 +308,9 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
   }
   if (kind !== null && activePhase !== null && activePhase.value !== null && kind !== 'program') {
     issues.push(issue('plan-state-invalid', 'active_phase', 'Поле active_phase имеет смысл только для kind: program.'));
+  }
+  if (kind !== null && kind !== 'program' && currentPhaseApproved !== null) {
+    issues.push(issue('plan-state-invalid', 'current_phase_approved', 'Поле current_phase_approved имеет смысл только для kind: program.'));
   }
 
   if (issues.length > 0) return { plan: null, issues };
@@ -278,6 +333,10 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
       approvedBy: approvedBy!.value,
       approvedAt: approvedAt!.value,
       activePhase: activePhase!.value,
+      blockingQuestions,
+      specDelta,
+      currentSlice: currentSlice === null ? null : currentSlice.value,
+      currentPhaseApproved: currentPhaseApproved === null ? null : currentPhaseApproved === 'yes',
     },
     issues,
   };

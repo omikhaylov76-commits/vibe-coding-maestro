@@ -93,7 +93,32 @@ describe('0.3 Phase 0: plan frontmatter schema', () => {
       approvedBy: null,
       approvedAt: null,
       activePhase: null,
+      blockingQuestions: null,
+      specDelta: null,
+      currentSlice: null,
+      currentPhaseApproved: null,
     });
+  });
+
+  it('поля build gate необязательны, но проверяются по форме', () => {
+    expect(codes({ blocking_questions: '0', spec_delta: 'none', current_slice: 'null' })).toEqual([]);
+    expect(codes({ blocking_questions: '3', spec_delta: 'open', current_slice: '01-первая' })).toEqual([]);
+    const parsed = validatePlanFrontmatter(meta({ blocking_questions: '2', spec_delta: 'resolved', current_slice: '02-вторая' })).plan;
+    expect(parsed?.blockingQuestions).toBe(2);
+    expect(parsed?.specDelta).toBe('resolved');
+    expect(parsed?.currentSlice).toBe('02-вторая');
+
+    for (const bad of ['-1', 'null', 'нет', '1.5', '']) {
+      expect(codes({ blocking_questions: bad }), bad).toContain('plan-schema-invalid');
+    }
+    expect(codes({ spec_delta: 'нет' })).toContain('plan-schema-invalid');
+    expect(codes({ current_slice: '../побег' })).toContain('plan-schema-invalid');
+  });
+
+  it('current_phase_approved имеет смысл только для program-плана', () => {
+    expect(codes({ kind: 'program', current_phase_approved: 'yes' })).toEqual([]);
+    expect(codes({ kind: 'program', current_phase_approved: 'может быть' })).toContain('plan-schema-invalid');
+    expect(codes({ current_phase_approved: 'yes' })).toContain('plan-state-invalid');
   });
 
   it('разрешает необязательные type/title и отвергает поля вне схемы', () => {

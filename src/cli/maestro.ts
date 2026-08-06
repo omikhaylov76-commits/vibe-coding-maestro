@@ -1,3 +1,6 @@
+import { PLAN_SCALES } from '../core/plan.js';
+import type { PlanScale } from '../core/plan.js';
+import { QUICK_CRITERIA } from '../core/preflight.js';
 import { PRODUCT_NAME, SERVICE_COMMAND, VERSION } from '../core/meta.js';
 import { CliIo, EXIT_OK, EXIT_USAGE, processIo } from './io.js';
 
@@ -9,47 +12,106 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 Команды:
   doctor              механическая проверка целостности проекта (без LLM и токенов)
   skills              безопасная инвентаризация локальных SKILL.md и рекомендации
+  upgrade             предложение обновления канонического проекта прошлой версии
+  preflight           механическая проверка права начинать код по активному плану
 
-Опции doctor/skills:
+Общие опции команд:
   --path <путь>       корень проверяемого проекта (по умолчанию текущая папка)
   --json              детерминированный машиночитаемый отчёт
 
 Опции doctor:
   --strict            считать warning блокирующим
 
+Опции upgrade:
+  --apply             выполнить обновление; без флага это только dry-run
+
+Опции preflight:
+  --scale <масштаб>   ${PLAN_SCALES.join(' | ')} (по умолчанию feature)
+  --quick <критерии>  через запятую: ${QUICK_CRITERIA.join(', ')}
+
 Общие опции:
   --help, -h          эта справка
   --version, -v       версия`;
 
-interface CommandOptions { path: string; json: boolean; strict?: boolean }
+const COMMANDS = ['doctor', 'skills', 'upgrade', 'preflight'] as const;
+type Command = (typeof COMMANDS)[number];
+
+export interface CommandOptions {
+  path: string;
+  json: boolean;
+  strict?: boolean;
+  apply?: boolean;
+  scale?: PlanScale;
+  quickCriteria?: string[];
+}
+
 type ParseResult =
   | { kind: 'version' }
   | { kind: 'help' }
   | { kind: 'error'; message: string }
-  | { kind: 'doctor' | 'skills'; options: CommandOptions };
+  | { kind: Command; options: CommandOptions };
+
+const isCommand = (value: string): value is Command => (COMMANDS as readonly string[]).includes(value);
 
 export function parseMaestroArgs(argv: readonly string[]): ParseResult {
-  if (argv.length === 0) return { kind: 'error', message: 'Не указана команда. Доступно: doctor, skills.' };
+  if (argv.length === 0) return { kind: 'error', message: `Не указана команда. Доступно: ${COMMANDS.join(', ')}.` };
   const first = argv[0] as string;
   if (first === '--version' || first === '-v') return { kind: 'version' };
   if (first === '--help' || first === '-h') return { kind: 'help' };
-  if (first !== 'doctor' && first !== 'skills') return { kind: 'error', message: `Неизвестная команда: ${first}. Доступно: doctor, skills.` };
+  if (!isCommand(first)) return { kind: 'error', message: `Неизвестная команда: ${first}. Доступно: ${COMMANDS.join(', ')}.` };
 
   const options: CommandOptions = { path: process.cwd(), json: false };
+  const only = (arg: string, command: Command): string | null =>
+    first === command ? null : `Флаг ${arg} доступен только для ${command}.`;
+
   for (let i = 1; i < argv.length; i += 1) {
     const arg = argv[i] as string;
+    const value = (): string | undefined => {
+      const next = argv[i + 1];
+      return next === undefined || next.startsWith('--') ? undefined : next;
+    };
     switch (arg) {
       case '--help': case '-h': return { kind: 'help' };
       case '--json': options.json = true; break;
       case '--strict': {
-        if (first !== 'doctor') return { kind: 'error', message: `Флаг ${arg} доступен только для doctor.` };
+        const message = only(arg, 'doctor');
+        if (message !== null) return { kind: 'error', message };
         options.strict = true;
         break;
       }
+      case '--apply': {
+        const message = only(arg, 'upgrade');
+        if (message !== null) return { kind: 'error', message };
+        options.apply = true;
+        break;
+      }
+      case '--scale': {
+        const message = only(arg, 'preflight');
+        if (message !== null) return { kind: 'error', message };
+        const scale = value();
+        if (scale === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        if (!(PLAN_SCALES as readonly string[]).includes(scale)) {
+          return { kind: 'error', message: `Неизвестный масштаб: ${scale}. Доступно: ${PLAN_SCALES.join(', ')}.` };
+        }
+        options.scale = scale as PlanScale;
+        i += 1;
+        break;
+      }
+      case '--quick': {
+        const message = only(arg, 'preflight');
+        if (message !== null) return { kind: 'error', message };
+        const criteria = value();
+        if (criteria === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        options.quickCriteria = criteria.split(',').map((item) => item.trim()).filter((item) => item !== '');
+        i += 1;
+        break;
+      }
       case '--path': {
-        const value = argv[i + 1];
-        if (value === undefined || value.startsWith('--')) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
-        options.path = value; i += 1; break;
+        const path = value();
+        if (path === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        options.path = path;
+        i += 1;
+        break;
       }
       default:
         if (arg.startsWith('-')) return { kind: 'error', message: `Неизвестный аргумент: ${arg}` };
@@ -67,6 +129,14 @@ export async function runMaestroCli(argv: readonly string[], io: CliIo = process
   if (parsed.kind === 'doctor') {
     const { executeDoctorCommand } = await import('./doctor-run.js');
     return executeDoctorCommand(parsed.options, io);
+  }
+  if (parsed.kind === 'upgrade') {
+    const { executeUpgradeCommand } = await import('./upgrade-run.js');
+    return executeUpgradeCommand(parsed.options, io);
+  }
+  if (parsed.kind === 'preflight') {
+    const { executePreflightCommand } = await import('./preflight-run.js');
+    return executePreflightCommand(parsed.options, io);
   }
   const { executeSkillsCommand } = await import('./skills-run.js');
   return executeSkillsCommand(parsed.options, io);

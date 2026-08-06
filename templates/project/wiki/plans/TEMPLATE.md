@@ -16,6 +16,9 @@ supersedes: null
 approved_by: null
 approved_at: null
 active_phase: null
+blocking_questions: 0
+spec_delta: none
+current_slice: null
 ---
 
 # Название плана
@@ -48,6 +51,9 @@ active_phase: null
 ## Порядок работ
 
 1. Первая порция: файлы, зависимости, тесты, критерий остановки.
+
+Разрешённую сейчас порцию назовите в `current_slice`, а открытые блокирующие
+вопросы посчитайте в `blocking_questions`: механический гейт читает эти поля.
 
 ## Риски и откат
 

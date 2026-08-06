@@ -10,4 +10,5 @@
 6. Standard/Advanced: [аудит плана](build/audit-plan.md) и [независимое ревью](audit.md).
 7. Advanced: [seams](seams.md), [council reconciliation](build/audit-phase.md), [lessons](lessons.md).
 8. Завершение: [wiki](wiki.md), [status](status.md), [handoff](handoff.md).
-9. До кода при неизвестных: [discovery](discovery.md).
+9. До кода при неизвестных: [discovery](discovery.md), затем [planning gate и утверждение человеком](plan.md).
+10. Утверждённый активный план задаёт ровно одну текущую разрешённую порцию и её стоп-гейт.

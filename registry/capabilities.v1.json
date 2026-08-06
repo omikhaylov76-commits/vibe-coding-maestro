@@ -270,6 +270,18 @@
       "rationale": "Исследование и рамки продукта предшествуют написанию кода."
     },
     {
+      "id": "planning-gate",
+      "status": "keep",
+      "ownerPath": "protocols/plan.md",
+      "contractId": "VCM-PLANNING-GATE",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Разговор и материалы становятся утверждённым человеком планом до кода."
+    },
+    {
       "id": "evidence-lessons",
       "status": "adapt",
       "ownerPath": "protocols/lessons.md",

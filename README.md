@@ -27,15 +27,6 @@
 > [!IMPORTANT]
 > **0.2.0-beta.1 is an unreleased beta.** The npm package is not published yet, so `npx create-vibe-maestro@latest` is not a working installation command today. Use the source install below. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
-> [!TIP]
-> ## 🚀 One command to start
->
-> Copy this into your terminal and press Enter:
->
-> ```bash
-> git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git 2>/dev/null || true && cd vibe-coding-maestro && git checkout main && git pull && npm ci && npm run build && node dist/bin/create-vibe-maestro.js
-> ```
-
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
 - a new session has to rediscover the project;
@@ -57,6 +48,15 @@ The demo uses the real 0.2 beta CLI surface and output. It does not pretend that
 ## Quick start from source
 
 **Requirements:** Node.js 20.10 or newer, npm, and Git.
+
+> [!TIP]
+> ## 🚀 One command to start
+>
+> Copy this into your terminal and press Enter:
+>
+> ```bash
+> git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git 2>/dev/null || true && cd vibe-coding-maestro && git checkout main && git pull && npm ci && npm run build && node dist/bin/create-vibe-maestro.js
+> ```
 
 ```bash
 # 1. Get the beta source

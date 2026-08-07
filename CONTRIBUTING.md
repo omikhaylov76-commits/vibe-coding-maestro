@@ -20,4 +20,4 @@ npm pack --dry-run --json
 node scripts/ci-acceptance.mjs
 ```
 
-Acceptance требует доступный `git`, создаёт временный проект с пробелом в пути и удаляет его. Проверьте также содержимое pack JSON: runtime tarball должен включать `dist`, `templates`, `schemas`, `registry`, README и LICENSE, но не tests/docs без runtime-причины.
+Acceptance требует доступный `git`, создаёт временный проект с пробелом в пути и удаляет его. Проверьте также содержимое pack JSON: runtime tarball должен включать `dist`, `templates`, `schemas`, `registry`, `docs` (руководство пользователя, на которое ссылается README), README и LICENSE, но не тесты и не служебные файлы разработки.

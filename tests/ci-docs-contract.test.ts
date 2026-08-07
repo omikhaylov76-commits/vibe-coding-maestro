@@ -1,14 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.2.0-beta.1';
+const BETA_VERSION = '0.3.0-beta.1';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 }
 
 describe('этапы 12–13: CI и документационные контракты', () => {
-  it('package, lock и runtime публикуют одну 0.2 beta версию', async () => {
+  it('package, lock и runtime публикуют одну 0.3 beta версию', async () => {
     const pkg = JSON.parse(await text('package.json'));
     const lock = JSON.parse(await text('package-lock.json'));
     expect(pkg.version).toBe(BETA_VERSION);
@@ -66,10 +66,11 @@ describe('этапы 12–13: CI и документационные контр�
       'materials',
       '/build',
       '/status',
+      '/plan',
       '/wiki',
       '/handoff',
       'skills',
-      '0.2 beta',
+      '0.3 beta',
       'canonical',
       '--depth',
       'light',

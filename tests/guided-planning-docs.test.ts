@@ -313,11 +313,12 @@ describe('Phase 5: ссылки и packaging', () => {
     for (const anchor of referenced) expect(anchors.has(anchor), anchor).toBe(true);
   });
 
-  it('документация входит в публикуемый пакет', async () => {
+  it('документация и changelog входят в публикуемый пакет', async () => {
     const pkg = JSON.parse(await doc('package.json')) as { files: string[] };
     expect(pkg.files).toContain('docs');
     expect(pkg.files).toContain('README.md');
-    for (const path of [GUIDE, 'docs/THREAT_MODEL.md', 'docs/MIGRATION_V1.md']) {
+    expect(pkg.files).toContain('CHANGELOG.md');
+    for (const path of [GUIDE, 'CHANGELOG.md', 'docs/THREAT_MODEL.md', 'docs/MIGRATION_V1.md']) {
       expect(existsSync(join(root, path)), path).toBe(true);
     }
     expect(dirname(join(root, GUIDE))).toBe(join(root, 'docs'));

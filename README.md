@@ -326,11 +326,12 @@ Not available yet:
 - automatic installation or execution of third-party skills;
 - a guarantee that an AI agent will not make mistakes.
 
-The next step is real dogfooding and a small number of guided beta installations. Public npm release comes only after those workflows hold up outside the repository.
+The 0.3 beta feature set is complete and locally release-verified. Broader dogfooding — including the real two-game integration on the user's Mac — continues as post-release validation and feedback for the next beta. The npm package is still unpublished; use the source installation above until a separate publication decision is made.
 
 ## Documentation
 
 - [Detailed user guide (Russian)](docs/USER_GUIDE.md)
+- [Changelog](CHANGELOG.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Canonical-only boundary and future Converter](docs/MIGRATION_V1.md)
 - [Contributing and local release gates](CONTRIBUTING.md)

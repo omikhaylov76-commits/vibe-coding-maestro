@@ -3,13 +3,17 @@ export const TEMPLATE_FILES: readonly string[] = [
   'CLAUDE.md',
   'AGENTS.md',
   'wiki/index.md',
+  'wiki/plans/README.md',
+  'wiki/plans/TEMPLATE.md',
   'maestro/inbox/README.md',
   'maestro/runbooks/cowork-discovery.md',
   'maestro/runbooks/cowork-audit.md',
+  'maestro/runbooks/cowork-plan.md',
   '.claude/commands/build.md',
   '.claude/commands/status.md',
   '.claude/commands/wiki.md',
   '.claude/commands/handoff.md',
+  '.claude/commands/plan.md',
   '.claude/agents/code-reviewer.md',
   '.gitattributes',
   'protocols/build.md',
@@ -17,6 +21,7 @@ export const TEMPLATE_FILES: readonly string[] = [
   'protocols/wiki.md',
   'protocols/handoff.md',
   'protocols/discovery.md',
+  'protocols/plan.md',
   'protocols/audit.md',
   'protocols/context-budget.md',
   'protocols/seams.md',
@@ -35,6 +40,7 @@ export const CONTENT_OWNED_FILES: readonly string[] = [
   'wiki/log.md',
   'wiki/roadmap.md',
   'wiki/concepts/discovery.md',
+  'wiki/plans/0001-starter.md',
 ];
 
 export const LAZY_DIRS: readonly string[] = [

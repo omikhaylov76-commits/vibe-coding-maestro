@@ -70,6 +70,9 @@ try {
   await access(join(installedRoot, 'docs/assets/quick-demo.gif'));
   await access(join(installedRoot, 'templates/project/protocols/build.md'));
   await access(join(installedRoot, 'templates/project/protocols/build/step-1-rules.md'));
+  // Planning Gate: canonical owner и оба тонких адаптера обязаны доехать до tarball.
+  const planningGateFiles = ['protocols/plan.md', '.claude/commands/plan.md', 'maestro/runbooks/cowork-plan.md'];
+  for (const path of planningGateFiles) await access(join(installedRoot, 'templates/project', path));
   run(process.execPath, [installedCreate, '--help'], installDir);
   run(process.execPath, [installedMaestro, '--version'], installDir);
 
@@ -78,10 +81,31 @@ try {
     run(process.execPath, [installedCreate, '--yes', '--no-git', '--target', project, '--start', 'idea', '--depth', depth], installDir);
     const manifest = JSON.parse(await readFile(join(installDir, project, '.maestro/manifest.json'), 'utf8'));
     assert.equal(manifest.project.depth, depth, `packed manifest depth must be ${depth}`);
+    for (const path of planningGateFiles) await access(join(installDir, project, path));
     const report = JSON.parse(run(process.execPath, [installedMaestro, 'doctor', '--path', project, '--json'], installDir));
     assert.equal(report.reportVersion, 1, 'packed doctor JSON must publish reportVersion=1');
     assert.equal(report.ok, true, `fresh packed ${depth} project must pass doctor`);
   }
+
+  // Planning Gate Phase 4: инвентаризация существующего исходника доезжает до
+  // установленного пакета, по умолчанию не пишет и не перезаписывает снимок молча.
+  const inventoryProject = './packed standard project';
+  const inventoryArtifact = join(installDir, inventoryProject, 'maestro/sources/source-inventory.json');
+  const sourceProject = './packed source project';
+  run(process.execPath, [installedCreate, '--yes', '--no-git', '--target', sourceProject, '--start', 'idea'], installDir);
+  const sourceArgs = ['sources', '--path', inventoryProject, '--source', join(installDir, sourceProject)];
+  const analyzed = JSON.parse(run(process.execPath, [installedMaestro, ...sourceArgs, '--json'], installDir));
+  assert.equal(analyzed.reportVersion, 1, 'packed sources JSON must publish reportVersion=1');
+  assert.equal(analyzed.ownership, 'READ_ONLY_SOURCE', 'packed sources must declare read-only ownership');
+  assert.equal(analyzed.write, null, 'packed sources must not write by default');
+  await assert.rejects(access(inventoryArtifact), 'default packed sources run must stay zero-write');
+
+  run(process.execPath, [installedMaestro, ...sourceArgs, '--write'], installDir);
+  await access(inventoryArtifact);
+  const afterWrite = JSON.parse(run(process.execPath, [installedMaestro, 'doctor', '--path', inventoryProject, '--json'], installDir));
+  assert.equal(afterWrite.ok, true, 'written source inventory must keep packed doctor green');
+  const rewrite = runResult(process.execPath, [installedMaestro, ...sourceArgs, '--write'], installDir);
+  assert.notEqual(rewrite.status, 0, 'second packed --write must refuse silent overwrite');
 
   const canonicalManifestText = await readFile(join(installDir, './packed standard project', '.maestro/manifest.json'), 'utf8');
 

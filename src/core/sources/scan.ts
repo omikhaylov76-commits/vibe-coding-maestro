@@ -1,0 +1,153 @@
+/**
+ * Ограниченный обход существующего исходника (Planning Gate, Phase 4).
+ *
+ * Обход собирает только метаданные: имя, тип и размер. Содержимое файлов здесь не
+ * читается вообще — это делает отдельный шаг для явно разрешённых манифестов.
+ * Границы обхода детерминированы (глубина, число записей), symlink никогда не
+ * раскрывается, а пути с признаками секретов не попадают ни в результат, ни в счёт.
+ */
+
+import { lstat, readdir } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
+import { createHash } from 'node:crypto';
+import { compareText } from './model.js';
+import type { AnalyzeLimits } from './model.js';
+
+export const DEFAULT_LIMITS: AnalyzeLimits = {
+  maxDepth: 5,
+  maxEntries: 2000,
+  maxFileBytes: 256 * 1024,
+};
+
+/**
+ * Каталоги, которые не обходятся никогда.
+ *
+ * Часть из них — производные артефакты (их обход только зашумляет evidence и
+ * взрывает лимит), часть — известные хранилища ключей. `.git` обрабатывается
+ * отдельно: его присутствие — факт, а его содержимое не читается.
+ */
+const DENY_DIRS: ReadonlySet<string> = new Set([
+  'node_modules', 'bower_components', 'vendor', 'dist', 'build', 'out', 'target',
+  'coverage', '.next', '.nuxt', '.output', '.svelte-kit', '.turbo', '.parcel-cache',
+  '.cache', '.gradle', '.m2', '__pycache__', '.venv', 'venv', 'env', '.tox', '.mypy_cache',
+  '.pytest_cache', '.idea', '.vscode', '.terraform', '.vagrant', '.pnpm-store', 'pods',
+  '.hg', '.svn', '.bzr', '.ssh', '.aws', '.gnupg', '.docker', '.kube',
+]);
+
+const SECRET_EXTENSIONS: readonly string[] = [
+  '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.asc', '.gpg', '.ppk', '.kdbx', '.crt.key',
+];
+
+const SECRET_EXACT: ReadonlySet<string> = new Set([
+  '.npmrc', '.netrc', '_netrc', '.pgpass', '.htpasswd', '.git-credentials',
+  'credentials', 'credentials.json', 'secrets.json', 'secring.gpg', '.dockercfg',
+]);
+
+/** Разделители не дают ложных срабатываний вида «keyboard» или «tokenizer». */
+const SECRET_WORD = /(^|[-_. ])(secret|secrets|password|passwd|credential|credentials|keystore|keypair)([-_. ]|$)/i;
+const SECRET_PREFIX = /^(id_(rsa|dsa|ecdsa|ed25519)|\.env)/i;
+const SERVICE_ACCOUNT = /service[-_. ]?account/i;
+
+/** Опознаёт путь с признаками секрета по имени. Эвристика намеренно широкая. */
+export function isSecretName(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (SECRET_EXACT.has(lower) || SECRET_PREFIX.test(lower) || SECRET_WORD.test(lower) || SERVICE_ACCOUNT.test(lower)) return true;
+  return SECRET_EXTENSIONS.some((extension) => lower.endsWith(extension));
+}
+
+export interface ScannedFile {
+  path: string;
+  size: number;
+}
+
+export interface ScanResult {
+  files: ScannedFile[];
+  dirs: string[];
+  /** Каталоги с собственным `.git` внутри источника: чужая история. */
+  nestedRepos: string[];
+  entries: number;
+  truncated: boolean;
+  secretsSkipped: number;
+  symlinksSkipped: number;
+  skippedDirs: number;
+  unreadableDirs: number;
+  fingerprint: string;
+}
+
+const posixPath = (root: string, absolute: string): string => relative(root, absolute).split(sep).join('/');
+
+/**
+ * Обходит дерево источника вширь по отсортированным именам.
+ *
+ * Порядок обхода детерминирован, поэтому усечение по лимиту тоже детерминировано:
+ * повторный запуск на неизменном дереве даёт тот же результат и тот же отпечаток.
+ */
+export async function scanSourceTree(root: string, limits: AnalyzeLimits): Promise<ScanResult> {
+  const result: ScanResult = {
+    files: [], dirs: [], nestedRepos: [],
+    entries: 0, truncated: false, secretsSkipped: 0, symlinksSkipped: 0, skippedDirs: 0, unreadableDirs: 0,
+    fingerprint: '',
+  };
+
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (result.truncated) return;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      result.unreadableDirs += 1;
+      return;
+    }
+    const names = entries.map((entry) => entry.name).sort(compareText);
+    const byName = new Map(entries.map((entry) => [entry.name, entry]));
+    const descend: string[] = [];
+
+    for (const name of names) {
+      if (result.entries >= limits.maxEntries) { result.truncated = true; return; }
+      const entry = byName.get(name)!;
+      const absolute = join(dir, name);
+      const path = posixPath(root, absolute);
+
+      if (entry.isSymbolicLink()) { result.symlinksSkipped += 1; continue; }
+
+      if (entry.isDirectory()) {
+        if (name === '.git') {
+          if (depth > 0) result.nestedRepos.push(posixPath(root, dir));
+          result.skippedDirs += 1;
+          continue;
+        }
+        if (DENY_DIRS.has(name.toLowerCase()) || isSecretName(name)) { result.skippedDirs += 1; continue; }
+        result.entries += 1;
+        result.dirs.push(path);
+        if (depth + 1 < limits.maxDepth) descend.push(absolute);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (isSecretName(name)) { result.secretsSkipped += 1; continue; }
+      let size = 0;
+      try {
+        size = (await lstat(absolute)).size;
+      } catch {
+        continue;
+      }
+      result.entries += 1;
+      result.files.push({ path, size });
+    }
+
+    for (const child of descend) await walk(child, depth + 1);
+  };
+
+  await walk(root, 0);
+  result.files.sort((left, right) => compareText(left.path, right.path));
+  result.dirs.sort(compareText);
+  result.nestedRepos.sort(compareText);
+
+  // Отпечаток строится по путям и размерам: без содержимого и без времени,
+  // поэтому он воспроизводим на другой машине с тем же деревом.
+  const digest = createHash('sha256');
+  for (const file of result.files) digest.update(`${file.path}\0${file.size}\n`);
+  digest.update(`truncated:${String(result.truncated)}\n`);
+  result.fingerprint = digest.digest('hex');
+  return result;
+}

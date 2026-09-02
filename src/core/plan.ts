@@ -136,10 +136,18 @@ export const ACTIVE_PLAN_NONE = 'none';
 
 /**
  * Ссылка на активный план в `hot.md`: путь относительно `wiki/`, как active_progress.
- * Владелец правила — контракт плана; doctor и preflight читают его отсюда.
+ *
+ * Граница 0.3 beta: активный план обязан лежать в плоском `wiki/plans/` — ровно в
+ * том каталоге, который doctor перечисляет и проверяет. `wiki/programs/<слаг>/` в
+ * этой бете хранит проектные материалы программы и планами не считается.
+ *
+ * Сужение здесь, а не в одном из слоёв, принципиально: preflight не имеет права
+ * признать доказанным документ, которого doctor не видит. Расширять границу до
+ * program/phase layout можно только вместе с его registry — и сразу в обоих слоях,
+ * потому что владелец правила один.
  */
 export function isWikiRelativePlanRef(value: string): boolean {
-  return value.endsWith('.md') && isProjectRelativeSourceRef(value);
+  return /^plans\/[^/]+\.md$/.test(value) && isProjectRelativeSourceRef(value);
 }
 
 /**

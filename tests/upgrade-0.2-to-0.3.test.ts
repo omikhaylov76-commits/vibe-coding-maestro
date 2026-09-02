@@ -8,12 +8,19 @@ import { runMaestroCli } from '../src/cli/maestro.js';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
 import { canonicalOwnershipInventory } from '../src/core/inventory.js';
+import { renderTemplate } from '../src/core/template.js';
 import { isCanonicalManifest, loadChecksums, loadManifest, MANIFEST_PATH } from '../src/core/manifest.js';
 import { VERSION } from '../src/core/meta.js';
+import { packageRoot } from '../src/core/paths.js';
 import { analyzeUpgrade, STAGING_DIR, upgradeProject } from '../src/core/upgrade/index.js';
-import { baselineOwnershipInventory } from '../src/core/upgrade/baseline.js';
-import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8, snapshotTree } from './helpers.js';
-import { makeLegacy02Project } from './legacy-0.2.js';
+import {
+  BASELINE_MANAGED_SHA256,
+  BASELINE_TEMPLATE_FILES,
+  BASELINE_TEMPLATES,
+  baselineOwnershipInventory,
+} from '../src/core/upgrade/baseline.js';
+import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8, sha256, snapshotTree } from './helpers.js';
+import { baseline02Source, canonicalManagedSource, makeLegacy02Project } from './legacy-0.2.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,7 +37,7 @@ const NEW_PATHS = [
 ];
 
 /** Managed-файлы, содержимое которых 0.3 обновляет. */
-const UPDATED_PATHS = ['AGENTS.md', 'CLAUDE.md', 'protocols/build.md', 'wiki/index.md'];
+const UPDATED_PATHS = ['.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'protocols/build.md', 'wiki/index.md'];
 
 const codes = (blockers: readonly { code: string }[]): string[] => blockers.map((item) => item.code);
 
@@ -43,6 +50,43 @@ function collect() {
     stderr: () => err.join('\n'),
   };
 }
+
+/**
+ * Опора этой группы — `BASELINE_MANAGED_SHA256`, слепок фактического 0.2-дерева.
+ * Он снят с коммита 0.2 и не выводится из `BASELINE_TEMPLATES`, поэтому вопрос
+ * «что именно 0.3 изменил» задаётся прошлому, а не самому проверяемому списку.
+ */
+describe('0.3 Phase 3: baseline 0.2 не дрейфует', () => {
+  it('слепок 0.2 покрывает весь managed-инвентарь того канона', () => {
+    expect(Object.keys(BASELINE_MANAGED_SHA256).sort()).toEqual([...BASELINE_TEMPLATE_FILES].sort());
+  });
+
+  it('BASELINE_TEMPLATES перечисляет ровно те managed-пути, чьё содержимое 0.3 изменил', async () => {
+    const changed: string[] = [];
+    for (const path of BASELINE_TEMPLATE_FILES) {
+      if (sha256(await canonicalManagedSource(path)) !== BASELINE_MANAGED_SHA256[path]) changed.push(path);
+    }
+    expect(changed.sort()).toEqual(BASELINE_TEMPLATES.map((template) => template.path).sort());
+  });
+
+  it('baseline-копия каждого пути совпадает и со своей записью, и со слепком 0.2', async () => {
+    for (const template of BASELINE_TEMPLATES) {
+      const source = (await readFile(join(packageRoot(), template.source), 'utf8')).replace(/\r\n/g, '\n');
+      expect(sha256(source), template.path).toBe(template.sha256);
+      expect(template.sha256, template.path).toBe(BASELINE_MANAGED_SHA256[template.path]);
+      // Копия обязана быть именно прошлым содержимым, а не текущим шаблоном.
+      expect(source, template.path).not.toBe(await canonicalManagedSource(template.path));
+    }
+  });
+
+  it('фикстура 0.2 отдаёт прошлое содержимое каждого managed-пути', async () => {
+    const legacy = await makeLegacy02Project();
+    const vars = { projectName: legacy.displayName, date: legacy.date, startingPoint: legacy.startingPoint };
+    for (const path of BASELINE_TEMPLATE_FILES) {
+      expect(await readUtf8(legacy.root, path), path).toBe(renderTemplate(await baseline02Source(path), vars));
+    }
+  });
+});
 
 describe('0.3 Phase 3: воспроизведение дефекта на проекте 0.2', () => {
   it('канонический проект 0.2 считается текущим бинарником неканоническим', async () => {

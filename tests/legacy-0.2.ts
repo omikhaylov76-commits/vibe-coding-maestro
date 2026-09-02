@@ -1,7 +1,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect } from 'vitest';
-import { initProject } from '../src/core/init.js';
+import { GITATTRIBUTES_CONTENT, initProject } from '../src/core/init.js';
 import { canonicalOwnershipInventory } from '../src/core/inventory.js';
 import {
   buildManifest,
@@ -13,15 +13,16 @@ import {
 import type { ProjectDepth } from '../src/core/manifest.js';
 import { CREATE_COMMAND } from '../src/core/meta.js';
 import type { StartingPoint } from '../src/core/meta.js';
-import { packageRoot, readPackageJson } from '../src/core/paths.js';
+import { packageRoot, readPackageJson, templatesDir } from '../src/core/paths.js';
 import { renderTemplate } from '../src/core/template.js';
 import {
+  BASELINE_MANAGED_SHA256,
   BASELINE_PRODUCT_VERSIONS,
   BASELINE_TEMPLATES,
   baselineOwnershipInventory,
 } from '../src/core/upgrade/baseline.js';
 import { canonicalManagedKind } from '../src/core/inventory.js';
-import { FIXED_DATE, FIXED_NOW, makeTempDir } from './helpers.js';
+import { FIXED_DATE, FIXED_NOW, makeTempDir, sha256 } from './helpers.js';
 
 /**
  * Точная реконструкция проекта, созданного каноном 0.2.
@@ -49,10 +50,42 @@ export interface LegacyOptions {
   git?: boolean;
 }
 
+const lf = (text: string): string => text.replace(/\r\n/g, '\n');
+
+/** Baseline-копии, поставляемые пакетом: путь проекта → путь копии внутри пакета. */
+const BASELINE_COPIES = new Map(BASELINE_TEMPLATES.map((template) => [template.path, template.source]));
+
+/**
+ * Исходник managed-пути в том виде, в каком его поставляет ТЕКУЩИЙ канон.
+ * `.gitattributes` шаблоном на диске не является: его пишет константа init.
+ */
+export async function canonicalManagedSource(path: string): Promise<string> {
+  if (path === '.gitattributes') return GITATTRIBUTES_CONTENT;
+  return lf(await readFile(join(templatesDir(), 'project', path), 'utf8'));
+}
+
+/**
+ * Исходник managed-пути в каноне 0.2.
+ *
+ * Пути, содержимое которых 0.3 изменил, поставляются копией в `registry/baseline`;
+ * остальные берутся из текущего шаблона — но только после сверки с замороженным
+ * слепком 0.2. Поэтому фикстура не может молча выдать 0.3-содержимое за прошлый
+ * канон: путь, выпавший из `BASELINE_TEMPLATES`, падает здесь, а не превращается
+ * в «0.2-проект», который на самом деле наполовину 0.3.
+ */
+export async function baseline02Source(path: string): Promise<string> {
+  const copy = BASELINE_COPIES.get(path);
+  const source = copy === undefined
+    ? await canonicalManagedSource(path)
+    : lf(await readFile(join(packageRoot(), copy), 'utf8'));
+  expect(sha256(source), `исходник 0.2 для ${path}`).toBe(BASELINE_MANAGED_SHA256[path]);
+  return source;
+}
+
 /** Строки, добавленные каноном 0.3 в project-owned hot.md. */
 const HOT_ADDITIONS: readonly string[] = [
   'active_plan: none\n',
-  '<!-- Contract: active_plan is none, or one wiki-relative plan path whose frontmatter has status: active. A project created before 0.3 has no active_plan field; a missing field is read as none. -->\n',
+  '<!-- Contract: active_plan is none, or one plans/<file>.md path under wiki/plans/ whose frontmatter has status: active. In 0.3 beta wiki/programs/<slug>/ holds program material that doctor does not check, so it cannot be declared here. A project created before 0.3 has no active_plan field; a missing field is read as none. -->\n',
 ];
 
 export async function makeLegacy02Project(options: LegacyOptions = {}): Promise<LegacyProject> {
@@ -82,11 +115,18 @@ export async function makeLegacy02Project(options: LegacyOptions = {}): Promise<
   }
   await rm(join(root, 'wiki/plans'), { recursive: true, force: true });
 
-  // 2. Managed-файлы возвращаются к прошлому каноническому содержимому.
+  // 2. ВСЕ managed-файлы возвращаются к прошлому каноническому содержимому.
+  // Откат только по BASELINE_TEMPLATES оставлял бы в «0.2-проекте» файлы 0.3 и
+  // делал неполноту этого списка принципиально ненаблюдаемой.
   const vars = { projectName: displayName, date: FIXED_DATE, startingPoint };
-  for (const template of BASELINE_TEMPLATES) {
-    const source = await readFile(join(packageRoot(), template.source), 'utf8');
-    await writeFile(join(root, template.path), renderTemplate(source, vars), 'utf8');
+  for (const [path, ownership] of Object.entries(baseline)) {
+    if (ownership !== 'managed' && ownership !== 'immutable') continue;
+    if (path.endsWith('/.gitkeep')) {
+      // Пустой маркер каталога: в обоих канонах это ноль байт, восстанавливать нечего.
+      expect(await readFile(join(root, path), 'utf8'), path).toBe('');
+      continue;
+    }
+    await writeFile(join(root, path), renderTemplate(await baseline02Source(path), vars), 'utf8');
   }
 
   // 3. project-owned hot.md: в 0.2 полей 0.3 в нём не было.

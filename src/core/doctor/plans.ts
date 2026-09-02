@@ -15,7 +15,9 @@ const NON_PLAN_FILES: ReadonlySet<string> = new Set(['README.md', 'TEMPLATE.md']
 /**
  * Project scope планов в минимальном контракте 0.3 — ровно один плоский каталог.
  * Program/phase layout (wiki/programs/...) появится вместе со своим registry;
- * до тех пор такие пути не перечисляются и не выдаются за проверенные.
+ * до тех пор такие пути не перечисляются и не выдаются за проверенные — и ровно
+ * ту же границу держит `isWikiRelativePlanRef`, поэтому preflight не может счесть
+ * доказанным план, невидимый здесь.
  */
 function planFileName(path: string): string | null {
   const match = /^wiki\/plans\/([^/]+\.md)$/.exec(path);
@@ -73,7 +75,7 @@ export function checkPlans(root: string, decoded: ReadonlyMap<string, string>, f
    */
   const declared = hotMeta.active_plan ?? ACTIVE_PLAN_NONE;
   if (declared !== ACTIVE_PLAN_NONE && (!isWikiRelativePlanRef(declared) || !existsSync(join(root, 'wiki', declared)))) {
-    findings.push(error('hot-active-plan-invalid', 'Contract: hot.md active_plan должен быть none либо существующим wiki-относительным путём к плану.', HOT_PATH));
+    findings.push(error('hot-active-plan-invalid', 'Contract: hot.md active_plan должен быть none либо существующим планом в wiki/plans/.', HOT_PATH));
     return;
   }
 

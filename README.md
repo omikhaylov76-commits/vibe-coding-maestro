@@ -135,6 +135,8 @@ node dist/bin/vibe-maestro.js doctor --path "../My Project"
 | `PROJECT` | полный пакет планирования в одном основном плане |
 | `PROGRAM` / `INTEGRATION` | `wiki/programs/<слаг>/`: программа, фазы и source inventory |
 
+В 0.3 beta активный план обязан лежать в `wiki/plans/`: только этот каталог проверяют `doctor` и `preflight`. `wiki/programs/<слаг>/` в этой бете — проектные материалы программы, не проверяемые doctor.
+
 ### Что делает человек, а что агент
 
 | Человек | Агент |

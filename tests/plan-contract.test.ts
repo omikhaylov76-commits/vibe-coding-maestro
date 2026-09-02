@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
+import { buildPreflight } from '../src/core/preflight.js';
 import {
   PLAN_GOVERNANCES,
   PLAN_KINDS,
@@ -354,5 +355,63 @@ describe('0.3 Phase 1: doctor plan validation', () => {
     expect(report.ok).toBe(false);
     expect(report.findings).toContainEqual(expect.objectContaining({ code: 'plan-schema-invalid', path: 'wiki/plans/cross.md' }));
     expect(report.findings.some((finding) => finding.code === 'plan-supersedes-unresolved')).toBe(false);
+  });
+});
+
+/**
+ * Граница 0.3 beta: активный план живёт ровно в `wiki/plans/`.
+ *
+ * `wiki/programs/<слаг>/` в этой бете — проектные материалы программы; doctor их
+ * не перечисляет и планами не признаёт. Опасно здесь не само сужение, а молчаливое
+ * расхождение двух слоёв: если preflight считает доказанным то, чего doctor не
+ * видит, гейт разрешает код по документу, который никто не проверял. Поэтому оба
+ * слоя читают ОДИН предикат из `core/plan.ts` и обязаны отвечать одинаково.
+ */
+describe('0.3 Phase 3: doctor и preflight согласованы на PROGRAM-раскладке', () => {
+  const APPROVED_PHASE: Record<string, string> = {
+    id: 'PLAN-0002',
+    kind: 'phase',
+    status: 'active',
+    scale: 'program',
+    approved_by: 'Оператор',
+    approved_at: '2026-08-06',
+    blocking_questions: '0',
+    spec_delta: 'none',
+    current_slice: 'shell-routing',
+  };
+
+  /** Проект с фазовым планом ровно по раскладке из protocols/plan.md. */
+  async function programProject(): Promise<string> {
+    const target = await fresh();
+    await mkdir(join(target, 'wiki/programs/portal/plans'), { recursive: true });
+    await writeFile(join(target, 'wiki/programs/portal/plans/0002-shell.md'), planDoc(APPROVED_PHASE), 'utf8');
+    await setHotField(target, 'active_plan', 'programs/portal/plans/0002-shell.md');
+    return target;
+  }
+
+  it('doctor отвергает active_plan вне wiki/plans', async () => {
+    const report = await doctorProject(await programProject());
+    expect(report.ok).toBe(false);
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ code: 'hot-active-plan-invalid', path: 'wiki/hot.md' }),
+    );
+  });
+
+  it('preflight на том же проекте тоже закрывает гейт, а не разрешает сборку', async () => {
+    const decision = await buildPreflight(await programProject(), { scale: 'program' });
+    expect(decision.ok).toBe(false);
+    expect(decision.slice).toBeNull();
+    expect(decision.findings.map((item) => item.code)).toContain('preflight-plan-path-invalid');
+  });
+
+  it('плоский wiki/plans остаётся зелёным в обоих слоях', async () => {
+    const target = await fresh();
+    await writePlan(target, 'active.md', { ...APPROVED_PHASE, kind: 'feature', scale: 'feature' });
+    await setHotField(target, 'active_plan', 'plans/active.md');
+
+    expect((await doctorProject(target, { strict: true })).findings).toEqual([]);
+    const decision = await buildPreflight(target, { scale: 'feature' });
+    expect(decision.ok, JSON.stringify(decision.findings)).toBe(true);
+    expect(decision.slice).toBe('shell-routing');
   });
 });

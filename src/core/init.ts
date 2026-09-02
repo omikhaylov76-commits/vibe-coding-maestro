@@ -34,7 +34,7 @@ const IGNORED_WHEN_EMPTY_CHECK: readonly string[] = ['.git', '.DS_Store'];
 
 /** Шаблон .gitattributes: фиксирует LF для текстовых файлов проекта. */
 const GITATTRIBUTES_PATH = '.gitattributes';
-const GITATTRIBUTES_CONTENT = '* text=auto eol=lf\n*.md text eol=lf\n*.json text eol=lf\n*.yml text eol=lf\n*.yaml text eol=lf\n';
+export const GITATTRIBUTES_CONTENT = '* text=auto eol=lf\n*.md text eol=lf\n*.json text eol=lf\n*.yml text eol=lf\n*.yaml text eol=lf\n';
 
 export interface InitOptions {
   target: string;

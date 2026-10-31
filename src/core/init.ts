@@ -10,6 +10,7 @@ import type { StartingPoint } from './meta.js';
 import {
   CHECKSUMS_PATH,
   CREATING_MARKER_PATH,
+  normalizeEol,
   contentChecksum,
   loadChecksums,
   MAESTRO_DIR,
@@ -157,7 +158,8 @@ async function recoverProjectVars(
   const found: { projectName?: string; date?: string } = {};
   for (const relativePath of TEMPLATE_FILES) {
     if (relativePath === GITATTRIBUTES_PATH || checksums[relativePath] === undefined) continue;
-    const source = await readTemplate(relativePath);
+    // Шаблоны пакета на Windows могут прийти с CRLF, а файлы проекта всегда пишутся с LF.
+    const source = normalizeEol(await readTemplate(relativePath));
     const uses = templateUses(source);
     if ((!uses.projectName || found.projectName !== undefined) && (!uses.date || found.date !== undefined)) continue;
     let actual: string;

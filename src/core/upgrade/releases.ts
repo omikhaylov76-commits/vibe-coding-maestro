@@ -235,10 +235,11 @@ const V030_CONTENT_OWNED_FILES: readonly string[] = [
   'wiki/plans/0001-starter.md',
 ];
 
-function v030OwnershipInventory(depth: BaselineDepth): Readonly<Record<string, BaselineOwnership>> {
-  return {
-    ...Object.fromEntries(V030_TEMPLATE_FILES.map((path) => [path, 'managed' as const])),
-    ...Object.fromEntries(V030_CONTENT_OWNED_FILES.map((path) => [path, 'project-owned' as const])),
+/** Форма inventory канонов 0.3.0 и новее: managed-шаблоны, файлы проекта, каталоги по глубине. */
+function ownershipInventory(templateFiles: readonly string[], contentOwnedFiles: readonly string[]) {
+  return (depth: BaselineDepth): Readonly<Record<string, BaselineOwnership>> => ({
+    ...Object.fromEntries(templateFiles.map((path) => [path, 'managed' as const])),
+    ...Object.fromEntries(contentOwnedFiles.map((path) => [path, 'project-owned' as const])),
     ...Object.fromEntries(v03LazyDirs(depth).map((path) => [
       `${path}/.gitkeep`,
       path === 'maestro/sources' ? 'immutable' as const : 'managed' as const,
@@ -246,8 +247,10 @@ function v030OwnershipInventory(depth: BaselineDepth): Readonly<Record<string, B
     '.gitignore': 'project-owned',
     '.maestro/manifest.json': 'generated',
     '.maestro/checksums.json': 'generated',
-  };
+  });
 }
+
+const v030OwnershipInventory = ownershipInventory(V030_TEMPLATE_FILES, V030_CONTENT_OWNED_FILES);
 
 /** Слепок `templates/project` 0.3.0. */
 const V030_MANAGED_SHA256: Readonly<Record<string, string>> = {
@@ -287,6 +290,35 @@ const V030_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/build/audit-phase.md': 'ac0c1919380516e3c0da09697b2a021a96866016816fb76d7aef2866c8c08f81',
 };
 
+/** 0.3.1: тот же состав файлов; в правилах Maestro управляемые команды названы поимённо. */
+const V031_MANAGED_SHA256: Readonly<Record<string, string>> = {
+  ...V030_MANAGED_SHA256,
+  '.claude/rules/maestro.md': '340131be8c15a06fb7905452f000fa7dac775093c85370163c0af68c14198cae',
+};
+
+/** Копии шаблонов 0.3.1, изменённых в 0.4.0. В 0.3.0 протоколы были побайтово такими же. */
+const v031Copy = (path: string): BaselineTemplate => ({
+  path,
+  source: `registry/baseline/0.3.1/project/${path}`,
+  sha256: V031_MANAGED_SHA256[path] as string,
+});
+
+/** Протоколы, которые 0.4.0 изменил: в 0.3.0 и 0.3.1 они одинаковы. */
+const CHANGED_IN_040_SAME_SINCE_030: readonly string[] = ['protocols/build.md', 'protocols/handoff.md'];
+
+/** Канон 0.4.0: протокол «Завершение» (Maestro) и паспорт проекта (проект). */
+const V040_TEMPLATE_FILES: readonly string[] = [...V030_TEMPLATE_FILES, 'protocols/completion.md'];
+const V040_CONTENT_OWNED_FILES: readonly string[] = [...V030_CONTENT_OWNED_FILES, 'wiki/passport.md'];
+
+/** Слепок `templates/project` 0.4.0. */
+const V040_MANAGED_SHA256: Readonly<Record<string, string>> = {
+  ...V030_MANAGED_SHA256,
+  '.claude/rules/maestro.md': 'dacbd95bb4d36258a6fd1c2a0982bcad4e32492f031c82133c0165397860e078',
+  'protocols/build.md': 'e7c1df3dc5b44ed6b03c4d83e28afcdc7e048b48fb20168f622238d6b7d502a9',
+  'protocols/handoff.md': '4f01fb23b248d4acd1d5b917fc08971d763eeccf893286d58decc4b3345d1ce2',
+  'protocols/completion.md': '5dcb2c9180f3abfabb4988b57163966d1a04fe16abc783108a47d4034785172e',
+};
+
 export const RELEASES: readonly Release[] = [
   {
     id: BASELINE_ID,
@@ -318,18 +350,27 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.3.0'],
     inventory: v030OwnershipInventory,
     managedSha256: V030_MANAGED_SHA256,
-    templates: [{
-      path: '.claude/rules/maestro.md',
-      source: 'registry/baseline/0.3.0/project/.claude/rules/maestro.md',
-      sha256: V030_MANAGED_SHA256['.claude/rules/maestro.md'] as string,
-    }],
+    templates: [
+      {
+        path: '.claude/rules/maestro.md',
+        source: 'registry/baseline/0.3.0/project/.claude/rules/maestro.md',
+        sha256: V030_MANAGED_SHA256['.claude/rules/maestro.md'] as string,
+      },
+      ...CHANGED_IN_040_SAME_SINCE_030.map(v031Copy),
+    ],
   },
   {
-    // 0.3.1: тот же состав файлов; в правилах Maestro управляемые команды названы поимённо.
     id: '0.3.1',
     versions: ['0.3.1'],
     inventory: v030OwnershipInventory,
-    managedSha256: { ...V030_MANAGED_SHA256, '.claude/rules/maestro.md': '340131be8c15a06fb7905452f000fa7dac775093c85370163c0af68c14198cae' },
+    managedSha256: V031_MANAGED_SHA256,
+    templates: ['.claude/rules/maestro.md', ...CHANGED_IN_040_SAME_SINCE_030].map(v031Copy),
+  },
+  {
+    id: '0.4.0',
+    versions: ['0.4.0'],
+    inventory: ownershipInventory(V040_TEMPLATE_FILES, V040_CONTENT_OWNED_FILES),
+    managedSha256: V040_MANAGED_SHA256,
     templates: [],
   },
 ];

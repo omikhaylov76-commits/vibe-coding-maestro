@@ -61,7 +61,8 @@ describe('путь нового пользователя (0.3.0)', () => {
     expect(await readUtf8(root, '.claude/rules/maestro.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro doctor`);
     expect(await readUtf8(root, 'CLAUDE.md')).toContain('.claude/rules/maestro.md');
     const settings = JSON.parse(await readUtf8(root, '.claude/settings.json')) as { permissions: { deny: string[]; ask: string[] } };
-    expect(settings.permissions.deny).toContain('Read(.env)');
+    // С 0.4.0 агент может сам записать ключ в .env; от git его защищают .gitignore и doctor.
+    expect(settings.permissions.deny.some((rule) => rule.includes('.env'))).toBe(false);
     expect(settings.permissions.deny).toContain('Edit(/wiki/plans/TEMPLATE.md)');
     expect(settings.permissions.ask).toContain('Bash(git push *)');
 

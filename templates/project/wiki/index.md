@@ -13,6 +13,7 @@ updated: ГГГГ-ММ-ДД
 - [roadmap.md](roadmap.md) — этапы и их состояние.
 - [log.md](log.md) — журнал сделанного, только дописывается.
 - [concepts/discovery.md](concepts/discovery.md) — что за продукт и для кого.
+- [passport.md](passport.md) — паспорт: где что живёт и как запустить, обновить, откатить.
 - [plans/README.md](plans/README.md) — как устроены планы и их утверждение.
 
 ## Планы

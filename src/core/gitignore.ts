@@ -14,6 +14,8 @@ export const REQUIRED_GITIGNORE_ENTRIES: readonly string[] = [
   '!.env.example',
   '*.log',
   '.DS_Store',
+  '.claude/worktrees/',
+  '.claude/settings.local.json',
 ];
 
 const BLOCK_HEADER = `# --- ${PRODUCT_NAME} ---`;

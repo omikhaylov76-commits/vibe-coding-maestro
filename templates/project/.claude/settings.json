@@ -1,8 +1,6 @@
 {
   "permissions": {
     "deny": [
-      "Read(.env)",
-      "Read(.env.*)",
       "Edit(/protocols/**)",
       "Edit(/.maestro/**)",
       "Edit(/.claude/rules/maestro.md)",

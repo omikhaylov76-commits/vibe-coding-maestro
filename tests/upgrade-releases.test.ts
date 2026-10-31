@@ -24,15 +24,24 @@ const DEPTHS: readonly ProjectDepth[] = ['light', 'standard', 'advanced'];
 /** Файлы, в которых после upgrade стоит закреплённая версия вместо `@latest`. */
 const PINNED_PATHS = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/plan.md'];
 
-/** Новые пути канона 0.3.0 относительно 0.3 beta. */
-const NEW_IN_030 = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md'];
+/** Новые пути канона 0.4.0 относительно 0.3.0 и 0.3.1. */
+const NEW_IN_040 = ['protocols/completion.md', 'wiki/passport.md'];
+
+/** Новые пути текущего канона относительно 0.3 beta. */
+const NEW_SINCE_BETA = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', ...NEW_IN_040].sort();
+
+/** Новые пути, которыми владеет проект: контрольной суммы Maestro у них нет. */
+const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md'];
+
+/** Строки, которые 0.4.0 дописывает в `.gitignore` проекта. */
+const GITIGNORE_APPENDS = ['.claude/worktrees/', '.claude/settings.local.json'];
 
 /** Бывшие managed-файлы, которые 0.3.0 передаёт проекту. */
 const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
 
 /** Всё, что upgrade с 0.3 beta переписывает на нетронутом проекте. */
 const UPDATED_FROM_BETA = [
-  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md', 'protocols/context-budget.md',
+  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md', 'protocols/context-budget.md',
   'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md', 'wiki/index.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
 ];
 
@@ -50,6 +59,12 @@ interface PublishedFixture {
  * действительно записывал, тесты ниже это покажут.
  */
 const FIXTURES = ['0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-standard', '0.3.0-beta.3-advanced', '0.3.0-beta.4-standard'];
+
+/** Проекты опубликованных 0.3.0 и 0.3.1: после них состав файлов поменялся в 0.4.0. */
+const FIXTURES_03X = ['0.3.0-standard', '0.3.1-light', '0.3.1-standard', '0.3.1-advanced'];
+
+/** Всё, что upgrade с 0.3.0 и 0.3.1 переписывает на нетронутом проекте. */
+const UPDATED_FROM_03X = ['.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'];
 
 async function fixture(id: string): Promise<PublishedFixture> {
   return JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/published', `${id}.json`), 'utf8')) as PublishedFixture;
@@ -145,7 +160,7 @@ describe('реестр опубликованных канонов', () => {
     }
   });
 
-  it.each(FIXTURES)('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
     const data = await fixture(id);
     const release = findRelease(data.version);
     expect(release).toBeDefined();
@@ -176,7 +191,7 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(analysis.status).toBe('upgradable');
     expect(analysis.fromVersion).toBe(data.version);
     expect(analysis.toVersion).toBe(VERSION);
-    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_030);
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_SINCE_BETA);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_BETA);
     expect(analysis.handedOver).toEqual(HANDED_OVER);
     expect(analysis.preserves).toContain('wiki/hot.md');
@@ -192,7 +207,7 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(result.error).toBeUndefined();
     expect(result.applied).toBe(true);
     expect(result.updatedFiles.filter((path) => !path.startsWith('.maestro/')).sort()).toEqual(UPDATED_FROM_BETA);
-    expect(result.createdFiles.sort()).toEqual(NEW_IN_030);
+    expect(result.createdFiles.sort()).toEqual(NEW_SINCE_BETA);
 
     for (const path of PINNED_PATHS) {
       const text = await readUtf8(root, path);
@@ -239,7 +254,8 @@ describe('upgrade с опубликованных бет на текущую в�
     expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
     const after = (await loadChecksums(root))?.files ?? {};
     for (const path of HANDED_OVER) expect(after[path], path).toBeUndefined();
-    for (const path of NEW_IN_030.filter((item) => !['.claude/rules/project.md', '.claude/settings.json'].includes(item))) expect(after[path], path).toMatch(/^[0-9a-f]{64}$/);
+    for (const path of NEW_SINCE_BETA.filter((item) => !NEW_PROJECT_OWNED.includes(item))) expect(after[path], path).toMatch(/^[0-9a-f]{64}$/);
+    for (const path of NEW_PROJECT_OWNED) expect(after[path], path).toBeUndefined();
     for (const path of Object.keys(before)) {
       if (HANDED_OVER.includes(path)) continue;
       if (UPDATED_FROM_BETA.includes(path)) expect(after[path], path).not.toBe(before[path]);
@@ -295,6 +311,77 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(await runMaestroCli(['upgrade', '--path', root], cli.io)).toBe(0);
     expect(cli.stdout()).toContain(`Предложение обновления 0.3.0-beta.3 → ${VERSION}`);
     expect(cli.stdout()).toContain(`npx --package create-vibe-maestro@${VERSION} vibe-maestro upgrade --path ${quotePathArg(root)} --apply`);
+  });
+});
+
+describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущую версию', () => {
+  it.each(FIXTURES_03X)('%s: dry-run называет новые файлы и строки .gitignore и не пишет ни байта', async (id) => {
+    const { root, data } = await materialize(id);
+    const before = await snapshotTree(root);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.fromVersion).toBe(data.version);
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_040);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_03X);
+    expect(analysis.updates.find((item) => item.path === '.gitignore')?.appends).toEqual(GITIGNORE_APPENDS);
+    expect(analysis.handedOver).toEqual([]);
+    expect(analysis.preserves).toContain('.claude/settings.json');
+    expect(analysis.preserves).not.toContain('.gitignore');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it.each(FIXTURES_03X)('%s: apply приносит протокол и паспорт, дописывает .gitignore, doctor --strict зелёный', async (id) => {
+    const { root, data } = await materialize(id);
+    const settings = await readUtf8(root, '.claude/settings.json');
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.error).toBeUndefined();
+    expect(result.applied).toBe(true);
+    expect(result.createdFiles.sort()).toEqual(NEW_IN_040);
+    expect(result.updatedFiles.filter((path) => !path.startsWith('.maestro/')).sort()).toEqual(UPDATED_FROM_03X);
+
+    const gitignore = data.files['.gitignore'] as string;
+    const next = await readUtf8(root, '.gitignore');
+    expect(next.startsWith(gitignore), 'строки проекта остались как были').toBe(true);
+    expect(next.slice(gitignore.length).split('\n').filter((line) => line !== '' && !line.startsWith('#'))).toEqual(GITIGNORE_APPENDS);
+    // settings.json принадлежит проекту: upgrade не снимает даже старый запрет на .env.
+    expect(await readUtf8(root, '.claude/settings.json')).toBe(settings);
+    expect(await readUtf8(root, 'wiki/passport.md')).toContain('## Переменные окружения');
+    expect(await readUtf8(root, '.claude/rules/maestro.md')).toContain('protocols/completion.md');
+    expect((await loadManifest(root)).product.version).toBe(VERSION);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await analyzeUpgrade(root)).analysis.status).toBe('current');
+  });
+
+  it('.gitignore проекта: дописывается только недостающее, свои строки и CRLF не тронуты', async () => {
+    const { root } = await materialize('0.3.1-standard');
+    const own = '# мой проект\r\nsecrets/\r\n.claude/worktrees/\r\n';
+    await writeFile(join(root, '.gitignore'), own, 'utf8');
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.updates.find((item) => item.path === '.gitignore')?.appends).toEqual(['node_modules/', '/dist/', '/build/', '/coverage/', '.env', '.env.*', '!.env.example', '*.log', '.DS_Store', '.claude/settings.local.json']);
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    const next = await readFile(join(root, '.gitignore'), 'utf8');
+    expect(next.startsWith(own)).toBe(true);
+    expect(next.match(/\.claude\/worktrees\//g)).toHaveLength(1);
+    expect(next.endsWith('.claude/settings.local.json\r\n')).toBe(true);
+  });
+
+  it('.gitignore, где всё уже есть, upgrade не трогает', async () => {
+    const { root, data } = await materialize('0.3.1-standard');
+    const full = `${data.files['.gitignore'] as string}.claude/worktrees/\n.claude/settings.local.json\n`;
+    await writeFile(join(root, '.gitignore'), full, 'utf8');
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.updates.map((item) => item.path)).not.toContain('.gitignore');
+    expect(analysis.preserves).toContain('.gitignore');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect(await readUtf8(root, '.gitignore')).toBe(full);
+  });
+
+  it('CLI называет строки, которые допишет в .gitignore', async () => {
+    const { root } = await materialize('0.3.1-standard');
+    const cli = collect();
+    expect(await runMaestroCli(['upgrade', '--path', root], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain(`Предложение обновления 0.3.1 → ${VERSION}`);
+    expect(cli.stdout()).toContain('.gitignore — допишет строки: .claude/worktrees/, .claude/settings.local.json');
   });
 });
 

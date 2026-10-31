@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.3.1';
+const BETA_VERSION = '0.4.0';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -131,6 +131,12 @@ describe('этапы 12–13: CI и документационные контр�
     for (const value of ['0.3.0-beta.4', '0.3.0', '0.4', 'Не делаем']) expect(roadmap).toContain(value);
     expect(roadmap).not.toMatch(/freelance|promtara|промтар|\bхаб|\/users\/|~\/projects/i);
     expect(await text('README.md')).toContain('docs/ROADMAP.md');
+  });
+
+  it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {
+    const files = [...await shippedTextFiles(), 'packages/vibe-maestro/README.md', 'packages/vibe-maestro/package.json'];
+    // Пример `/Users/me/…` в руководстве допустим; личные пути — нет.
+    for (const file of files) expect(await text(file), file).not.toMatch(/freelance|promtara|промтар|\bхаб|~\/projects|daddycool/i);
   });
 
   it('README честно документирует prerelease, beginner flow и canonical-only beta', async () => {

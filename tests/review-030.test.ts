@@ -204,28 +204,11 @@ describe('0.3.1', () => {
     expect(quiet.all()).not.toContain('не применён');
   });
 
-  it('upgrade с 0.3.0 меняет только закреплённую версию и правила Maestro', async () => {
-    const root = join(await makeTempDir('from-030-'), 'проект');
-    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+  it('upgrade настоящего проекта 0.3.0 закрепляет версию и приносит правила Maestro с поимённым списком', async () => {
+    // Проект, записанный опубликованным пакетом 0.3.0 (tests/fixtures/published).
+    const root = await fixtureProject('0.3.0-standard');
     const { VERSION } = await import('../src/core/meta.js');
-    const { contentChecksum, loadChecksums, loadManifest, MANIFEST_PATH, CHECKSUMS_PATH } = await import('../src/core/manifest.js');
-    // Проект в том виде, в каком его записала 0.3.0: та же разметка, другая версия в командах.
     const pinned = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/plan.md'];
-    const checksums = (await loadChecksums(root))?.files ?? {};
-    for (const path of pinned) {
-      // Правила Maestro в 0.3.1 изменились: для них берём замороженную копию 0.3.0 из пакета.
-      const source = path === '.claude/rules/maestro.md'
-        ? await readFile(join(process.cwd(), 'registry/baseline/0.3.0/project/.claude/rules/maestro.md'), 'utf8')
-        : await readUtf8(root, path);
-      const text = source.split(`create-vibe-maestro@${VERSION}`).join('create-vibe-maestro@0.3.0').split('create-vibe-maestro@{{MAESTRO_VERSION}}').join('create-vibe-maestro@0.3.0');
-      await writeFile(join(root, path), text, 'utf8');
-      checksums[path] = contentChecksum(path, text);
-    }
-    await writeFile(join(root, CHECKSUMS_PATH), `${JSON.stringify({ files: Object.fromEntries(Object.keys(checksums).sort().map((key) => [key, checksums[key]])) }, null, 2)}\n`, 'utf8');
-    const manifest = await loadManifest(root);
-    manifest.product.version = '0.3.0';
-    await writeFile(join(root, MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-
     const result = await maestro('upgrade', '--path', root, '--apply');
     expect(result.code, result.text).toBe(0);
     expect(result.text).toContain(`0.3.0 → ${VERSION}`);

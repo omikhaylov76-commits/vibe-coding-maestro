@@ -312,6 +312,18 @@
         "advanced"
       ],
       "rationale": "Vendor deny-list не является sandbox или канонической границей безопасности."
+    },
+    {
+      "id": "project-completion",
+      "status": "keep",
+      "ownerPath": "protocols/completion.md",
+      "contractId": "VCM-COMPLETION",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Сдача или закрытие проекта идёт по одному чек-листу: критерии, проверки, тег, паспорт, передача, закрытый план."
     }
   ]
 }

@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.3.1 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.4.0 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -144,11 +144,11 @@ My Project/
 ├── AGENTS.md          # yours: entry for Codex and other AGENTS.md tools
 ├── CLAUDE.md          # yours: project instructions for Claude Code
 ├── .claude/rules/     # maestro.md (Maestro rules, loaded every session) + project.md (yours)
-├── .claude/settings.json  # yours: default deny/ask rules (.env, Maestro files, push, publish)
+├── .claude/settings.json  # yours: default deny/ask rules (Maestro files, push, publish)
 ├── .claude/commands/  # /status, /plan, /build, /wiki, /handoff adapters
 ├── .claude/agents/    # read-only code-reviewer and explorer
-├── protocols/         # canonical rules for planning, building and handoff
-├── wiki/              # shared memory: plans, decisions, progress and audits
+├── protocols/         # canonical rules for planning, building, handoff and project completion
+├── wiki/              # shared memory: plans, decisions, progress, audits and the project passport
 ├── maestro/           # inbox, runbooks, and templates for handoff, ADR and progress
 └── .maestro/          # manifest, ownership inventory and integrity metadata
 ```
@@ -177,7 +177,7 @@ From there, `protocols/build.md` routes the agent through the relevant rules, pl
 
 ## A normal working cycle
 
-The guided path above is the whole cycle: material in `maestro/inbox/` → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
+The guided path above is the whole cycle: material in `maestro/inbox/` → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice. When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
 
 Claude Code projects receive five thin commands:
 
@@ -201,7 +201,8 @@ Maestro is deliberately conservative around existing data and Git state:
 - `doctor --strict` also treats warnings as blocking;
 - audit findings must be resolved with evidence; `waived` is not accepted by the 0.3 contract;
 - when the approval digest is recorded (the protocol asks the agent to), a later change of the plan text or its classification closes the gate until a human approves again — a tripwire, not a lock;
-- `.claude/settings.json` ships default rules for Claude Code: its file tools are denied `.env` files and Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; this is not a sandbox (a script the agent runs can still read files), and the file belongs to the project, so a team can change the rules;
+- `.claude/settings.json` ships default rules for Claude Code: its file tools are denied Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; this is not a sandbox, and the file belongs to the project, so a team can change the rules — see [how to tune protections for a project](docs/USER_GUIDE.md#как-подстроить-защиты-под-проект) (Russian);
+- API keys live only in `.env`, which `.gitignore` excludes and `doctor` reports if Git tracks it; the agent writes a key you paste into `.env` itself, or opens `.env` in an editor for you to paste it (a key typed into the chat stays in the session history);
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
 - `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;

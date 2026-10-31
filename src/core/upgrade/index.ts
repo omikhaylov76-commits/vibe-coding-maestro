@@ -55,9 +55,10 @@ function missingDirs(root: string, relativePath: string): string[] {
   return created;
 }
 
-async function writeStaged(absolute: string, content: string): Promise<void> {
+/** Содержимое Maestro пишется с LF; файл проекта и копия в backup — байт в байт. */
+async function writeStaged(absolute: string, content: string, exact = false): Promise<void> {
   await mkdir(dirname(absolute), { recursive: true });
-  await writeFile(absolute, content.replace(/\r\n/g, '\n'), 'utf8');
+  await writeFile(absolute, exact ? content : content.replace(/\r\n/g, '\n'), 'utf8');
 }
 
 /**
@@ -88,9 +89,9 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
   try {
     await mkdir(staging, { recursive: false });
     for (const write of writes) {
-      await writeStaged(join(newDir, write.path), write.content);
+      await writeStaged(join(newDir, write.path), write.content, write.path === '.gitignore');
       if (write.action === 'update') {
-        await writeStaged(join(backupDir, write.path), await readFile(join(root, write.path), 'utf8'));
+        await writeStaged(join(backupDir, write.path), await readFile(join(root, write.path), 'utf8'), true);
       }
     }
   } catch (cause) {

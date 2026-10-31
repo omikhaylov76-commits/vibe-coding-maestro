@@ -62,7 +62,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
 
   io.out(`Предложение обновления ${analysis.fromVersion ?? analysis.baselineId} → ${analysis.toVersion} (ни один байт не записан).`);
   list('Будет добавлено', analysis.creates.map((item) => item.path));
-  list('Будет обновлено', analysis.updates.map((item) => item.path));
+  list('Будет обновлено', analysis.updates.map((item) => item.appends === undefined ? item.path : `${item.path} — допишет строки: ${item.appends.join(', ')}`));
   list('Перейдёт к проекту (дальше файл ваш, Maestro его не проверяет и не перезаписывает)', analysis.handedOver);
   list('Уже совпадает', analysis.unchanged);
   list('Останется без изменений', analysis.preserves);

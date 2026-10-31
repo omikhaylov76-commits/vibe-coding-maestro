@@ -217,8 +217,8 @@ status: waived
   console.log('CI acceptance passed (source + canonical packed install)');
 } finally {
   await Promise.all([
-    rm(tempRoot, { recursive: true, force: true }),
-    packDir ? rm(packDir, { recursive: true, force: true }) : Promise.resolve(),
-    installDir ? rm(installDir, { recursive: true, force: true }) : Promise.resolve(),
+    rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+    packDir ? rm(packDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) : Promise.resolve(),
+    installDir ? rm(installDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) : Promise.resolve(),
   ]);
 }

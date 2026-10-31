@@ -13,8 +13,12 @@ export async function makeTempDir(prefix = 'vcm-test-'): Promise<string> {
   return dir;
 }
 
+/**
+ * Повторы нужны macOS/Windows: фоновый git (gc, fsmonitor) может дописывать
+ * файлы в .git во время удаления, и rm падает с ENOTEMPTY/EBUSY/EPERM.
+ */
 export async function cleanupTempDirs(): Promise<void> {
-  await Promise.all(tracked.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(tracked.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })));
 }
 
 export function sha256(data: Buffer | string): string {

@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.3.0-beta.2 is a public beta on npm.** Create a project with `npx create-vibe-maestro@latest` and check one with `npx --package create-vibe-maestro@latest vibe-maestro doctor --path .`. Interfaces may still change between beta versions; the source install below remains available. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.3.0-beta.3 is a public beta on npm.** Create a project with `npx create-vibe-maestro@latest` and check one with `npx --package create-vibe-maestro@latest vibe-maestro doctor --path .`. Interfaces may still change between beta versions; the source install below remains available. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 

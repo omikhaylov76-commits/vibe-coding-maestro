@@ -4,6 +4,17 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
+## 0.3.0-beta.3 — 2026-10-31
+
+### Added
+
+- [`vibe-maestro`](https://www.npmjs.com/package/vibe-maestro) on npm: a tiny companion package that only runs this package's `vibe-maestro` command. The name now belongs to this project, so an agent that guesses the short name and passes it to `npx` gets Maestro, not whatever someone else could have published under that name. Generated projects keep the full `npx --package create-vibe-maestro@latest vibe-maestro …` form.
+
+### Fixed
+
+- Command hints are complete and copy-pasteable. `upgrade` prints `npx --package create-vibe-maestro@<this version> vibe-maestro upgrade … --apply` and the follow-up `doctor … --strict`, so applying and re-checking use exactly the release that made the proposal; paths with spaces are quoted. Previously it printed a bare `vibe-maestro …`, which is not on `PATH` when the tool runs through `npx`.
+- `vibe-maestro` and `create-vibe-maestro` usage errors point to the full `npx` form of `--help`; `create-vibe-maestro --help` shows the doctor command with `--path`.
+
 ## 0.3.0-beta.2 — 2026-10-31
 
 First release published to npm. `npx create-vibe-maestro@latest` and `npx --package create-vibe-maestro@latest vibe-maestro …`, which generated projects already call, now resolve to a real package.

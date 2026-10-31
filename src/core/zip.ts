@@ -2,9 +2,10 @@
  * Детерминированный zip без зависимостей.
  *
  * Файлы хранятся без сжатия (method 0): результат зависит только от входа, а не
- * от версии zlib конкретного Node. Время всех записей одно и то же, имена в UTF-8
- * (флаг 0x0800), права Unix — во внешних атрибутах. Zip64 не поддерживается:
- * слишком большой вход отвергается, а не пишется битым архивом.
+ * от версии zlib конкретного Node. Время всех записей одно и то же: в полях MS-DOS
+ * (UTC) и в поле 0x5455 (время Unix, по нему распаковщики ставят точное время).
+ * Имена в UTF-8 (флаг 0x0800), права Unix — во внешних атрибутах. Zip64 не
+ * поддерживается: слишком большой вход отвергается, а не пишется битым архивом.
  */
 
 export interface ZipEntry {
@@ -15,8 +16,9 @@ export interface ZipEntry {
   mode: number;
 }
 
-const MAX_ENTRIES = 0xffff;
-const MAX_SIZE = 0xffffffff;
+/** 0xFFFF и 0xFFFFFFFF — метки Zip64, поэтому сами значения уже недопустимы. */
+const MAX_ENTRIES = 0xfffe;
+const MAX_SIZE = 0xfffffffe;
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -34,9 +36,9 @@ export function crc32(data: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** Время и дата MS-DOS из секунд Unix (UTC, шаг 2 с, не раньше 1980 года). */
+/** Время и дата MS-DOS из секунд Unix (UTC, шаг 2 с, 1980–2107 годы). */
 function dosDateTime(unixSeconds: number): { time: number; date: number } {
-  const d = new Date(Math.max(unixSeconds, 315532800) * 1000);
+  const d = new Date(Math.min(Math.max(unixSeconds, 315532800), 4354819198) * 1000);
   const time = (d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | Math.floor(d.getUTCSeconds() / 2);
   const date = ((d.getUTCFullYear() - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate();
   return { time, date };
@@ -48,6 +50,12 @@ export class ZipTooLargeError extends Error {}
 export function buildZip(entries: readonly ZipEntry[], unixSeconds: number): Buffer {
   if (entries.length > MAX_ENTRIES) throw new ZipTooLargeError(`В архиве больше ${MAX_ENTRIES} файлов.`);
   const { time, date } = dosDateTime(unixSeconds);
+  // Поле 0x5455: флаг «есть время изменения» и само время Unix.
+  const extra = Buffer.alloc(9);
+  extra.writeUInt16LE(0x5455, 0);
+  extra.writeUInt16LE(5, 2);
+  extra.writeUInt8(1, 4);
+  extra.writeUInt32LE(Math.min(Math.max(Math.floor(unixSeconds), 0), 0xffffffff), 5);
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
@@ -56,6 +64,7 @@ export function buildZip(entries: readonly ZipEntry[], unixSeconds: number): Buf
     const name = Buffer.from(entry.path, 'utf8');
     const size = entry.data.length;
     if (size > MAX_SIZE || offset > MAX_SIZE) throw new ZipTooLargeError(`Архив больше 4 ГБ: ${entry.path}.`);
+    if (name.length > 0xffff) throw new ZipTooLargeError(`Слишком длинное имя: ${entry.path}.`);
     const crc = crc32(entry.data);
 
     const local = Buffer.alloc(30);
@@ -69,8 +78,8 @@ export function buildZip(entries: readonly ZipEntry[], unixSeconds: number): Buf
     local.writeUInt32LE(size, 18);
     local.writeUInt32LE(size, 22);
     local.writeUInt16LE(name.length, 26);
-    local.writeUInt16LE(0, 28);
-    locals.push(local, name, entry.data);
+    local.writeUInt16LE(extra.length, 28);
+    locals.push(local, name, extra, entry.data);
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
@@ -84,15 +93,15 @@ export function buildZip(entries: readonly ZipEntry[], unixSeconds: number): Buf
     central.writeUInt32LE(size, 20);
     central.writeUInt32LE(size, 24);
     central.writeUInt16LE(name.length, 28);
-    central.writeUInt16LE(0, 30); // extra
+    central.writeUInt16LE(extra.length, 30);
     central.writeUInt16LE(0, 32); // comment
     central.writeUInt16LE(0, 34); // disk
     central.writeUInt16LE(0, 36); // internal attributes
     central.writeUInt32LE((entry.mode << 16) >>> 0, 38);
     central.writeUInt32LE(offset, 42);
-    centrals.push(central, name);
+    centrals.push(central, name, extra);
 
-    offset += 30 + name.length + size;
+    offset += 30 + name.length + extra.length + size;
   }
 
   const centralSize = centrals.reduce((sum, part) => sum + part.length, 0);

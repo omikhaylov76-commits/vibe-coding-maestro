@@ -5,10 +5,10 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
-import { formatTokens } from '../src/cli/context-run.js';
+import { formatTokens, tokensWord } from '../src/cli/context-run.js';
 import { measureContext, projectLogDirName } from '../src/core/context.js';
 import { initProject } from '../src/core/init.js';
-import { HANDOVER_PATH, INTERNAL_PATHS, packProject, passportGaps } from '../src/core/pack.js';
+import { findSecrets, HANDOVER_PATH, INTERNAL_PATHS, packProject, passportGaps } from '../src/core/pack.js';
 import { crc32, readZip } from '../src/core/zip.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, sha256 } from './helpers.js';
 
@@ -197,6 +197,82 @@ describe('0.4.1: vibe-maestro pack', () => {
     expect(await readFile(out, 'utf8')).toBe('чужое');
   });
 
+  it('--out с папкой кладёт архив в неё под именем по умолчанию (ревью 0.4.1)', async () => {
+    const root = await deliveredProject();
+    const dir = await makeTempDir('out-');
+    const result = await packProject({ root, tag: 'v1.0.0', out: dir });
+    expect(result.ok).toBe(true);
+    expect(result.archive).toBe(join(dir, 'Магазин-v1.0.0.zip'));
+    expect(existsSync(join(dir, 'Магазин-v1.0.0.zip'))).toBe(true);
+  });
+
+  it('секреты, которые носят обычные проекты, ловятся; публичное и заготовки — нет (ревью 0.4.1)', () => {
+    const secret = (text: string, path = 'src/a.js'): boolean => findSecrets(path, Buffer.from(text)).length > 0;
+    const telegram = `${'7712345678'}:AA${'H'.repeat(33)}`;
+    expect(secret(`const bot = "${telegram}";`)).toBe(true);
+    expect(secret('DATABASE_URL=postgresql://postgres:Sup3rS3cret@db.example-host.co:5432/postgres')).toBe(true);
+    expect(secret(`token: "sbp_${'a1'.repeat(20)}"`)).toBe(true);
+    const payload = Buffer.from(JSON.stringify({ role: 'service_role', iss: 'supabase' })).toString('base64url');
+    const anon = Buffer.from(JSON.stringify({ role: 'anon', iss: 'supabase' })).toString('base64url');
+    expect(secret(`key = "eyJhbGciOiJIUzI1NiJ9.${payload}.c2lnbmF0dXJlLXNpZ25hdHVyZQ"`)).toBe(true);
+    expect(secret(`key = "eyJhbGciOiJIUzI1NiJ9.${anon}.c2lnbmF0dXJlLXNpZ25hdHVyZQ"`)).toBe(false);
+    expect(secret(`id = "ASIA${'Q'.repeat(16)}"`)).toBe(true);
+    expect(secret('-----BEGIN PGP PRIVATE KEY BLOCK-----')).toBe(true);
+    expect(secret('{"private_key": "-----BEGIN PRIVATE KEY-----\\nMIIEvQ..."}')).toBe(true);
+    expect(secret('const password = "Sup3rS3cretValue";')).toBe(true);
+    expect(secret('x', '.envrc')).toBe(true);
+    expect(secret('x', 'config/secrets.yaml')).toBe(true);
+    expect(secret('x', 'data/app.sqlite')).toBe(true);
+    // Не секреты.
+    expect(secret('aws_access_key_id = AKIAIOSFODNN7EXAMPLE')).toBe(false);
+    expect(secret("if (pem.startsWith('-----BEGIN PRIVATE KEY-----')) {")).toBe(false);
+    expect(secret('apiKey: "AIzaSyD-public-firebase-browser-key-123456"')).toBe(false);
+    expect(secret('DATABASE_URL=postgresql://postgres:postgres@localhost:5432/app')).toBe(false);
+    expect(secret('password: "${DB_PASSWORD}"')).toBe(false);
+    expect(secret('password: "your-password-here"')).toBe(false);
+    expect(secret('x', '.env.example')).toBe(false);
+    // UTF-16 тоже читается.
+    expect(findSecrets('a.txt', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`k = "sk-ant-${'x'.repeat(30)}"`, 'utf16le')])).length).toBe(1);
+  });
+
+  it('--allow пропускает проверенный человеком файл', async () => {
+    const root = await deliveredProject({ 'tests/fixture.js': 'const password = "NotARealPass123";\n' });
+    const out = join(await makeTempDir('out-'), 'a.zip');
+    expect((await packProject({ root, tag: 'v1.0.0', out })).findings[0]?.code).toBe('pack-secret');
+    const refused = await packProject({ root, tag: 'v1.0.0', out });
+    expect(refused.findings.at(-1)?.message).toContain('--allow');
+    expect((await packProject({ root, tag: 'v1.0.0', out, allow: ['tests/fixture.js'] })).ok).toBe(true);
+  });
+
+  it('файлы агентов глубже корня и ссылки за пределы проекта — отказ; .mcp.json в корне не входит', async () => {
+    const root = await deliveredProject({ '.mcp.json': '{}\n', 'src/GEMINI.md': '# агент\n' });
+    await execFileAsync('ln', ['-s', '/etc/hosts', join(root, 'hosts-link')]).catch(() => undefined);
+    await git(root, 'add', '-A');
+    await git(root, 'commit', '-qm', 'ссылка');
+    await git(root, 'tag', '-a', 'v1.0.1', '-m', 'x');
+    const result = await packProject({ root, tag: 'v1.0.1', out: join(await makeTempDir('out-'), 'a.zip') });
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'pack-internal-path', path: 'src/GEMINI.md' }));
+    expect(result.findings.map((item) => item.path)).not.toContain('.mcp.json');
+    if (process.platform !== 'win32') expect(result.findings).toContainEqual(expect.objectContaining({ code: 'pack-symlink-outside', path: 'hosts-link' }));
+  });
+
+  it('тот же тег — те же байты при core.autocrlf и подписи в логе (ревью 0.4.1)', async () => {
+    const root = await deliveredProject({ 'src/текст.txt': 'строка\n' });
+    const dir = await makeTempDir('out-');
+    const plain = await packProject({ root, tag: 'v1.0.0', out: join(dir, 'a.zip') });
+    await git(root, 'config', 'core.autocrlf', 'true');
+    await git(root, 'config', 'log.showSignature', 'true');
+    const tuned = await packProject({ root, tag: 'v1.0.0', out: join(dir, 'b.zip') });
+    expect(tuned.sha256).toBe(plain.sha256);
+  });
+
+  it('паспорт: обычный текст со словами «пока нет» — запись, заготовка и пустой комментарий — нет', () => {
+    const filled = FILLED_PASSPORT.replace('- не применимо\n\n## Внешние', '- Резервных копий пока нет — их настраивает заказчик.\n\n## Внешние');
+    expect(passportGaps(filled)).toEqual([]);
+    expect(passportGaps(FILLED_PASSPORT.replace('- Stripe — аккаунт заказчика', '<!-- потом -->'))).toEqual(['Внешние сервисы и чей аккаунт']);
+    expect(passportGaps(FILLED_PASSPORT.replace('- Stripe — аккаунт заказчика', '- Stripe — аккаунт заказчика\n- Почта: пока нет'))).toEqual(['Внешние сервисы и чей аккаунт']);
+  });
+
   it('CLI: --tag обязателен, вывод называет архив и sha256', async () => {
     const usage = collect();
     expect(await runMaestroCli(['pack', '--path', '.'], usage.io)).toBe(2);
@@ -289,7 +365,24 @@ describe('0.4.1: vibe-maestro context', () => {
     await utimes(mine, new Date('2020-01-01'), new Date('2020-01-01'));
     await writeTranscript(claudeDir, root, [assistant('b', 0, 99_000, 0)], 'bbbb-2222');
     expect((await measureContext({ root, claudeDir, sessionId: 'aaaa-1111' })).contextTokens).toBe(12_000);
-    expect((await measureContext({ root, claudeDir, sessionId: 'нет-такой' })).contextTokens).toBe(99_000);
+    // Неизвестный id — отказ, а не чужая сессия (ревью 0.4.1).
+    const unknown = await measureContext({ root, claudeDir, sessionId: 'zzzz-9999' });
+    expect(unknown.ok).toBe(false);
+    expect(unknown.message).toContain('zzzz-9999');
+    expect((await measureContext({ root, claudeDir })).contextTokens).toBe(99_000);
+  });
+
+  it('запись без расхода (<synthetic>) не обнуляет размер; большая сессия — окно 1 000 000 (ревью 0.4.1)', async () => {
+    const claudeDir = await makeTempDir('claude-');
+    const root = join(await makeTempDir('proj-'), 'app');
+    await mkdir(root);
+    await writeTranscript(claudeDir, root, [assistant('a', 0, 250_000, 0), assistant('b', 0, 410_000, 0), assistant('c', 0, 0, 0)]);
+    const report = await measureContext({ root, claudeDir });
+    expect(report.contextTokens).toBe(410_000);
+    expect(report.budget).toBe(1_000_000);
+    expect(report.percent).toBe(41);
+    expect(report.level).toBe('finish-slice');
+    expect((await measureContext({ root, claudeDir, budget: 200_000 })).level).toBe('new-session');
   });
 
   it('без журнала — понятный отказ', async () => {
@@ -308,9 +401,14 @@ describe('0.4.1: vibe-maestro context', () => {
     try {
       const cli = collect();
       expect(await runMaestroCli(['context', '--path', root], cli.io)).toBe(0);
-      expect(cli.stdout()).toContain('150 000 токенов (75% от 200 000)');
+      expect(cli.stdout()).toContain('150 000 токенов (75% окна модели в 200 000)');
       expect(cli.stdout()).toContain('Пора в новую сессию');
       expect(cli.stdout()).toContain('гипотеза');
+      // Сессия больше 200 000 — окно модели 1 000 000, и CLI это учитывает.
+      await writeTranscript(claudeDir, root, [assistant('b', 0, 450_000, 0)]);
+      const large = collect();
+      expect(await runMaestroCli(['context', '--path', root], large.io)).toBe(0);
+      expect(large.stdout()).toContain('450 000 токенов (45% окна модели в 1 000 000)');
       const bad = collect();
       expect(await runMaestroCli(['context', '--window', 'много'], bad.io)).toBe(2);
     } finally {
@@ -318,5 +416,6 @@ describe('0.4.1: vibe-maestro context', () => {
       else process.env.CLAUDE_CONFIG_DIR = previous;
     }
     expect(formatTokens(1234567)).toBe('1 234 567');
+    expect([1, 2, 5, 11, 22, 413632, 101].map(tokensWord)).toEqual(['токен', 'токена', 'токенов', 'токенов', 'токена', 'токена', 'токен']);
   });
 });

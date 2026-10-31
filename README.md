@@ -204,7 +204,7 @@ Maestro is deliberately conservative around existing data and Git state:
 - `.claude/settings.json` ships default rules for Claude Code: its file tools are denied Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; this is not a sandbox, and the file belongs to the project, so a team can change the rules — see [how to tune protections for a project](docs/USER_GUIDE.md#как-подстроить-защиты-под-проект) (Russian);
 - API keys live only in `.env`, which `.gitignore` excludes and `doctor` reports if Git tracks it; the agent writes a key you paste into `.env` itself, or opens `.env` in an editor for you to paste it (a key typed into the chat stays in the session history);
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
-- `pack` builds the customer archive only from a delivery tag, leaves Maestro and agent folders out, adds `HANDOVER.md` with «change all passwords and keys», refuses on secrets or an incomplete passport, and gives the same bytes for the same tag;
+- `pack` builds the customer archive only from a delivery tag, leaves Maestro and agent folders out, adds `HANDOVER.md` with «change all passwords and keys», refuses on common kinds of secrets (a sieve, not a guarantee) or an incomplete passport, and gives the same bytes for the same tag;
 - `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
 - there is intentionally no `doctor --fix` that could overwrite useful work.

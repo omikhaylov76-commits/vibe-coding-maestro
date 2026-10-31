@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, posix, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { MANIFEST_PATH } from './manifest.js';
 import { buildZip, ZipTooLargeError } from './zip.js';
@@ -19,8 +19,8 @@ const execFileAsync = promisify(execFile);
 export const PASSPORT_PATH = 'wiki/passport.md';
 export const HANDOVER_PATH = 'HANDOVER.md';
 
-/** Внутренние места Maestro и агентов: заказчику они не нужны и в архив не попадают. */
-export const INTERNAL_PATHS: readonly string[] = ['wiki/', 'maestro/', '.claude/', 'protocols/', '.maestro/', 'CLAUDE.md', 'AGENTS.md'];
+/** Внутренние места Maestro и агентов в корне: заказчику они не нужны и в архив не попадают. */
+export const INTERNAL_PATHS: readonly string[] = ['wiki/', 'maestro/', '.claude/', 'protocols/', '.maestro/', 'CLAUDE.md', 'AGENTS.md', '.mcp.json'];
 
 /** Разделы паспорта, без которых сдавать нельзя. */
 export const PASSPORT_SECTIONS: readonly string[] = [
@@ -43,8 +43,10 @@ export interface PackFinding {
 export interface PackOptions {
   root: string;
   tag: string;
-  /** Полный путь архива. */
+  /** Путь архива; если это папка — архив ложится в неё под именем по умолчанию. */
   out: string;
+  /** Файлы, которые человек посмотрел и признал не секретом: их содержимое не проверяется. */
+  allow?: readonly string[];
 }
 
 export interface PackResult {
@@ -58,23 +60,31 @@ export interface PackResult {
   bytes?: number;
   /** Архив с этим содержимым уже лежал по этому пути. */
   reused?: boolean;
+  /** Что не вошло или не проверено, но не мешает упаковке: подмодули, слишком большие файлы. */
+  notes?: string[];
 }
 
 const finding = (code: string, message: string, path?: string): PackFinding =>
   ({ code, message, ...(path === undefined ? {} : { path }) });
 
+/** Настройки машины, которые иначе меняли бы байты архива или вывод git. */
+const GIT_PINNED = ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', '-c', 'log.showSignature=false', '-c', 'core.quotepath=off'];
+
 async function git(root: string, args: string[]): Promise<string> {
-  return (await execFileAsync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })).stdout;
+  return (await execFileAsync('git', [...GIT_PINNED, ...args], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })).stdout;
 }
 
 async function gitBuffer(root: string, args: string[]): Promise<Buffer> {
-  return (await execFileAsync('git', args, { cwd: root, encoding: 'buffer', maxBuffer: 4 * 1024 * 1024 * 1024 })).stdout;
+  return (await execFileAsync('git', [...GIT_PINNED, ...args], { cwd: root, encoding: 'buffer', maxBuffer: 4 * 1024 * 1024 * 1024 })).stdout;
 }
 
-/** Разделы паспорта, которые не заполнены: нет раздела, пусто или осталось «пока нет». */
+/** Строка-заготовка шаблона: «- Пока нет» или «- Адрес: пока нет». Обычный текст со словами «пока нет» — запись. */
+const PLACEHOLDER_LINE = /^\s*[-*]\s*(?:[^:\n]*:\s*)?пока нет\.?\s*$/i;
+
+/** Разделы паспорта, которые не заполнены: нет раздела, нет записи или осталась заготовка «пока нет». */
 export function passportGaps(text: string): string[] {
   const sections = new Map<string, string>();
-  const parts = text.replace(/\r\n/g, '\n').split(/^## +/m).slice(1);
+  const parts = text.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '').split(/^## +/m).slice(1);
   for (const part of parts) {
     const newline = part.indexOf('\n');
     const title = (newline < 0 ? part : part.slice(0, newline)).trim();
@@ -83,8 +93,8 @@ export function passportGaps(text: string): string[] {
   return PASSPORT_SECTIONS.filter((title) => {
     const body = sections.get(title);
     if (body === undefined) return true;
-    if (/не применимо/i.test(body)) return false;
-    return /пока нет/i.test(body) || body.trim() === '';
+    const lines = body.split('\n').filter((line) => line.trim() !== '');
+    return lines.length === 0 || lines.some((line) => PLACEHOLDER_LINE.test(line));
   });
 }
 
@@ -125,6 +135,7 @@ export function parseTar(buffer: Buffer): TarEntry[] {
       return raw.subarray(0, zero < 0 ? raw.length : zero).toString('utf8');
     };
     const size = Number.parseInt(field(124, 136).trim() || '0', 8);
+    if (!Number.isFinite(size) || size < 0) throw new Error('Не удалось прочитать размер записи в выводе git archive.');
     const type = String.fromCharCode(header[156] ?? 0);
     const start = offset + 512;
     const data = buffer.subarray(start, start + size);
@@ -149,44 +160,101 @@ export function parseTar(buffer: Buffer): TarEntry[] {
 const isInternal = (path: string): boolean =>
   INTERNAL_PATHS.some((internal) => (internal.endsWith('/') ? path.startsWith(internal) : path === internal));
 
-/** Служебные папки агентов глубже корня: признак того, что в продукт попало чужое. */
-const NESTED_INTERNAL = /(^|\/)(\.claude|\.maestro)\//;
+/** Файлы и папки агентов, оставшиеся после исключения корневых: признак того, что в продукт попало чужое. */
+const AGENT_PATH = /(^|\/)(\.claude|\.maestro|\.cursor)\/|(^|\/)(CLAUDE\.md|AGENTS\.md|GEMINI\.md|\.mcp\.json|\.cursorrules|\.windsurfrules)$/;
 
 const SECRET_NAMES: readonly { label: string; test: (base: string) => boolean }[] = [
-  { label: 'файл .env', test: (base) => (base === '.env' || base.startsWith('.env.')) && !/^\.env\.(example|sample|template)$/.test(base) },
+  { label: 'файл .env', test: (base) => (base === '.env' || base.startsWith('.env.') || base === '.envrc') && !/^\.env\.(example|sample|template)$/.test(base) },
   { label: 'закрытый ключ SSH', test: (base) => /^id_(rsa|dsa|ecdsa|ed25519)$/.test(base) },
-  { label: 'хранилище ключей', test: (base) => /\.(p12|pfx|jks|keystore)$/i.test(base) },
+  { label: 'хранилище ключей', test: (base) => /\.(p12|pfx|jks|keystore|key)$/i.test(base) },
   { label: 'файл паролей', test: (base) => base === '.netrc' || base === '.pgpass' },
+  { label: 'файл секретов', test: (base) => /^(secrets?\.(ya?ml|json|toml)|credentials.*\.json|service[-_]?account.*\.json)$/i.test(base) },
+  { label: 'файл базы данных', test: (base) => /\.(sqlite3?|db)$/i.test(base) },
 ];
 
-const SECRET_CONTENT: readonly { label: string; pattern: RegExp }[] = [
-  { label: 'закрытый ключ', pattern: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----/ },
-  { label: 'ключ AWS', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
-  { label: 'токен GitHub', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/ },
-  { label: 'ключ Anthropic', pattern: /\bsk-ant-[A-Za-z0-9_-]{20,}/ },
-  { label: 'ключ OpenAI', pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}/ },
-  { label: 'токен Slack', pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}/ },
-  { label: 'ключ Stripe', pattern: /\b(?:sk|rk)_live_[0-9A-Za-z]{20,}/ },
-  { label: 'ключ Google', pattern: /\bAIza[0-9A-Za-z_-]{35}/ },
-  { label: 'токен npm', pattern: /\bnpm_[A-Za-z0-9]{36}\b/ },
-  { label: 'токен в .npmrc', pattern: /_authToken\s*=\s*(?!\$\{)\S+/ },
+/** Заготовки вместо настоящего значения: такие строки секретом не считаются. */
+const PLACEHOLDER_VALUE = /^(?:[$<{%]|your|example|changeme|change-me|placeholder|dummy|test|xxx|\*\*\*)|example|xxxxx/i;
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
+
+/** JWT с ролью service_role (Supabase и похожие) — секрет; публичный anon-ключ — нет. */
+function hasServiceRoleJwt(line: string): boolean {
+  for (const match of line.matchAll(/eyJ[A-Za-z0-9_-]{8,}\.(eyJ[A-Za-z0-9_-]{8,})\.[A-Za-z0-9_-]{8,}/g)) {
+    try {
+      if (Buffer.from(match[1] as string, 'base64url').toString('utf8').includes('"service_role"')) return true;
+    } catch {
+      // не JWT
+    }
+  }
+  return false;
+}
+
+function hasDatabasePassword(line: string): boolean {
+  for (const match of line.matchAll(/\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?):\/\/[^\s:@\/"'`]*:([^\s@\/"'`]+)@([^\s:\/"'`?]+)/gi)) {
+    const password = match[1] as string;
+    const host = (match[2] as string).toLowerCase();
+    if (LOCAL_HOSTS.has(host) || PLACEHOLDER_VALUE.test(password) || ['password', 'pass', 'postgres', 'root', 'secret'].includes(password.toLowerCase())) continue;
+    return true;
+  }
+  return false;
+}
+
+const SECRET_CONTENT: readonly { label: string; test: (line: string) => boolean }[] = [
+  // Ключ, а не код, который проверяет заголовок: за заголовком идёт перевод строки (в том числе `\n` в JSON) или сам ключ.
+  { label: 'закрытый ключ', test: (line) => /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?:\\(?:r\\)?n|\s*$|[A-Za-z0-9+/])/.test(line) },
+  { label: 'ключ AWS', test: (line) => [...line.matchAll(/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g)].some((match) => !match[0].endsWith('EXAMPLE')) },
+  { label: 'токен GitHub', test: (line) => /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/.test(line) },
+  { label: 'ключ Anthropic', test: (line) => /\bsk-ant-[A-Za-z0-9_-]{20,}/.test(line) },
+  { label: 'ключ OpenAI', test: (line) => /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}/.test(line) },
+  { label: 'токен Telegram-бота', test: (line) => /\b\d{8,10}:AA[0-9A-Za-z_-]{33}\b/.test(line) },
+  { label: 'токен Slack', test: (line) => /\bxox[abposr]-[A-Za-z0-9-]{10,}/.test(line) },
+  { label: 'ключ Stripe', test: (line) => /\b(?:sk|rk)_live_[0-9A-Za-z]{20,}/.test(line) },
+  { label: 'токен Supabase', test: (line) => /\bsbp_[a-f0-9]{40}\b/.test(line) || hasServiceRoleJwt(line) },
+  { label: 'токен npm', test: (line) => /\bnpm_[A-Za-z0-9]{36}\b/.test(line) },
+  { label: 'токен в .npmrc', test: (line) => /_authToken\s*=\s*(?!\$\{)\S+/.test(line) },
+  { label: 'пароль в адресе базы данных', test: hasDatabasePassword },
+  {
+    label: 'пароль или ключ в коде',
+    test: (line) => [...line.matchAll(/\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{8,})["']/gi)]
+      // Браузерные ключи Google (Firebase, Карты) публичны по замыслу; JWT разбирает правило Supabase.
+      .some((match) => !PLACEHOLDER_VALUE.test(match[1] as string) && !/^(?:AIza|eyJ)/.test(match[1] as string)),
+  },
 ];
 
-const MAX_SCAN_BYTES = 5 * 1024 * 1024;
+const MAX_SCAN_BYTES = 50 * 1024 * 1024;
+
+/** Текст файла для проверки: UTF-8 или UTF-16 по метке; двоичный — null. */
+function scanText(data: Buffer): string | null {
+  if (data[0] === 0xff && data[1] === 0xfe) return data.subarray(2).toString('utf16le');
+  if (data[0] === 0xfe && data[1] === 0xff) return Buffer.from(data.subarray(2)).swap16().toString('utf16le');
+  if (data.subarray(0, 8000).includes(0)) return null;
+  return data.toString('utf8');
+}
+
+/** Секреты по имени файла. */
+export function secretName(path: string): string | null {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  return SECRET_NAMES.find((rule) => rule.test(base))?.label ?? null;
+}
 
 /** Секреты по имени файла и по содержимому. Значение секрета в находку не попадает. */
 export function findSecrets(path: string, data: Buffer): PackFinding[] {
-  const base = path.slice(path.lastIndexOf('/') + 1);
-  const named = SECRET_NAMES.find((rule) => rule.test(base));
-  if (named !== undefined) return [finding('pack-secret', `Похоже на секрет (${named.label}): такой файл заказчику не отдают.`, path)];
-  if (data.length > MAX_SCAN_BYTES || data.subarray(0, 8000).includes(0)) return [];
-  const lines = data.toString('utf8').split('\n');
+  const named = secretName(path);
+  if (named !== null) return [finding('pack-secret', `Похоже на секрет (${named}): такой файл заказчику не отдают.`, path)];
+  if (data.length > MAX_SCAN_BYTES) return [];
+  const text = scanText(data);
+  if (text === null) return [];
   const found: PackFinding[] = [];
-  lines.forEach((line, index) => {
-    const rule = SECRET_CONTENT.find((item) => item.pattern.test(line));
+  text.split('\n').forEach((line, index) => {
+    const rule = SECRET_CONTENT.find((item) => item.test(line));
     if (rule !== undefined) found.push(finding('pack-secret', `Строка ${index + 1} похожа на секрет (${rule.label}).`, path));
   });
   return found;
+}
+
+/** Ссылка, ведущая за пределы проекта или по абсолютному пути: в архиве она указала бы на чужое. */
+function symlinkEscapes(path: string, target: string): boolean {
+  if (target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target)) return true;
+  return posix.normalize(posix.join(posix.dirname(path), target)).startsWith('../');
 }
 
 /** Текст `HANDOVER.md`: обязательный шаг «смените все пароли и ключи» и паспорт из тега. */
@@ -260,26 +328,43 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
     // Имя — только заголовок HANDOVER.md; без manifest в теге остаётся имя тега.
   }
 
-  const time = Number.parseInt((await git(root, ['log', '-1', '--format=%ct', commit])).trim(), 10);
+  const time = Number.parseInt((await git(root, ['show', '-s', '--format=%ct', commit])).trim(), 10);
+  if (!Number.isFinite(time)) return fail(finding('pack-commit-time', `Не удалось прочитать время коммита тега «${tag}».`));
   const entries = parseTar(await gitBuffer(root, ['archive', '--format=tar', commit]));
+  const notes: string[] = [];
+  const submodules = (await git(root, ['ls-tree', '-r', '-z', commit])).split('\0')
+    .filter((line) => line.split(' ')[1] === 'commit')
+    .map((line) => line.slice(line.indexOf('\t') + 1));
+  if (submodules.length > 0) notes.push(`Подмодули Git в архив не входят: ${submodules.join(', ')}.`);
 
+  const allowed = new Set(options.allow ?? []);
   const findings: PackFinding[] = [];
   const kept = entries.filter((entry) => !isInternal(entry.path));
   for (const entry of kept) {
-    if (NESTED_INTERNAL.test(entry.path)) {
-      findings.push(finding('pack-internal-path', 'Служебная папка агента внутри продукта: заказчику её не отдают.', entry.path));
+    if (AGENT_PATH.test(entry.path)) {
+      findings.push(finding('pack-internal-path', 'Файл или папка агента внутри продукта: заказчику их не отдают.', entry.path));
       continue;
     }
     if (entry.path === HANDOVER_PATH) {
       findings.push(finding('pack-handover-collision', `В корне проекта уже есть ${HANDOVER_PATH}; упаковка пишет этот файл сама. Переименуйте свой и поставьте новый тег.`, entry.path));
       continue;
     }
-    if (!entry.symlink) findings.push(...findSecrets(entry.path, entry.data));
+    if (entry.symlink) {
+      if (symlinkEscapes(entry.path, entry.data.toString('utf8'))) findings.push(finding('pack-symlink-outside', 'Ссылка ведёт за пределы проекта: в архиве она укажет на чужие файлы.', entry.path));
+      else if (!allowed.has(entry.path) && secretName(entry.path) !== null) findings.push(finding('pack-secret', `Похоже на секрет (${secretName(entry.path)}): такой файл заказчику не отдают.`, entry.path));
+      continue;
+    }
+    if (allowed.has(entry.path)) continue;
+    if (entry.data.length > MAX_SCAN_BYTES) notes.push(`Не проверен на секреты (больше 50 МБ): ${entry.path}.`);
+    findings.push(...findSecrets(entry.path, entry.data));
   }
   const handover = Buffer.from(handoverText({ projectName, tag, commit, passport }), 'utf8');
   findings.push(...findSecrets(HANDOVER_PATH, handover).map((item) => ({ ...item, message: `${item.message} Секрет в паспорте: в паспорт пишут только имена.` })));
   if (findings.length > 0) {
-    findings.push(finding('pack-refused', `Архив не создан. Уберите это из тега (или пометьте \`export-ignore\` в своём \`.gitattributes\`), закоммитьте, поставьте новый тег и повторите.`));
+    const allowHint = findings.some((item) => item.code === 'pack-secret' && item.path !== HANDOVER_PATH)
+      ? ' Если человек посмотрел файл и это не секрет (например, тестовый пример), повторите с `--allow <путь>` — только после его «да».'
+      : '';
+    findings.push(finding('pack-refused', `Архив не создан. Уберите это из тега (или пометьте \`export-ignore\` в своём \`.gitattributes\`), закоммитьте, поставьте новый тег и повторите.${allowHint}`));
     return { ok: false, findings, tag, commit };
   }
 
@@ -296,22 +381,26 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
     throw cause;
   }
   const sha256 = createHash('sha256').update(zip).digest('hex');
-  const out = resolve(options.out);
-  const summary = { tag, commit, archive: out, sha256, files: zipEntries.length, bytes: zip.length };
-
-  if (existsSync(out)) {
-    const existing = await readFile(out);
-    if (existing.equals(zip)) return { ok: true, findings: [], reused: true, ...summary };
-    return { ok: false, findings: [finding('pack-out-exists', `Файл уже есть и отличается от нового архива: ${out}. Удалите его или укажите другой --out.`, out)], tag, commit };
-  }
-  await mkdir(dirname(out), { recursive: true });
-  const temporary = `${out}.${process.pid}.tmp`;
+  let out = resolve(options.out);
+  const failWrite = (cause: unknown): PackResult => ({ ok: false, findings: [finding('pack-write-failed', `Не удалось записать архив: ${cause instanceof Error ? cause.message : String(cause)}`, out)], tag, commit });
   try {
-    await writeFile(temporary, zip);
-    await rename(temporary, out);
+    if (existsSync(out) && (await stat(out)).isDirectory()) out = join(out, defaultArchiveName(root, tag));
+    const summary = { tag, commit, archive: out, sha256, files: zipEntries.length, bytes: zip.length, ...(notes.length > 0 ? { notes } : {}) };
+    if (existsSync(out)) {
+      if ((await stat(out)).isFile() && (await readFile(out)).equals(zip)) return { ok: true, findings: [], reused: true, ...summary };
+      return { ok: false, findings: [finding('pack-out-exists', `По этому пути уже есть другой файл: ${out}. Удалите его или укажите другой --out.`, out)], tag, commit };
+    }
+    await mkdir(dirname(out), { recursive: true });
+    const temporary = `${out}.${process.pid}.tmp`;
+    try {
+      await writeFile(temporary, zip);
+      await rename(temporary, out);
+    } catch (cause) {
+      await rm(temporary, { force: true });
+      return failWrite(cause);
+    }
+    return { ok: true, findings: [], reused: false, ...summary };
   } catch (cause) {
-    await rm(temporary, { force: true });
-    return { ok: false, findings: [finding('pack-write-failed', `Не удалось записать архив: ${cause instanceof Error ? cause.message : String(cause)}`, out)], tag, commit };
+    return failWrite(cause);
   }
-  return { ok: true, findings: [], reused: false, ...summary };
 }

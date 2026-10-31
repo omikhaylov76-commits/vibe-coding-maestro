@@ -37,9 +37,10 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 Опции pack:
   --tag <тег>         тег сдачи (обязательно)
   --out <файл>        куда записать архив (по умолчанию — Рабочий стол)
+  --allow <путь>      файл, который человек проверил: не секрет; флаг можно повторять
 
 Опции context:
-  --window <токены>   сколько токенов считать полной сессией (по умолчанию 200000)
+  --window <токены>   окно модели в токенах (по умолчанию 200000, у длинной сессии 1000000)
 
 Опции preflight:
   --scale <масштаб>   ${PLAN_SCALES.join(' | ')} (по умолчанию feature)
@@ -65,6 +66,7 @@ export interface CommandOptions {
   output?: string;
   tag?: string;
   out?: string;
+  allow?: string[];
   window?: number;
 }
 
@@ -174,6 +176,15 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         const out = value();
         if (out === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
         options.out = out;
+        i += 1;
+        break;
+      }
+      case '--allow': {
+        const message = only(arg, 'pack');
+        if (message !== null) return { kind: 'error', message };
+        const allow = value();
+        if (allow === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        options.allow = [...(options.allow ?? []), allow.split('\\').join('/')];
         i += 1;
         break;
       }

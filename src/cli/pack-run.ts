@@ -11,6 +11,7 @@ export interface PackRunOptions {
   json: boolean;
   tag: string;
   out?: string;
+  allow?: string[];
 }
 
 /** Архив по умолчанию кладётся на Рабочий стол: его оттуда отправляют заказчику. Нет Рабочего стола — рядом с проектом. */
@@ -27,7 +28,7 @@ async function defaultOut(root: string, tag: string): Promise<string> {
 
 export async function executePackCommand(options: PackRunOptions, io: CliIo): Promise<number> {
   const out = options.out === undefined ? await defaultOut(options.path, options.tag) : resolve(options.out);
-  const result = await packProject({ root: options.path, tag: options.tag, out });
+  const result = await packProject({ root: options.path, tag: options.tag, out, allow: options.allow ?? [] });
   if (options.json) {
     io.out(JSON.stringify({ reportVersion: 1, ...result }, null, 2));
     return result.ok ? EXIT_OK : EXIT_FAILED;
@@ -41,7 +42,9 @@ export async function executePackCommand(options: PackRunOptions, io: CliIo): Pr
     ? `Архив тега ${result.tag} уже лежит здесь и совпадает побайтово: ${result.archive}`
     : `Архив тега ${result.tag} готов: ${result.archive}`);
   io.out(`Файлов: ${result.files}, размер: ${result.bytes} байт, sha256: ${result.sha256}`);
-  io.out('Папки Maestro и агентов (wiki/, maestro/, .claude/, protocols/, .maestro/, CLAUDE.md, AGENTS.md) в архив не входят. В корне — HANDOVER.md: первым делом заказчик меняет все пароли и ключи.');
+  io.out('Не вошли: wiki/, maestro/, .claude/, protocols/, .maestro/, CLAUDE.md, AGENTS.md, .mcp.json. В корне архива — HANDOVER.md: первым делом заказчик меняет все пароли и ключи.');
+  for (const note of result.notes ?? []) io.out(note);
+  if ((options.allow ?? []).length > 0) io.out(`Без проверки на секреты по решению человека: ${(options.allow ?? []).join(', ')}.`);
   io.out('Перед отправкой откройте архив и проверьте HANDOVER.md. Отправка заказчику — только после «да» человека.');
   return EXIT_OK;
 }

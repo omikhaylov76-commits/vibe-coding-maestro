@@ -11,8 +11,9 @@ import { join, resolve } from 'node:path';
  * историю, поэтому длинная сессия дорожает с каждым шагом.
  */
 
-/** Сколько токенов считать «полной» сессией по умолчанию. */
+/** Окно модели по умолчанию. Сессия больше него была бы невозможна — тогда окно 1 000 000. */
 export const DEFAULT_BUDGET = 200_000;
+export const LARGE_WINDOW = 1_000_000;
 /** HYPOTHESIS: пороги подобраны на глаз и уточняются повторным замером. */
 export const FINISH_SLICE_SHARE = 0.4;
 export const NEW_SESSION_SHARE = 0.7;
@@ -85,13 +86,16 @@ async function tail(path: string, bytes: number): Promise<string> {
  */
 export async function findTranscript(root: string, claudeDir: string, sessionId?: string): Promise<string | null> {
   const projects = join(claudeDir, 'projects');
-  if (sessionId !== undefined && /^[A-Za-z0-9-]+$/.test(sessionId)) {
+  if (sessionId !== undefined) {
+    // Известна сессия — только её журнал: молча мерить другую сессию нельзя.
+    if (!/^[A-Za-z0-9-]+$/.test(sessionId)) return null;
     const own = join(projects, projectLogDirName(root), `${sessionId}.jsonl`);
     if (existsSync(own)) return own;
     for (const dir of await readdir(projects).catch(() => [] as string[])) {
       const candidate = join(projects, dir, `${sessionId}.jsonl`);
       if (existsSync(candidate)) return candidate;
     }
+    return null;
   }
   const direct = await newestJsonl(join(projects, projectLogDirName(root)));
   if (direct !== null) return direct;
@@ -129,17 +133,22 @@ export function levelFor(share: number): ContextLevel {
 }
 
 export async function measureContext(options: ContextOptions): Promise<ContextReport> {
-  const budget = options.budget ?? DEFAULT_BUDGET;
+  let budget = options.budget ?? DEFAULT_BUDGET;
   const claudeDir = options.claudeDir ?? (process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
-  const transcript = await findTranscript(options.root, claudeDir, options.sessionId ?? (process.env.CLAUDE_CODE_SESSION_ID || undefined));
+  const sessionId = options.sessionId ?? (process.env.CLAUDE_CODE_SESSION_ID || undefined);
+  const transcript = await findTranscript(options.root, claudeDir, sessionId);
   if (transcript === null) {
+    if (sessionId !== undefined) {
+      return { reportVersion: 1, ok: false, budget, message: `Журнал сессии ${sessionId} не найден в ${join(claudeDir, 'projects')}: измерять чужую сессию вместо неё команда не будет.` };
+    }
     return { reportVersion: 1, ok: false, budget, message: `Журнал сессии Claude Code для этой папки не найден (искал в ${join(claudeDir, 'projects')}). Команда работает внутри сессии Claude Code, открытой в папке проекта.` };
   }
 
   const seen = new Set<string>();
   let last: Usage | null = null;
   let totalInput = 0;
-  let sessionId: string | undefined;
+  let largest = 0;
+  let recordedSession: string | undefined;
   for (const line of (await readFile(transcript, 'utf8')).split('\n')) {
     if (line.trim() === '') continue;
     let entry: { type?: unknown; isSidechain?: unknown; sessionId?: unknown; message?: { id?: unknown; usage?: Usage } };
@@ -152,8 +161,12 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     const usage = entry.message?.usage;
     const id = entry.message?.id;
     if (usage === undefined || typeof id !== 'string') continue;
-    if (typeof entry.sessionId === 'string') sessionId = entry.sessionId;
+    if (typeof entry.sessionId === 'string') recordedSession = entry.sessionId;
+    const size = count(usage.input_tokens) + count(usage.cache_read_input_tokens) + count(usage.cache_creation_input_tokens) + count(usage.output_tokens);
+    // Служебные записи без расхода (`<synthetic>`) не говорят о размере контекста.
+    if (size === 0) continue;
     last = usage;
+    largest = Math.max(largest, size);
     if (seen.has(id)) continue;
     seen.add(id);
     totalInput += count(usage.input_tokens) + count(usage.cache_read_input_tokens) + count(usage.cache_creation_input_tokens);
@@ -162,12 +175,13 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     return { reportVersion: 1, ok: false, budget, transcript, message: 'В журнале сессии пока нет ни одного ответа модели.' };
   }
   const contextTokens = count(last.input_tokens) + count(last.cache_read_input_tokens) + count(last.cache_creation_input_tokens) + count(last.output_tokens);
+  if (options.budget === undefined && largest > DEFAULT_BUDGET) budget = LARGE_WINDOW;
   const share = contextTokens / budget;
   return {
     reportVersion: 1,
     ok: true,
     transcript,
-    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(recordedSession === undefined ? {} : { sessionId: recordedSession }),
     contextTokens,
     budget,
     percent: Math.round(share * 100),

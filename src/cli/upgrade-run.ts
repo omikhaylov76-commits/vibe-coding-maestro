@@ -1,4 +1,4 @@
-import { SERVICE_COMMAND } from '../core/meta.js';
+import { quotePathArg, serviceInvocation, VERSION } from '../core/meta.js';
 import { upgradeProject } from '../core/upgrade/index.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
@@ -50,7 +50,8 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
     list('Добавлено', result.createdFiles);
     list('Обновлено', result.updatedFiles);
     list('Сохранено без изменений', analysis.preserves);
-    io.out(`Проверьте полный diff и запустите: ${SERVICE_COMMAND} doctor --path ${options.path} --strict`);
+    // Та же версия, что применила обновление: doctor проверяет ровно её канон.
+    io.out(`Проверьте полный diff и запустите: ${serviceInvocation(VERSION)} doctor --path ${quotePathArg(options.path)} --strict`);
     return EXIT_OK;
   }
 
@@ -60,6 +61,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
   list('Уже совпадает', analysis.unchanged);
   list('Останется без изменений', analysis.preserves);
   list('Служебные файлы', analysis.metadata);
-  io.out(`Применить: ${SERVICE_COMMAND} upgrade --path ${options.path} --apply`);
+  // Применять обязана та же версия, что показала это предложение, а не новая @latest.
+  io.out(`Применить: ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(options.path)} --apply`);
   return EXIT_OK;
 }

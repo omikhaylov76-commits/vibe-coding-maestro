@@ -10,7 +10,7 @@ import { initProject } from '../src/core/init.js';
 import { canonicalOwnershipInventory } from '../src/core/inventory.js';
 import { renderTemplate } from '../src/core/template.js';
 import { isCanonicalManifest, loadChecksums, loadManifest, MANIFEST_PATH } from '../src/core/manifest.js';
-import { VERSION } from '../src/core/meta.js';
+import { quotePathArg, VERSION } from '../src/core/meta.js';
 import { packageRoot } from '../src/core/paths.js';
 import { analyzeUpgrade, STAGING_DIR, upgradeProject } from '../src/core/upgrade/index.js';
 import {
@@ -501,7 +501,16 @@ describe('0.3 Phase 3: CLI upgrade', () => {
     const cli = collect();
     expect(await runMaestroCli(['upgrade', '--path', legacy.root, '--apply'], cli.io)).toBe(0);
     expect(cli.stdout()).toContain('Обновление применено');
+    // Подсказка повторяет проверку той же версией, что применила обновление.
+    expect(cli.stdout()).toContain(`npx --package create-vibe-maestro@${VERSION} vibe-maestro doctor --path ${quotePathArg(legacy.root)} --strict`);
     expect((await doctorProject(legacy.root, { strict: true })).findings).toEqual([]);
+  });
+
+  it('dry-run предлагает применить ту же версию готовой npx-командой', async () => {
+    const legacy = await makeLegacy02Project();
+    const cli = collect();
+    expect(await runMaestroCli(['upgrade', '--path', legacy.root], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain(`Применить: npx --package create-vibe-maestro@${VERSION} vibe-maestro upgrade --path ${quotePathArg(legacy.root)} --apply`);
   });
 
   it('на заблокированном проекте возвращает 1 и не пишет ничего', async () => {

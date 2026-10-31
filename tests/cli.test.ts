@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runCreateCli } from '../src/cli/create.js';
 import { runMaestroCli } from '../src/cli/maestro.js';
-import { PRODUCT_NAME, VERSION } from '../src/core/meta.js';
+import { PRODUCT_NAME, quotePathArg, serviceInvocation, VERSION } from '../src/core/meta.js';
 import { makeTempDir } from './helpers.js';
 
 /**
@@ -107,6 +107,7 @@ describe('vibe-maestro CLI', () => {
     const code = await runMaestroCli(['залечи'], c.io);
     expect(code).toBe(2);
     expect(c.stderr()).toContain('залечи');
+    expect(c.stderr()).toContain('Подсказка: npx --package create-vibe-maestro@latest vibe-maestro --help');
   });
 
   it('без команды показывает справку и возвращает код 2', async () => {
@@ -114,5 +115,18 @@ describe('vibe-maestro CLI', () => {
     const code = await runMaestroCli([], c.io);
     expect(code).toBe(2);
     expect(c.stderr()).not.toBe('');
+  });
+});
+
+describe('готовые к копированию команды', () => {
+  it('serviceInvocation зовёт bin vibe-maestro из пакета create-vibe-maestro нужной версии', () => {
+    expect(serviceInvocation()).toBe('npx --package create-vibe-maestro@latest vibe-maestro');
+    expect(serviceInvocation('0.3.0-beta.3')).toBe('npx --package create-vibe-maestro@0.3.0-beta.3 vibe-maestro');
+  });
+
+  it('quotePathArg берёт в кавычки только путь с пробелом', () => {
+    expect(quotePathArg('../project')).toBe('../project');
+    expect(quotePathArg('../My Project')).toBe('"../My Project"');
+    expect(quotePathArg('C:\\Users\\Олег\\Мой проект')).toBe('"C:\\Users\\Олег\\Мой проект"');
   });
 });

@@ -250,8 +250,8 @@ function v030OwnershipInventory(depth: BaselineDepth): Readonly<Record<string, B
 
 /** Слепок `templates/project` 0.3.0. */
 const V030_MANAGED_SHA256: Readonly<Record<string, string>> = {
-  '.claude/rules/maestro.md': 'b0aa4423d79ab8902b8203459833317cc7cd75c8db645ee99c50079cf3e9292d',
-  'wiki/plans/README.md': 'c46795c892f68f6826b42e4835393594a322052424cd85e90c652e5adca8c6d0',
+  '.claude/rules/maestro.md': 'f30e231f962a1dd27f423f6173829ecf45c9df30ce50bcbd88dfd4db65e78da0',
+  'wiki/plans/README.md': '58ebd5e72578ed963f81ebffbbf593930f20cc0d8ddc6a8d68c6a6caedbb7558',
   'wiki/plans/TEMPLATE.md': 'c1342f4578b42c7e23cde4caf010a3d7645141e274e284cfcdf2411469fe9dd4',
   'maestro/inbox/README.md': '5c3107b469d1c65d5a9d84132f2b0cfb85804b813ad5b9b65248dc434d6981a3',
   'maestro/runbooks/cowork-discovery.md': '1a32c070375783cfa54a3fad5c9644810f6eda37b7cd1a272f811278360b35c4',
@@ -266,14 +266,14 @@ const V030_MANAGED_SHA256: Readonly<Record<string, string>> = {
   '.claude/agents/explorer.md': 'ba59cc4e6e91dfe47938cf95338ec834ad4cd6f43fdc50c24fd250d54538b95b',
   'maestro/templates/handoff.md': '2e5b16ac79f9dd9f247ff34330d2b92762a0861f35f71edfbb772eed3a80f9cc',
   'maestro/templates/adr.md': '31f54f50b444997a0edf066e8cc4a47b4b595cebb8280b2b7169b3df6cb757df',
-  'maestro/templates/progress.md': '4fa9c505201de9c9dc541d82ee4d28685cc6ca60c6c9605d0c8b362def16a8c4',
+  'maestro/templates/progress.md': '98927bc41afeeb23523abb0dbab8f0221b9ca8653b02475aa1a130cf8a6d00fc',
   '.gitattributes': 'e08d278fbed2c8aea79c22d307df5e34fc3b70fd419bd651a9b8824eee8fbdb2',
   'protocols/build.md': '8d65437a72972fe6ad0a4c02c8207e34ebba0ca40dbe37c6ce5e41a30b919785',
   'protocols/status.md': '5614f012e8cac1f2071148e2685cbe1f9f94c8c5c72e59838fb072a39ccbb640',
   'protocols/wiki.md': '4054ae1b6f0912430521baaf6230ebeb8263cbbf00195113291fb8206d3c5338',
   'protocols/handoff.md': '104a875baf39320d988fe07d9c3a9db6f94dd00015312c937b6fd1e58195a5a1',
   'protocols/discovery.md': '20ef8084561a1c93a16003d3dac0426b43bb97b715f445f06ef79dd738e1430a',
-  'protocols/plan.md': '9fee15463937e4d8249d208443b5e2ed8ac220e7a10bdb415a96b8ca42050cad',
+  'protocols/plan.md': '4a083cf280edf62f09e49e8073979c9962ab8ec3326dac32489174bd83911b8d',
   'protocols/audit.md': 'c49f38b83db21af01f0f01552c7e8dc9743cd01c3ad12f3f31940f9cf83f76c6',
   'protocols/context-budget.md': '2747055ef1c39200043b24ed4ee7d59e93a05896b3a4ebd457f21fa725c7ab06',
   'protocols/seams.md': 'c7669b55b5d298cbfea97cd3c2284c9cb33aceacc9504e6e3ae3851e669ff5bd',

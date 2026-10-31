@@ -7,6 +7,7 @@ import { readPackageJson } from '../paths.js';
 import { canonicalizeSystemTempPrefix, onDiskBasename } from '../platform-paths.js';
 import { compareVersions } from '../version.js';
 import { absolutePathHasSymlink, pathHasSymlink } from './fs-utils.js';
+import { checkProjectEntries } from './entries.js';
 import { checkGit } from './git.js';
 import { checkInbox } from './inbox.js';
 import { checkInventory, checkManagedFiles } from './managed.js';
@@ -97,8 +98,8 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
     findings.push(version);
     const checksums = await loadChecksums(root);
     if (checksums === null) findings.push(error('checksums-invalid', 'Контрольные суммы отсутствуют или повреждены.', CHECKSUMS_PATH));
-    const { managedDocs } = await checkManagedFiles(root, manifest, checksums, findings);
-    await checkGit(root, managedDocs, findings);
+    const { managedDocs, managedFiles } = await checkManagedFiles(root, manifest, checksums, findings);
+    await checkGit(root, managedDocs, findings, managedFiles);
     await checkInbox(root, findings);
     await checkSources(root, findings);
     return report(root, findings, options.strict);
@@ -120,13 +121,14 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   if (checksums === null) findings.push(error('checksums-invalid', 'Контрольные суммы отсутствуют или повреждены.', CHECKSUMS_PATH));
 
   checkInventory(manifest, findings);
-  const { managedDocs } = await checkManagedFiles(root, manifest, checksums, findings);
+  const { managedDocs, managedFiles } = await checkManagedFiles(root, manifest, checksums, findings);
 
   await checkProtocols(root, findings);
   checkPlans(root, await checkWiki(root, findings), findings);
-  await checkGit(root, managedDocs, findings);
+  await checkGit(root, managedDocs, findings, managedFiles);
   await checkInbox(root, findings);
   await checkSources(root, findings);
+  await checkProjectEntries(root, manifest.product.version, findings);
 
   return report(root, findings, options.strict);
 }

@@ -43,7 +43,7 @@ It is **not another coding agent or IDE**. Keep using Claude Code, Codex, Cursor
 
 ![Vibe Coding Maestro: from a lost AI session to shared project memory and a green doctor check](docs/assets/quick-demo.gif)
 
-The recording shows the real create-and-`doctor` surface of an earlier 0.3 beta; the Planning Gate flow below was added after it.
+The recording shows the create-and-`doctor` surface of an earlier beta; the Planning Gate flow and the 0.3 file layout were added after it.
 
 ## Quick start
 
@@ -63,7 +63,7 @@ Or pass every decision explicitly:
 npx create-vibe-maestro@latest --yes --target "My Project" --name "My Project" --start idea --depth standard
 ```
 
-Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. To check it again later, open the project folder and run the command written in its `CLAUDE.md` (it names the exact version the project uses):
+Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. To check it again later, open the project folder and run the command written in its `.claude/rules/maestro.md` (it names the exact version the project uses):
 
 ```bash
 cd "My Project"
@@ -102,7 +102,7 @@ Vibe Coding Maestro doctor: всё сходится.
 ### Откуда запускать команды
 
 - `/plan`, `/build`, `/status`, `/wiki`, `/handoff` — внутри **папки проекта**, открытой в Claude Code.
-- `doctor`, `preflight`, `sources`, `upgrade` — тоже из **папки проекта**, через `npx`, с `--path .`. Точная команда с версией вашего проекта записана в его `CLAUDE.md` и `AGENTS.md`; ниже — общая форма:
+- `doctor`, `preflight`, `sources`, `upgrade` — тоже из **папки проекта**, через `npx`, с `--path .`. Точная команда с версией вашего проекта записана в его `.claude/rules/maestro.md`; ниже — общая форма:
 
 ```bash
 # из папки проекта
@@ -200,8 +200,8 @@ Maestro is deliberately conservative around existing data and Git state:
 - `doctor` is deterministic, has versioned JSON output, and makes no LLM call;
 - `doctor --strict` also treats warnings as blocking;
 - audit findings must be resolved with evidence; `waived` is not accepted by the 0.3 contract;
-- a plan approval carries a digest of the plan text: a later edit closes the gate until a human approves again (a tripwire, not a lock);
-- `.claude/settings.json` ships default rules: the agent cannot read `.env` or edit Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; the file belongs to the project, so a team can change them;
+- when the approval digest is recorded (the protocol asks the agent to), a later change of the plan text or its classification closes the gate until a human approves again — a tripwire, not a lock;
+- `.claude/settings.json` ships default rules for Claude Code: its file tools are denied `.env` files and Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; this is not a sandbox (a script the agent runs can still read files), and the file belongs to the project, so a team can change the rules;
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
 - `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
@@ -267,7 +267,7 @@ Run the preview from the project folder; it writes nothing:
 npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 ```
 
-It lists every file it would add or update and prints the exact command, with the exact version, that applies the change (`--apply`). A file you edited by hand is never overwritten: the upgrade stops and names it. After applying, review the Git diff and commit it (until then `doctor` reports the uncommitted managed files), then run `doctor --strict` with the same version.
+It lists every file it would add or update and prints the exact command, with the exact version, that applies the change (`--apply`). A file you edited by hand is never overwritten: the upgrade stops and names it. After applying, add all changes to Git including the new files (`git add -A`), review and commit them — until then `doctor` reports the uncommitted and untracked Maestro files — then run `doctor --strict` with the same version.
 
 ## Automation and CI
 
@@ -277,7 +277,7 @@ For scripts, pass every decision explicitly:
 npx create-vibe-maestro@latest --yes --target "My Project" --name "My Project" --start materials --depth standard --json
 ```
 
-Useful service commands (run from the project folder; in a real project use the exact version from its `CLAUDE.md`):
+Useful service commands (run from the project folder; in a real project use the exact version from its `.claude/rules/maestro.md`):
 
 ```bash
 npx --package create-vibe-maestro@latest vibe-maestro doctor --path . --json

@@ -6,7 +6,7 @@
 
 - Начни с `wiki/hot.md`: что сейчас, что мешает, что дальше. Читай только то, на что он ссылается; карта остальной памяти — `wiki/index.md`.
 - План до кода — `protocols/plan.md` (`/plan`), работа — `protocols/build.md` (`/build`), передача — `protocols/handoff.md` (`/handoff`).
-- `protocols/`, `maestro/templates/`, `.maestro/` и этот файл принадлежат Maestro: их обновляет `upgrade`, не ты.
+- Файлы Maestro обновляет `upgrade`, не ты: `protocols/`, `maestro/templates/`, `maestro/runbooks/`, `.claude/commands/`, `.claude/agents/`, `wiki/plans/README.md`, `wiki/plans/TEMPLATE.md`, `.maestro/` и этот файл. Полный список — пути с `ownership: managed` в `.maestro/manifest.json`.
 - Проверка проекта: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor --path .`
 
 ## Как говорить и решать

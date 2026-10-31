@@ -49,7 +49,7 @@ interface PublishedFixture {
  * Это независимая опора реестра: если слепок версии разошёлся с тем, что пакет
  * действительно записывал, тесты ниже это покажут.
  */
-const FIXTURES = ['0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-standard', '0.3.0-beta.3-advanced'];
+const FIXTURES = ['0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-standard', '0.3.0-beta.3-advanced', '0.3.0-beta.4-standard'];
 
 async function fixture(id: string): Promise<PublishedFixture> {
   return JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/published', `${id}.json`), 'utf8')) as PublishedFixture;

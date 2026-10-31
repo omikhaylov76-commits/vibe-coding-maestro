@@ -85,7 +85,7 @@ export async function baseline02Source(path: string): Promise<string> {
 /** Строки, добавленные каноном 0.3 в project-owned hot.md. */
 const HOT_ADDITIONS: readonly string[] = [
   'active_plan: none\n',
-  '<!-- Contract: active_plan is none, or one plans/<file>.md path under wiki/plans/ whose frontmatter has status: approved or active; a plan with status: active must be the declared one. In 0.3 beta wiki/programs/<slug>/ holds program material that doctor does not check, so it cannot be declared here. A project created before 0.3 has no active_plan field; a missing field is read as none. -->\n',
+  '<!-- Contract: active_plan is none, or one plans/<file>.md path under wiki/plans/ whose frontmatter has status: approved or active; a plan with status: active must be the declared one. In 0.3 wiki/programs/<slug>/ holds program material that doctor does not check, so it cannot be declared here. A project created before 0.3 has no active_plan field; a missing field is read as none. -->\n',
 ];
 
 export async function makeLegacy02Project(options: LegacyOptions = {}): Promise<LegacyProject> {

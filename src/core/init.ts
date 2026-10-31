@@ -189,6 +189,7 @@ async function initGitRepository(
   target: string,
   ownedPaths: readonly string[],
   warnings: string[],
+  writtenPaths: readonly string[],
 ): Promise<void> {
   try {
     const repositoryExisted = existsSync(join(target, '.git'));
@@ -209,7 +210,11 @@ async function initGitRepository(
     }
 
     if (repositoryExisted) {
-      warnings.push('Репозиторий Git уже существовал: index не изменён и commit не создан — добавьте файлы Maestro вручную.');
+      // Добавлять нечего — и подсказывать нечего.
+      if (writtenPaths.length > 0) {
+        const shown = writtenPaths.slice(0, 5).map((path) => quotePathArg(path)).join(' ');
+        warnings.push(`Репозиторий Git уже существовал: index не изменён и commit не создан. Добавьте записанные файлы сами: git add ${shown}${writtenPaths.length > 5 ? ' …' : ''}`);
+      }
       return;
     }
 
@@ -512,12 +517,13 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   });
 
   await writeManifest(target, manifest);
-  if (!isExistingProject) await rm(join(target, CREATING_MARKER_PATH), { force: true });
   await writeChecksums(target, nextChecksums);
 
   if (options.git === true) {
-    await initGitRepository(target, ownedPaths, warnings);
+    await initGitRepository(target, ownedPaths, warnings, [...createdFiles, ...mergedFiles]);
   }
+  // Метка снимается последней: убитый на любом шаге, включая Git, create остаётся виден.
+  if (!isExistingProject) await rm(join(target, CREATING_MARKER_PATH), { force: true });
 
   return {
     ok: true,

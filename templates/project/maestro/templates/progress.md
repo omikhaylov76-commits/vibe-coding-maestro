@@ -5,7 +5,7 @@ plan: none
 updated: YYYY-MM-DD
 ---
 
-<!-- Образец записи хода работы Maestro. Скопируй в wiki/progress/слаг.md. Пока запись active, путь к ней стоит в active_progress в wiki/hot.md; по завершении поставь status: done и active_progress: none. -->
+<!-- Образец записи хода работы Maestro. Скопируй в wiki/progress/слаг.md. Пока запись active, в wiki/hot.md стоит active_progress: progress/слаг.md (путь от wiki/, без «wiki/»); по завершении поставь status: done и active_progress: none. -->
 
 # Ход работы: название
 

@@ -185,11 +185,15 @@ function decideForPlan(plan: PlanDocument, planPath: string, digest: string): Pr
   const missing: string[] = [];
   if (plan.blockingQuestions === null) missing.push('blocking_questions');
   if (plan.specDelta === null) missing.push('spec_delta');
-  if (plan.currentSlice === null) missing.push('current_slice');
+  if (!plan.currentSliceDeclared) missing.push('current_slice');
   if (plan.kind === 'program' && plan.currentPhaseApproved === null) missing.push('current_phase_approved');
   if (missing.length > 0) {
     at('preflight-gate-fields-missing', `План не объявляет обязательные для build поля: ${missing.join(', ')}. Необъявленное считается неизвестным.`);
     return decision({ plan: planPath, route, findings });
+  }
+  if (plan.currentSlice === null) {
+    at('preflight-slice-closed', 'Порция не выбрана (current_slice: null): прошлая закрыта. Следующую порцию выбирают вместе с человеком и записывают в current_slice.');
+    return decision({ plan: planPath, route: 'human', planDigest: digest, findings });
   }
 
   if ((plan.blockingQuestions ?? 0) > 0) {

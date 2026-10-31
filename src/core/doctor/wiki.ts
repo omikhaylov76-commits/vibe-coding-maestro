@@ -72,7 +72,10 @@ export async function checkWiki(root: string, findings: DoctorFinding[]): Promis
   if (hot !== undefined) {
     const declared = frontmatter(hot)?.active_progress;
     const expected = active.length === 0 ? 'none' : active.length === 1 ? active[0] : null;
-    if (expected === null || declared !== expected) findings.push(error('hot-active-progress-mismatch', 'Contract: hot.md active_progress должен быть none либо путём единственного progress с status: active.', 'wiki/hot.md'));
+    if (expected === null || declared !== expected) {
+      const hint = expected === null ? ` Сейчас status: active у нескольких записей: ${active.join(', ')}.` : ` Ожидается active_progress: ${expected} (путь от wiki/, без «wiki/»).`;
+      findings.push(error('hot-active-progress-mismatch', `Contract: hot.md active_progress должен быть none либо путём единственного progress с status: active.${hint}`, 'wiki/hot.md'));
+    }
   }
   return decoded;
 }

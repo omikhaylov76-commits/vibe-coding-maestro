@@ -11,6 +11,8 @@ import type { DoctorFinding } from './types.js';
 /** Результат проверки managed-файлов: набор managed *.md нужен потом проверке Git. */
 export interface ManagedCheckResult {
   managedDocs: Set<string>;
+  /** Все существующие файлы из inventory, кроме metadata: им положено быть в Git. */
+  managedFiles: Set<string>;
 }
 
 export function checkInventory(manifest: Manifest, findings: DoctorFinding[]): void {
@@ -39,6 +41,7 @@ export async function checkManagedFiles(
   findings: DoctorFinding[],
 ): Promise<ManagedCheckResult> {
   const managedDocs = new Set<string>();
+  const managedFiles = new Set<string>();
   for (const entry of manifest.managed) {
     // Структурные инварианты (symlink, наличие файла) действуют и для
     // content-owned документов: проект владеет их содержимым, но не правом
@@ -58,6 +61,7 @@ export async function checkManagedFiles(
       continue;
     }
 
+    managedFiles.add(entry.path);
     // Дальше — проверка целостности по checksum, которая применима только к
     // файлам, чьим содержимым владеет Maestro.
     if (entry.kind !== 'managed') continue;
@@ -70,5 +74,5 @@ export async function checkManagedFiles(
       findings.push(error('text-unreadable', `Не удалось прочитать файл: ${cause instanceof Error ? cause.message : String(cause)}`, entry.path));
     }
   }
-  return { managedDocs };
+  return { managedDocs, managedFiles };
 }

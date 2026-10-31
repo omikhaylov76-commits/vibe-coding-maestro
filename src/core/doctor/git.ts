@@ -25,7 +25,7 @@ export function parsePorcelainV1Z(output: string): PorcelainEntry[] {
   return entries;
 }
 
-export async function checkGit(root: string, managedDocs: Set<string>, findings: DoctorFinding[]): Promise<void> {
+export async function checkGit(root: string, managedDocs: Set<string>, findings: DoctorFinding[], managedFiles: ReadonlySet<string> = new Set()): Promise<void> {
   if (!existsSync(join(root, '.git'))) return;
   try {
     const tracked = await execFileAsync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' });
@@ -35,8 +35,12 @@ export async function checkGit(root: string, managedDocs: Set<string>, findings:
     }
     const status = await execFileAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: root, encoding: 'utf8' });
     for (const entry of parsePorcelainV1Z(status.stdout)) {
-      if (entry.status === '??') continue;
       const path = entry.path;
+      if (entry.status === '??') {
+        // Файл Maestro, которого нет в Git, не попадёт в клон: проект там будет без него.
+        if (managedFiles.has(path)) findings.push(error('git-managed-untracked', 'Файл Maestro не добавлен в Git: в клоне проекта его не будет. Если он появился после upgrade — добавьте его (git add) и закоммитьте.', path));
+        continue;
+      }
       if (managedDocs.has(path)) findings.push(error('git-managed-dirty', 'Управляемый документ имеет незакоммиченные изменения. Если это результат upgrade — просмотрите diff и закоммитьте; если правка ручная — верните файл.', path));
     }
   } catch (cause) { findings.push(error('git-check-failed', `Не удалось проверить Git: ${cause instanceof Error ? cause.message : String(cause)}`, '.git')); }

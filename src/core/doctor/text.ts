@@ -7,6 +7,12 @@ export function decodeUtf8(buffer: Buffer): string | null {
   }
 }
 
+/** YAML-строка в кавычках — та же строка: агенты часто пишут "2026-10-31" и 'active'. */
+function unquote(value: string): string {
+  const quoted = /^(["'])(.*)\1$/.exec(value);
+  return quoted ? (quoted[2] ?? '') : value;
+}
+
 /** Есть ли у текста блок frontmatter между строками `---` в самом начале. */
 export function hasFrontmatterBlock(text: string): boolean {
   return /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.test(text);
@@ -34,14 +40,14 @@ export function frontmatter(text: string): Record<string, string> | null {
     const listItem = /^\s+-\s+(.*?)\s*$/.exec(line);
     if (listItem) {
       if (listKey === null || !listItem[1]) return null;
-      listItems.push(listItem[1]);
+      listItems.push(unquote(listItem[1]));
       continue;
     }
     closeList();
     const item = /^([a-z][a-z0-9_]*):\s*(.*?)\s*$/.exec(line);
     if (!item || !item[1]) return null;
     if (!item[2]) { listKey = item[1]; continue; }
-    result[item[1]] = item[2].replace(/\s+#.*$/, '');
+    result[item[1]] = unquote(item[2].replace(/\s+#.*$/, ''));
   }
   closeList();
   return result;

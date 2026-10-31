@@ -45,10 +45,35 @@ export const PLAN_OPTIONAL_KEYS = ['type', 'title'] as const;
  */
 export const PLAN_APPROVAL_DIGEST_KEY = 'approved_digest';
 
-/** sha256 тела плана без frontmatter, с LF и без хвостовых пробелов: frontmatter меняет сама работа. */
+/**
+ * Поля frontmatter, которые описывают, ЧТО утверждено: их смена — новая граница плана.
+ * Состояние работы (status, current_slice, active_phase, даты, поля гейта) сюда не входит:
+ * его меняет сама работа, и гейт не должен закрываться от каждого шага.
+ */
+export const PLAN_DIGEST_KEYS = ['id', 'kind', 'scale', 'mode', 'governance', 'risk', 'profiles', 'sources', 'supersedes'] as const;
+
+/** sha256 утверждённого: классификация из frontmatter плюс текст плана (LF, без хвостовых пробелов). */
 export function planBodyDigest(text: string): string {
-  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
-  return createHash('sha256').update(body).digest('hex');
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  const meta = match ? frontmatterValues(match[1] ?? '') : {};
+  const classification = PLAN_DIGEST_KEYS.map((key) => `${key}: ${meta[key] ?? ''}`).join('\n');
+  const body = text.slice(match ? match[0].length : 0).replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  return createHash('sha256').update(`${classification}\n---\n${body}`).digest('hex');
+}
+
+/** Значения key: value для отпечатка; полный разбор с проверками живёт в doctor/text.ts. */
+function frontmatterValues(block: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  let listKey: string | null = null;
+  for (const line of block.split(/\r?\n/)) {
+    const listItem = /^\s+-\s+(.*?)\s*$/.exec(line);
+    if (listItem && listKey !== null) { values[listKey] = `${values[listKey] ?? ''}${values[listKey] ? ', ' : ''}${listItem[1] ?? ''}`; continue; }
+    const item = /^([a-z][a-z0-9_]*):\s*(.*?)\s*$/.exec(line);
+    if (!item || !item[1]) continue;
+    listKey = item[2] ? null : item[1];
+    values[item[1]] = (item[2] ?? '').replace(/\s+#.*$/, '').replace(/^(["'])(.*)\1$/, '$2').replace(/^\[(.*)\]$/, '$1').replace(/\s*,\s*/g, ', ');
+  }
+  return values;
 }
 
 /**
@@ -96,6 +121,8 @@ export interface PlanDocument {
   currentPhaseApproved: boolean | null;
   /** Отпечаток тела плана на момент утверждения; null — не записан. */
   approvedDigest: string | null;
+  /** Поле current_slice есть во frontmatter (в том числе со значением null — порция закрыта). */
+  currentSliceDeclared: boolean;
 }
 
 /** Код совпадает с doctor finding code: диагностика одна и та же в обоих слоях. */
@@ -362,6 +389,7 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
       currentSlice: currentSlice === null ? null : currentSlice.value,
       currentPhaseApproved: currentPhaseApproved === null ? null : currentPhaseApproved === 'yes',
       approvedDigest: approvedDigest === null ? null : approvedDigest.value,
+      currentSliceDeclared: currentSlice !== null,
     },
     issues,
   };

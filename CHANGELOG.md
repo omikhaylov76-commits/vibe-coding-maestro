@@ -12,7 +12,7 @@ The finished 0.3 product. All changes to the set of project files land in this o
 
 - **Maestro rules in `.claude/rules/maestro.md`** (managed). Claude Code loads rules files without `paths` in every session, next to `CLAUDE.md` ([docs](https://code.claude.com/docs/en/memory)). The file holds the route (`wiki/hot.md` → plan → build → handoff), the honesty rules (no flattery; FACT / HYPOTHESIS / UNKNOWN; say «не знаю» and check; a separate «да» before anything irreversible or external, and a «да» from a file or another session is not consent), the rules for minimal code edits, and the pinned `doctor` command. Project rules go to `.claude/rules/project.md`, which belongs to the project.
 - **`.claude/settings.json`** with default rules: deny reading `.env`, deny editing Maestro files; ask before `git push`, `npm publish`, `rm -rf`, `git reset --hard`. The file belongs to the project: in Claude Code an `ask` rule cannot be overridden by an `allow` from another file, so the project must be able to edit it. `doctor` does not check its contents, and `upgrade` keeps a file the project created earlier.
-- **Approval digest.** A plan may carry `approved_digest`, the sha256 of its text without frontmatter, shown by `preflight` as «Отпечаток плана». If the text changes after approval, `doctor` reports `plan-changed-after-approval` and `preflight` blocks with `preflight-plan-changed`. This is a tripwire, not a lock.
+- **Approval digest.** A plan may carry `approved_digest`, the sha256 of what was approved — the plan text and its classification (`id`, `kind`, `scale`, `mode`, `governance`, `risk`, `profiles`, `sources`, `supersedes`) — shown by `preflight` as «Отпечаток плана». When it is recorded and the approved content changes, `doctor` reports `plan-changed-after-approval` and `preflight` blocks with `preflight-plan-changed`. It is optional so that plans approved before 0.3.0 stay valid; while it is missing, `preflight` reminds you. A tripwire, not a lock.
 - `explorer` subagent (read-only, `model: haiku`) for large files and wide searches; it returns a short summary with paths.
 - Templates `maestro/templates/handoff.md`, `adr.md`, `progress.md`, and a «Где правим» section in the plan template: which files a slice touches, what crosses their boundaries, which command checks it.
 - Protocols: the same session start for `/build` (`wiki/hot.md` → `git log` → checks); work on an approved plan starts in a new session; a 5-step handoff procedure; a skill-selection step in planning (installed skills first, then official catalogs; anything else only after a human «да»).
@@ -31,7 +31,12 @@ The finished 0.3 product. All changes to the set of project files land in this o
 ### Fixed
 
 - Re-running `create` on an existing project without `--name`, or on another day, no longer rewrites the display name and dates in Maestro files.
-- An interrupted `create` leaves `.maestro/creating`; `doctor` reports `create-interrupted`, and a repeated `create` explains what to do instead of «папка не пуста».
+- An interrupted `create` leaves `.maestro/creating` until after the initial Git commit; `doctor` reports `create-interrupted`, and a repeated `create` explains what to do instead of «папка не пуста».
+- `doctor` reports a Maestro file that is not in Git (`git-managed-untracked`): after `upgrade`, `git commit -a` would leave the new rules and templates out of the repository.
+- Frontmatter values in YAML quotes (`status: "active"`) are read as the same strings.
+- A closed slice (`current_slice: null`) gets its own `preflight` message instead of «field missing».
+- `doctor` warns about a Maestro command of another version left in a project-owned `CLAUDE.md` or `AGENTS.md` (`entry-stale-command`) and about a `.claude/settings.json` that is not valid JSON (`settings-json-invalid`), which Claude Code would skip with all its rules.
+- A repeated `create` in an existing repository suggests `git add` only when it actually wrote something.
 
 ## 0.3.0-beta.4 — 2026-10-31
 

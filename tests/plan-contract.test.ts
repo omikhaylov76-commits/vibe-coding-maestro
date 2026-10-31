@@ -99,6 +99,7 @@ describe('0.3 Phase 0: plan frontmatter schema', () => {
       currentSlice: null,
       currentPhaseApproved: null,
       approvedDigest: null,
+      currentSliceDeclared: false,
     });
   });
 

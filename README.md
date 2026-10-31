@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.3.0-beta.1 is an unreleased beta.** The npm package is not published yet, so `npx create-vibe-maestro@latest` is not a working installation command today. Use the source install below. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.3.0-beta.2 is a public beta on npm.** Create a project with `npx create-vibe-maestro@latest` and check one with `npx --package create-vibe-maestro@latest vibe-maestro doctor --path .`. Interfaces may still change between beta versions; the source install below remains available. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -43,7 +43,7 @@ It is **not another coding agent or IDE**. Keep using Claude Code, Codex, Cursor
 
 ![Vibe Coding Maestro: from a lost AI session to shared project memory and a green doctor check](docs/assets/quick-demo.gif)
 
-The recording shows the real create-and-`doctor` surface of the beta CLI; the Planning Gate flow below was added after it. It does not pretend that the npm package has already been published.
+The recording shows the real create-and-`doctor` surface of the beta CLI; the Planning Gate flow below was added after it.
 
 ## Quick start from source
 
@@ -320,14 +320,13 @@ Available now in the source beta:
 
 Not available yet:
 
-- npm installation;
 - safe conversion of existing non-canonical projects (`upgrade` covers only a canonical 0.2 project);
 - English-generated templates;
 - cloud sync, accounts, team dashboard, or billing;
 - automatic installation or execution of third-party skills;
 - a guarantee that an AI agent will not make mistakes.
 
-The 0.3 beta feature set is complete and locally release-verified. Broader dogfooding — including the real two-game integration on the user's Mac — continues as post-release validation and feedback for the next beta. The npm package is still unpublished; use the source installation above until a separate publication decision is made.
+The 0.3 beta feature set is complete and locally release-verified. Broader dogfooding — including the real two-game integration on the user's Mac — continues as post-release validation and feedback for the next beta. Since 0.3.0-beta.2 the package is published on npm as a beta; the source installation above remains available.
 
 ## Documentation
 

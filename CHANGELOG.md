@@ -4,6 +4,25 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
+## 0.3.0-beta.2 — 2026-11-01
+
+First release published to npm. `npx create-vibe-maestro@latest` and `npx --package create-vibe-maestro@latest vibe-maestro …`, which generated projects already call, now resolve to a real package.
+
+### Removed
+
+- **Breaking:** the `--force` flag of `create-vibe-maestro`. It was parsed and documented but never changed behaviour. Passing it is now a usage error (exit code 2) that writes nothing; drop it from scripts. Behaviour without the flag is unchanged.
+
+### Fixed
+
+- `vibe-maestro --help` told `npx` to download a package called `vibe-maestro`, which does not exist: `vibe-maestro` is only a bin inside `create-vibe-maestro`. It now shows `npx --package create-vibe-maestro@latest vibe-maestro <команда>`, matching the templates, so agents cannot be sent to whoever registers that name first. A contract test rejects any `npx` command that pulls another package.
+- Test cleanup retries removal of temporary Git repositories, fixing the intermittent `ENOTEMPTY .git/info` failure on macOS with Node 22.
+
+### Changed
+
+- Development dependencies: vitest 4.1.12 and vite 6.4.5, which clear the current `npm audit` advisories. The published package still has no runtime dependencies.
+- README and the user guide describe npm installation instead of an unpublished package.
+- `package.json` links to the GitHub repository, issues, and README.
+
 ## 0.3.0-beta.1 — 2026-08-07
 
 ### Added

@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.3.0-beta.1';
+const BETA_VERSION = '0.3.0-beta.2';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -85,8 +85,8 @@ describe('этапы 12–13: CI и документационные контр�
   it('README честно документирует prerelease, beginner flow и canonical-only beta', async () => {
     const readme = (await text('README.md')).toLowerCase();
     for (const value of [
-      'unreleased beta',
-      'npm package is not published yet',
+      'public beta on npm',
+      'npx create-vibe-maestro@latest',
       'no more than three decisions',
       'desktop',
       'explicit path',
@@ -111,6 +111,7 @@ describe('этапы 12–13: CI и документационные контр�
       'converter',
     ]) expect(readme).toContain(value);
     expect(readme).toContain('refuses to modify a non-empty, non-canonical directory');
+    for (const stale of ['unreleased', 'not published yet', 'still unpublished']) expect(readme).not.toContain(stale);
     expect(readme).not.toContain('подключить существующий проект');
     expect(readme).not.toContain('maestro добавляет собственную структуру');
   });

@@ -1,9 +1,17 @@
 {
   "name": "create-vibe-maestro",
-  "version": "0.3.0-beta.1",
+  "version": "0.3.0-beta.2",
   "description": "Vibe Coding Maestro — CLI, который готовит проект, файловую память и Git-защиту одной командой",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omikhaylov76-commits/vibe-coding-maestro.git"
+  },
+  "homepage": "https://github.com/omikhaylov76-commits/vibe-coding-maestro#readme",
+  "bugs": {
+    "url": "https://github.com/omikhaylov76-commits/vibe-coding-maestro/issues"
+  },
   "engines": {
     "node": ">=20.10.0"
   },

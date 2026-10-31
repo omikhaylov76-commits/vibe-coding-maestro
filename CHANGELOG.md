@@ -4,7 +4,7 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
-## 0.3.0-beta.2 — 2026-11-01
+## 0.3.0-beta.2 — 2026-10-31
 
 First release published to npm. `npx create-vibe-maestro@latest` and `npx --package create-vibe-maestro@latest vibe-maestro …`, which generated projects already call, now resolve to a real package.
 

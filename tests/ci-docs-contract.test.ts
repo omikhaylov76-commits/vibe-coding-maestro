@@ -57,7 +57,8 @@ describe('этапы 12–13: CI и документационные контр�
   });
 
   it('CI экономный: отмена устаревших прогонов, одна быстрая проверка на ветке, матрица на PR и main', async () => {
-    const ci = await text('.github/workflows/ci.yml');
+    // На Windows checkout может отдать CRLF: проверяем смысл, а не переводы строк.
+    const ci = (await text('.github/workflows/ci.yml')).replace(/\r\n/g, '\n');
     expect(ci).toMatch(/^concurrency:\n {2}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n {2}cancel-in-progress: \$\{\{ github\.ref != 'refs\/heads\/main' \}\}$/m);
     // Ветка: ровно один job без матрицы.
     const quick = ci.slice(ci.indexOf('  quick:'), ci.indexOf('  full:'));

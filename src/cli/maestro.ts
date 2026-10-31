@@ -1,13 +1,13 @@
 import { PLAN_SCALES } from '../core/plan.js';
 import type { PlanScale } from '../core/plan.js';
 import { QUICK_CRITERIA } from '../core/preflight.js';
-import { PRODUCT_NAME, SERVICE_COMMAND, VERSION } from '../core/meta.js';
+import { CREATE_COMMAND, PRODUCT_NAME, SERVICE_COMMAND, VERSION } from '../core/meta.js';
 import { CliIo, EXIT_OK, EXIT_USAGE, processIo } from './io.js';
 
 const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 
 Использование:
-  npx ${SERVICE_COMMAND} <команда> [опции]
+  npx --package ${CREATE_COMMAND}@latest ${SERVICE_COMMAND} <команда> [опции]
 
 Команды:
   doctor              механическая проверка целостности проекта (без LLM и токенов)

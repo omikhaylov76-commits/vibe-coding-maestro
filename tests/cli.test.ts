@@ -84,6 +84,13 @@ describe('vibe-maestro CLI', () => {
     expect(c.stdout()).toContain('doctor');
   });
 
+  it('справка зовёт bin vibe-maestro из пакета create-vibe-maestro, а не несуществующий пакет', async () => {
+    const c = collect();
+    await runMaestroCli(['--help'], c.io);
+    expect(c.stdout()).toContain('npx --package create-vibe-maestro@latest vibe-maestro <команда>');
+    expect(c.stdout()).not.toMatch(/npx\s+vibe-maestro/);
+  });
+
   it('на неизвестную команду возвращает код 2', async () => {
     const c = collect();
     const code = await runMaestroCli(['залечи'], c.io);

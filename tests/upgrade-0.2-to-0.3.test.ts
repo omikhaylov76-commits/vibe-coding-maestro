@@ -37,14 +37,16 @@ const NEW_PATHS = [
   'maestro/templates/adr.md',
   'maestro/templates/handoff.md',
   'maestro/templates/progress.md',
+  'protocols/completion.md',
   'protocols/plan.md',
+  'wiki/passport.md',
   'wiki/plans/0001-starter.md',
   'wiki/plans/README.md',
   'wiki/plans/TEMPLATE.md',
 ];
 
 /** Новые пути, которыми владеет проект: контрольной суммы Maestro у них нет. */
-const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/plans/0001-starter.md'];
+const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/plans/0001-starter.md'];
 
 /** Managed-файлы, которые остаются за Maestro и обновляются. */
 const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md', 'protocols/context-budget.md', 'protocols/handoff.md', 'protocols/wiki.md'];

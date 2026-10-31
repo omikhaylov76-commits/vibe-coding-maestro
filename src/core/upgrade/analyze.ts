@@ -1,6 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { absolutePathHasSymlink, pathHasSymlink } from '../doctor/fs-utils.js';
+import { mergeGitignore } from '../gitignore.js';
 import { GITATTRIBUTES_CONTENT } from '../init.js';
 import { canonicalManagedKind, canonicalOwnershipInventory, CONTENT_OWNED_FILES, TEMPLATE_FILES } from '../inventory.js';
 import type { CanonicalOwnership } from '../inventory.js';
@@ -27,6 +28,8 @@ import { findRelease, supportedVersions } from './releases.js';
 import type { Release } from './releases.js';
 import { recoverTemplateVars, templateUses } from '../template-recover.js';
 
+const GITIGNORE_PATH = '.gitignore';
+
 /** Каталог транзакции. Внутри `.maestro`, чтобы не появляться в дереве проекта. */
 export const STAGING_DIR = '.maestro/upgrade-staging';
 
@@ -41,6 +44,8 @@ export interface UpgradeBlocker {
 export interface UpgradeChange {
   path: string;
   ownership: CanonicalOwnership;
+  /** Для `.gitignore`: строки, которые upgrade допишет в конец; остальное содержимое не меняется. */
+  appends?: string[];
 }
 
 /** Машиночитаемое предложение. Содержимое файлов сюда не попадает: это отчёт, а не патч. */
@@ -65,8 +70,11 @@ export interface UpgradeAnalysis {
 export interface UpgradePlan {
   analysis: UpgradeAnalysis;
   root: string;
-  /** Путь → итоговое содержимое. Порядок фиксирован для детерминированной транзакции. */
-  writes: { path: string; content: string; action: 'create' | 'update' }[];
+  /**
+   * Путь → итоговое содержимое. Порядок фиксирован для детерминированной транзакции.
+   * `latin1` — байты файла проекта как есть: так `.gitignore` в любой кодировке дописывается, не меняя ни байта своих строк.
+   */
+  writes: { path: string; content: string; action: 'create' | 'update'; encoding?: 'latin1' }[];
 }
 
 const blocker = (code: string, message: string, path?: string): UpgradeBlocker =>
@@ -435,6 +443,18 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     updates.push({ path, ownership: 'project-owned' });
     writes.push({ path, content, action: 'update' });
   }
+  // .gitignore принадлежит проекту: upgrade только дописывает недостающие строки Maestro,
+  // строки проекта не меняет. Что это обычный файл, доказано проверкой полного дерева выше.
+  // Строки Maestro — ASCII, поэтому сравнение и дописывание идут по байтам (latin1): свои
+  // строки проекта в любой кодировке остаются байт в байт.
+  const raw = await readFile(join(root, GITIGNORE_PATH));
+  // Метка UTF-8 (BOM) в начале не должна прятать первую строку от сравнения.
+  const bom = raw.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? 3 : 0;
+  const gitignore = mergeGitignore(raw.subarray(bom).toString('latin1'));
+  if (gitignore.addedEntries.length > 0) {
+    updates.push({ path: GITIGNORE_PATH, ownership: 'project-owned', appends: gitignore.addedEntries });
+    writes.push({ path: GITIGNORE_PATH, content: raw.subarray(0, bom).toString('latin1') + gitignore.content, action: 'update', encoding: 'latin1' });
+  }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
   // 4. Metadata. Manifest пересобирается по текущему канону; проектные поля переносятся как есть.
@@ -468,7 +488,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   result.preserves = [
     ...Object.entries(baseline).filter(([path, ownership]) => ownership === 'project-owned' && path in current).map(([path]) => path),
     ...keptExisting,
-  ].sort();
+  ].filter((path) => !updates.some((item) => item.path === path)).sort();
   result.handedOver = handover.map(({ path }) => path).sort();
 
   return {

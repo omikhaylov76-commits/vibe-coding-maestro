@@ -14,6 +14,8 @@ export const REQUIRED_GITIGNORE_ENTRIES: readonly string[] = [
   '!.env.example',
   '*.log',
   '.DS_Store',
+  '.claude/worktrees/',
+  '.claude/settings.local.json',
 ];
 
 const BLOCK_HEADER = `# --- ${PRODUCT_NAME} ---`;
@@ -75,6 +77,16 @@ export function mergeGitignore(
 
   if (addedEntries.length === 0) {
     return { content: base, created, changed: created && base !== source, addedEntries };
+  }
+
+  // Файл кончается блоком Maestro — недостающие строки продолжают его, второго заголовка нет.
+  const lines = source.split(/\r?\n/);
+  const header = lines.lastIndexOf(BLOCK_HEADER);
+  const required = new Set(requiredEntries.map(normalizeEntry));
+  // Свой комментарий проекта после блока — уже не блок Maestro: тогда новый заголовок.
+  const endsWithBlock = header >= 0 && lines.slice(header + 1).every((line) => line.trim() === '' || required.has(normalizeEntry(line)));
+  if (endsWithBlock) {
+    return { content: base + addedEntries.join(eol) + eol, created, changed: true, addedEntries };
   }
 
   const block: string[] = [];

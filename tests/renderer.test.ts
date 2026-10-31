@@ -67,7 +67,7 @@ describe('Guided First Run renderer', () => {
   });
 
   it('success выделяет полный путь и следующие действия, не полагаясь только на цвет', () => {
-    const target = '/Users/DaddyCool/Desktop/Новый проект Маестро';
+    const target = '/Users/me/Desktop/Новый проект Маестро';
     const r = render({ env: { NO_COLOR: '1' } });
     r.renderer.success({ action: 'create', name: 'Новый проект Маестро', target, doctorOk: true });
     const text = r.text();

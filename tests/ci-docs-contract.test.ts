@@ -1,11 +1,42 @@
+import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.3.1';
+const BETA_VERSION = '0.4.0';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 }
+
+/**
+ * Имена закрытых проектов и личные имена не должны попадать в публичный репозиторий,
+ * поэтому здесь хранятся только их sha256: префиксы слов и слова целиком.
+ */
+const PRIVATE_PREFIX_SHA256 = new Set([
+  '86f519b62f871bd19ae32b24c5c308c9f880fff8225e7b4f6dacf1125b8644ce',
+  '63ba01ec9e303fb556f87dba073fe80105e081fedd4a4e9312e8c0314b76e207',
+  '359c1e75dc77a82ffb324b6403c5a16fe4ba6618a1ea961b92b4db3ffc07de59',
+  '9870ee936121b619ca68d707e5a0da79cbcc347f6797e1758395b18b0a5bc2f6',
+]);
+const PRIVATE_WORD_SHA256 = new Set([
+  '0fdc8b30e6762a81b9fc9fed803e68aeb27229d7543abae33bf8e39adeb74690',
+  '4a7d275272282c234120f88b898c5e0aa472083714d711a0cdc4c59056c7022c',
+  '4c934d01fead0e4584cb4956879dd1f4ca4c3dee86d935e8039218f28178546e',
+  '5ad59338ab416a5d23a87e7d4fb24c7cf52c20eb6f8cb5eacc5cc71aa5c25a95',
+  'd6e22b8f6e589e362c99e7cc16c5d7d0ae151c8b2b0e4fa48bc4bf5a60762e4d',
+]);
+const PREFIX_LENGTHS = [7, 8, 9];
+
+function privateWords(content: string): string[] {
+  const found: string[] = [];
+  for (const word of content.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
+    const hit = PRIVATE_WORD_SHA256.has(hash(word)) || PREFIX_LENGTHS.some((length) => word.length >= length && PRIVATE_PREFIX_SHA256.has(hash(word.slice(0, length))));
+    if (hit && !found.includes(word)) found.push(word);
+  }
+  return found;
+}
+
+const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 const TEXT_FILE = /\.(md|ts|mjs|js|json|ya?ml)$/;
 
@@ -129,8 +160,19 @@ describe('этапы 12–13: CI и документационные контр�
   it('публичный план развития есть и не содержит деталей закрытых проектов', async () => {
     const roadmap = await text('docs/ROADMAP.md');
     for (const value of ['0.3.0-beta.4', '0.3.0', '0.4', 'Не делаем']) expect(roadmap).toContain(value);
-    expect(roadmap).not.toMatch(/freelance|promtara|промтар|\bхаб|\/users\/|~\/projects/i);
+    expect(privateWords(roadmap)).toEqual([]);
+    expect(roadmap).not.toMatch(/\/users\/|~\/projects/i);
     expect(await text('README.md')).toContain('docs/ROADMAP.md');
+  });
+
+  it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {
+    const files = [...await shippedTextFiles(), 'packages/vibe-maestro/README.md', 'packages/vibe-maestro/package.json'];
+    // Пример `/Users/me/…` в руководстве допустим; личные пути — нет.
+    for (const file of files) {
+      const content = await text(file);
+      expect(privateWords(content), file).toEqual([]);
+      expect(content, file).not.toMatch(/~\/projects/i);
+    }
   });
 
   it('README честно документирует prerelease, beginner flow и canonical-only beta', async () => {

@@ -80,4 +80,17 @@ describe('mergeGitignore', () => {
     const result = mergeGitignore('dist/\n', ['.env']);
     expect(result.content).toContain('Vibe Coding Maestro');
   });
+
+  it('продолжает блок Maestro в конце файла без второго заголовка (ревью 0.4.0)', () => {
+    const first = mergeGitignore('секреты/\n', ['node_modules/', '.env']);
+    const second = mergeGitignore(first.content, ['node_modules/', '.env', '.claude/worktrees/']);
+    expect(second.addedEntries).toEqual(['.claude/worktrees/']);
+    expect(second.content.split('\n').filter((line) => line.startsWith('# ---'))).toHaveLength(1);
+    expect(second.content.endsWith('.env\n.claude/worktrees/\n')).toBe(true);
+    // Свои строки проекта после блока — новый блок с заголовком, чтобы не смешивать.
+    const mixed = mergeGitignore(`${first.content}мои/\n`, ['node_modules/', '.env', '.claude/worktrees/']);
+    expect(mixed.content.split('\n').filter((line) => line.startsWith('# ---'))).toHaveLength(2);
+    const commented = mergeGitignore(`${first.content}# мои правила\n`, ['node_modules/', '.env', '.claude/worktrees/']);
+    expect(commented.content.split('\n').filter((line) => line.startsWith('# ---'))).toHaveLength(2);
+  });
 });

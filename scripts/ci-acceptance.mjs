@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -148,6 +148,24 @@ try {
   const forgedDoctor = runResult(process.execPath, [installedMaestro, 'doctor', '--path', forgedDoctorProject, '--json'], installDir);
   assert.equal(forgedDoctor.status, 1, 'packed doctor must reject forged canonical identity');
   assert.ok(JSON.parse(forgedDoctor.stdout).findings.some((finding) => finding.code === 'manifest-canonical-mismatch'), 'packed doctor must report manifest-canonical-mismatch');
+
+  // Пакет-обёртка vibe-maestro: ставим ровно его опубликованные файлы рядом с упакованным
+  // create-vibe-maestro (без сети) и проверяем, что он запускает тот же bin с тем же exit code.
+  const aliasSource = join(root, 'packages/vibe-maestro');
+  const aliasPacked = JSON.parse(npm(['pack', '--dry-run', '--json', '--ignore-scripts'], aliasSource))[0];
+  assert.equal(aliasPacked.name, 'vibe-maestro', 'alias package must be named vibe-maestro');
+  const aliasRoot = join(installDir, 'node_modules/vibe-maestro');
+  for (const { path } of aliasPacked.files) {
+    await mkdir(dirname(join(aliasRoot, path)), { recursive: true });
+    await copyFile(join(aliasSource, path), join(aliasRoot, path));
+  }
+  const aliasManifest = JSON.parse(await readFile(join(aliasRoot, 'package.json'), 'utf8'));
+  const aliasBin = join(aliasRoot, aliasManifest.bin['vibe-maestro']);
+  const packedVersion = JSON.parse(await readFile(join(installedRoot, 'package.json'), 'utf8')).version;
+  assert.equal(run(process.execPath, [aliasBin, '--version'], installDir), packedVersion, 'alias must run the installed create-vibe-maestro');
+  run(process.execPath, [aliasBin, 'doctor', '--path', './packed standard project'], installDir);
+  const aliasForged = runResult(process.execPath, [aliasBin, 'doctor', '--path', forgedDoctorProject, '--json'], installDir);
+  assert.equal(aliasForged.status, 1, 'alias must pass through the doctor exit code');
 
   const symlinkProject = './packed symlink project';
   run(process.execPath, [installedCreate, '--yes', '--no-git', '--target', symlinkProject, '--start', 'idea'], installDir);

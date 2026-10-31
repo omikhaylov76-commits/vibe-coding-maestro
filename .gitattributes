@@ -1,0 +1,3 @@
+# Скрипт с shebang обязан оставаться с LF и в Windows-checkout: с CRLF строка
+# `#!/usr/bin/env node` ищет программу `node\r`, и опубликованный bin ломается на Unix.
+packages/vibe-maestro/bin/*.js text eol=lf

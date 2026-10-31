@@ -1,13 +1,13 @@
 import { PLAN_SCALES } from '../core/plan.js';
 import type { PlanScale } from '../core/plan.js';
 import { QUICK_CRITERIA } from '../core/preflight.js';
-import { CREATE_COMMAND, PRODUCT_NAME, SERVICE_COMMAND, VERSION } from '../core/meta.js';
+import { PRODUCT_NAME, serviceInvocation, VERSION } from '../core/meta.js';
 import { CliIo, EXIT_OK, EXIT_USAGE, processIo } from './io.js';
 
 const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 
 Использование:
-  npx --package ${CREATE_COMMAND}@latest ${SERVICE_COMMAND} <команда> [опции]
+  ${serviceInvocation()} <команда> [опции]
 
 Команды:
   doctor              механическая проверка целостности проекта (без LLM и токенов)
@@ -178,7 +178,7 @@ export async function runMaestroCli(argv: readonly string[], io: CliIo = process
   const parsed = parseMaestroArgs(argv);
   if (parsed.kind === 'version') { io.out(VERSION); return EXIT_OK; }
   if (parsed.kind === 'help') { io.out(HELP); return EXIT_OK; }
-  if (parsed.kind === 'error') { io.err(parsed.message); io.err(`Подсказка: ${SERVICE_COMMAND} --help`); return EXIT_USAGE; }
+  if (parsed.kind === 'error') { io.err(parsed.message); io.err(`Подсказка: ${serviceInvocation()} --help`); return EXIT_USAGE; }
   if (parsed.kind === 'doctor') {
     const { executeDoctorCommand } = await import('./doctor-run.js');
     return executeDoctorCommand(parsed.options, io);

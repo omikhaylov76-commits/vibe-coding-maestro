@@ -1,0 +1,30 @@
+{
+  "name": "vibe-maestro",
+  "version": "0.1.0",
+  "description": "Короткое имя для служебной команды vibe-maestro из пакета create-vibe-maestro (Vibe Coding Maestro)",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omikhaylov76-commits/vibe-coding-maestro.git",
+    "directory": "packages/vibe-maestro"
+  },
+  "homepage": "https://github.com/omikhaylov76-commits/vibe-coding-maestro#readme",
+  "bugs": {
+    "url": "https://github.com/omikhaylov76-commits/vibe-coding-maestro/issues"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "bin": {
+    "vibe-maestro": "bin/vibe-maestro.js"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "create-vibe-maestro": "latest"
+  }
+}

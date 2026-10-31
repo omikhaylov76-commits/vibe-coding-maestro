@@ -1,4 +1,4 @@
-import { CREATE_COMMAND, isStartingPoint, PRODUCT_NAME, STARTING_POINTS, VERSION } from '../core/meta.js';
+import { CREATE_COMMAND, isStartingPoint, PRODUCT_NAME, serviceInvocation, STARTING_POINTS, VERSION } from '../core/meta.js';
 import type { StartingPoint } from '../core/meta.js';
 import { DEPTHS } from '../core/manifest.js';
 import type { ProjectDepth } from '../core/manifest.js';
@@ -42,7 +42,7 @@ const HELP = `${PRODUCT_NAME} — подготовка проекта одной
   --version, -v       версия
 
 После создания проект проверяется командой:
-  npx --package ${CREATE_COMMAND}@latest vibe-maestro doctor`;
+  ${serviceInvocation()} doctor --path <путь>`;
 
 export function parseCreateArgs(argv: readonly string[]): ParseResult {
   const options: CreateOptions = {
@@ -181,7 +181,7 @@ export async function runCreateCli(
       }
     }
     io.err(parsed.message);
-    io.err(`Подсказка: ${CREATE_COMMAND} --help`);
+    io.err(`Подсказка: npx ${CREATE_COMMAND}@latest --help`);
     return EXIT_USAGE;
   }
 

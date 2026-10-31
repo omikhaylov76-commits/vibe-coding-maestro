@@ -49,6 +49,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
     io.out(`Обновление применено: ${analysis.fromVersion ?? analysis.baselineId} → ${analysis.toVersion}.`);
     list('Добавлено', result.createdFiles);
     list('Обновлено', result.updatedFiles);
+    list('Передано проекту (дальше файл ваш, Maestro его не проверяет и не перезаписывает)', analysis.handedOver);
     list('Сохранено без изменений', analysis.preserves);
     // До коммита doctor честно покажет git-managed-dirty: сначала diff и коммит, потом проверка.
     io.out('Просмотрите git diff и закоммитьте изменённые файлы: до коммита doctor покажет git-managed-dirty.');
@@ -60,6 +61,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
   io.out(`Предложение обновления ${analysis.fromVersion ?? analysis.baselineId} → ${analysis.toVersion} (ни один байт не записан).`);
   list('Будет добавлено', analysis.creates.map((item) => item.path));
   list('Будет обновлено', analysis.updates.map((item) => item.path));
+  list('Перейдёт к проекту (дальше файл ваш, Maestro его не проверяет и не перезаписывает)', analysis.handedOver);
   list('Уже совпадает', analysis.unchanged);
   list('Останется без изменений', analysis.preserves);
   list('Служебные файлы', analysis.metadata);

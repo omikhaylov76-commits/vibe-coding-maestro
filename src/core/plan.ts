@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Канонический контракт plan-документа 0.3 (Planning Gate, Phase 0).
  *
@@ -37,6 +38,18 @@ export const PLAN_REQUIRED_KEYS = [
 
 /** Общие для wiki поля документа: допустимы, но контрактом плана не управляются. */
 export const PLAN_OPTIONAL_KEYS = ['type', 'title'] as const;
+
+/**
+ * Отпечаток утверждения: sha256 текста плана без frontmatter. Необязателен
+ * (планы до 0.3.0 его не имеют); если записан, расхождение закрывает гейт.
+ */
+export const PLAN_APPROVAL_DIGEST_KEY = 'approved_digest';
+
+/** sha256 тела плана без frontmatter, с LF и без хвостовых пробелов: frontmatter меняет сама работа. */
+export function planBodyDigest(text: string): string {
+  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  return createHash('sha256').update(body).digest('hex');
+}
 
 /**
  * Машиночитаемые поля build gate.
@@ -81,6 +94,8 @@ export interface PlanDocument {
   /** Ровно одна разрешённая порция. null — не объявлена либо явное `null`. */
   currentSlice: string | null;
   currentPhaseApproved: boolean | null;
+  /** Отпечаток тела плана на момент утверждения; null — не записан. */
+  approvedDigest: string | null;
 }
 
 /** Код совпадает с doctor finding code: диагностика одна и та же в обоих слоях. */
@@ -257,7 +272,7 @@ function dateField(meta: Readonly<Record<string, string>>, field: string, issues
  */
 export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>): PlanValidation {
   const issues: PlanIssue[] = [];
-  const allowed = new Set<string>([...PLAN_REQUIRED_KEYS, ...PLAN_OPTIONAL_KEYS, ...PLAN_GATE_KEYS]);
+  const allowed = new Set<string>([...PLAN_REQUIRED_KEYS, ...PLAN_OPTIONAL_KEYS, ...PLAN_GATE_KEYS, PLAN_APPROVAL_DIGEST_KEY]);
 
   for (const key of PLAN_REQUIRED_KEYS) {
     if (!(key in meta)) issues.push(issue('plan-schema-invalid', key, `Обязательное поле плана отсутствует: ${key}.`));
@@ -300,6 +315,7 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
   const specDelta = enumField(meta, 'spec_delta', PLAN_SPEC_DELTAS, issues);
   const currentSlice = nullableField(meta, 'current_slice', (value) => ACTIVE_PHASE_TOKEN.test(value), 'допустимо null или идентификатор порции', issues);
   const currentPhaseApproved = enumField(meta, 'current_phase_approved', PLAN_PHASE_APPROVALS, issues);
+  const approvedDigest = nullableField(meta, PLAN_APPROVAL_DIGEST_KEY, (value) => /^[0-9a-f]{64}$/.test(value), 'допустимо null или sha256 из строки «Отпечаток плана» вывода preflight', issues);
 
   if (status !== null && approvedBy !== null && approvedAt !== null) {
     const hasApproval = approvedBy.value !== null && approvedAt.value !== null;
@@ -345,6 +361,7 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
       specDelta,
       currentSlice: currentSlice === null ? null : currentSlice.value,
       currentPhaseApproved: currentPhaseApproved === null ? null : currentPhaseApproved === 'yes',
+      approvedDigest: approvedDigest === null ? null : approvedDigest.value,
     },
     issues,
   };

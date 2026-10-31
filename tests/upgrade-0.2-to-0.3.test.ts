@@ -28,16 +28,32 @@ afterEach(cleanupTempDirs);
 
 /** Пути, которых в каноне 0.2 не было. */
 const NEW_PATHS = [
+  '.claude/agents/explorer.md',
   '.claude/commands/plan.md',
+  '.claude/rules/maestro.md',
+  '.claude/rules/project.md',
+  '.claude/settings.json',
   'maestro/runbooks/cowork-plan.md',
+  'maestro/templates/adr.md',
+  'maestro/templates/handoff.md',
+  'maestro/templates/progress.md',
   'protocols/plan.md',
   'wiki/plans/0001-starter.md',
   'wiki/plans/README.md',
   'wiki/plans/TEMPLATE.md',
 ];
 
-/** Managed-файлы, содержимое которых 0.3 обновляет. */
-const UPDATED_PATHS = ['.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'protocols/build.md', 'wiki/index.md'];
+/** Новые пути, которыми владеет проект: контрольной суммы Maestro у них нет. */
+const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/plans/0001-starter.md'];
+
+/** Managed-файлы, которые остаются за Maestro и обновляются. */
+const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'protocols/build.md', 'protocols/context-budget.md', 'protocols/handoff.md', 'protocols/wiki.md'];
+
+/** Бывшие managed-файлы, которые 0.3.0 передаёт проекту: нетронутые получают новый стартовый текст. */
+const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
+
+/** Всё, что upgrade переписывает на нетронутом проекте 0.2. */
+const UPDATED_PATHS = [...MANAGED_UPDATED, ...HANDED_OVER].sort();
 
 const codes = (blockers: readonly { code: string }[]): string[] => blockers.map((item) => item.code);
 
@@ -131,6 +147,7 @@ describe('0.3 Phase 3: analyzer не пишет ни байта', () => {
     expect(analysis.blockers).toEqual([]);
     expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_PATHS);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_PATHS);
+    expect(analysis.handedOver).toEqual(HANDED_OVER);
     expect(analysis.preserves).toContain('wiki/hot.md');
     expect(analysis.preserves).toContain('.gitignore');
     expect(analysis.toVersion).toBe(VERSION);
@@ -207,11 +224,11 @@ describe('0.3 Phase 3: применение upgrade', () => {
       .toEqual(Object.keys(canonicalOwnershipInventory(legacy.depth)).sort());
 
     const checksums = await loadChecksums(legacy.root);
-    for (const path of [...NEW_PATHS.filter((item) => item !== 'wiki/plans/0001-starter.md'), ...UPDATED_PATHS]) {
+    for (const path of [...NEW_PATHS.filter((item) => !NEW_PROJECT_OWNED.includes(item)), ...MANAGED_UPDATED]) {
       expect(checksums?.files[path], path).toMatch(/^[0-9a-f]{64}$/);
     }
-    // project-owned стартовый план контрольной суммы Maestro не получает.
-    expect(checksums?.files['wiki/plans/0001-starter.md']).toBeUndefined();
+    // Файлы проекта контрольной суммы Maestro не получают, а переданные теряют её.
+    for (const path of [...NEW_PROJECT_OWNED, ...HANDED_OVER]) expect(checksums?.files[path], path).toBeUndefined();
   });
 
   it('сохраняет подстановки проекта в добавленных и обновлённых файлах', async () => {
@@ -304,17 +321,20 @@ describe('0.3 Phase 3: upgrade authority', () => {
     expect(await snapshotTree(fake)).toEqual(before);
   });
 
-  it('полный, но перенесённый в чужую папку проект отвергается', async () => {
+  it('полный проект в переименованной папке обновляется: личность — project.id, а не имя папки', async () => {
     const legacy = await makeLegacy02Project({ folder: 'исходный' });
+    const id = (await loadManifest(legacy.root)).project.id;
     const parent = await makeTempDir('moved-');
     const moved = join(parent, 'другое-имя');
     await cp(legacy.root, moved, { recursive: true });
-    const before = await snapshotTree(moved);
 
     const result = await upgradeProject(moved, { apply: true });
-    expect(result.ok).toBe(false);
-    expect(codes(result.analysis.blockers)).toContain('upgrade-manifest-not-native');
-    expect(await snapshotTree(moved)).toEqual(before);
+    expect(result.analysis.blockers).toEqual([]);
+    expect(result.applied).toBe(true);
+    expect((await loadManifest(moved)).project.id).toBe(id);
+    const report = await doctorProject(moved, { strict: true });
+    expect(report.ok).toBe(true);
+    expect(report.findings.map((item) => item.code)).toEqual(['project-folder-renamed']);
   });
 
   it('придуманная форма inventory не выдаётся за известного предшественника', async () => {
@@ -346,7 +366,20 @@ describe('0.3 Phase 3: upgrade authority', () => {
 });
 
 describe('0.3 Phase 3: конфликты блокируют весь upgrade', () => {
-  it.each(UPDATED_PATHS)('изменённый managed-файл %s не перезаписывается', async (path) => {
+  it.each(HANDED_OVER)('изменённый бывший managed-файл %s передаётся проекту как есть и не блокирует upgrade', async (path) => {
+    const legacy = await makeLegacy02Project();
+    const edited = `${await readUtf8(legacy.root, path)}\nМоя строка.\n`;
+    await writeFile(join(legacy.root, path), edited, 'utf8');
+
+    const result = await upgradeProject(legacy.root, { apply: true });
+    expect(result.analysis.blockers).toEqual([]);
+    expect(result.analysis.handedOver).toContain(path);
+    expect(result.updatedFiles).not.toContain(path);
+    expect(await readUtf8(legacy.root, path)).toBe(edited);
+    expect((await loadChecksums(legacy.root))?.files[path]).toBeUndefined();
+  });
+
+  it.each(MANAGED_UPDATED)('изменённый managed-файл %s не перезаписывается', async (path) => {
     const legacy = await makeLegacy02Project();
     await writeFile(join(legacy.root, path), `${await readUtf8(legacy.root, path)}\nМоя строка.\n`, 'utf8');
     const before = await snapshotTree(legacy.root);
@@ -360,7 +393,7 @@ describe('0.3 Phase 3: конфликты блокируют весь upgrade', 
   it('противоречивая контрольная сумма блокирует запись', async () => {
     const legacy = await makeLegacy02Project();
     const checksums = JSON.parse(await readFile(join(legacy.root, '.maestro/checksums.json'), 'utf8')) as { files: Record<string, string> };
-    checksums.files['CLAUDE.md'] = 'f'.repeat(64);
+    checksums.files['protocols/build.md'] = 'f'.repeat(64);
     await writeFile(join(legacy.root, '.maestro/checksums.json'), `${JSON.stringify(checksums, null, 2)}\n`, 'utf8');
     const before = await snapshotTree(legacy.root);
 

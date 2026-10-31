@@ -10,6 +10,8 @@ import { readPackageJson } from './paths.js';
 export const MAESTRO_DIR = '.maestro';
 export const MANIFEST_PATH = `${MAESTRO_DIR}/manifest.json`;
 export const CHECKSUMS_PATH = `${MAESTRO_DIR}/checksums.json`;
+/** Метка незавершённого create: появляется до первой записи и исчезает после последней. */
+export const CREATING_MARKER_PATH = `${MAESTRO_DIR}/creating`;
 
 /**
  * Вид файла с точки зрения владения:

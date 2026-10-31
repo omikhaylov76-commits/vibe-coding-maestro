@@ -1,10 +1,5 @@
 # {{PROJECT_NAME}}
 
-Тонкий адаптер Claude Code к канону Vibe Coding Maestro.
+Инструкции этого проекта для Claude Code. Файл принадлежит проекту: дополняйте его свободно, Maestro его не перезаписывает.
 
-- Сначала прочитай `wiki/hot.md`.
-- План до кода: `protocols/plan.md`; команда `/plan` только направляет туда.
-- Основной маршрут: `protocols/build.md`.
-- Команды в `.claude/commands/` только направляют к canonical protocols.
-- Не редактируй managed `protocols/`; живые факты сохраняй по `protocols/wiki.md`.
-- Проверка: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor --path .`
+Правила Vibe Coding Maestro (маршрут, честность, правка кода) Claude Code загружает сам из `.claude/rules/maestro.md`, правила проекта — из `.claude/rules/project.md`. Начало работы — `wiki/hot.md`.

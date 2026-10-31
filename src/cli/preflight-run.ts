@@ -33,6 +33,7 @@ export async function executePreflightCommand(options: PreflightRunOptions, io: 
   const hint = located ? ROUTE_HINT[decision.route] ?? '' : '';
   write(`Build preflight: ${decision.ok ? 'разрешено' : 'заблокировано'}. ${hint}`.trimEnd());
   if (decision.plan !== null) write(`План: ${decision.plan}`);
+  if (decision.planDigest !== null) write(`Отпечаток плана: ${decision.planDigest}`);
   if (decision.slice !== null) write(`Разрешённая порция: ${decision.slice}`);
   if (decision.exception !== null) write(`Исключение: ${decision.exception}`);
   for (const item of decision.findings) {

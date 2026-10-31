@@ -4,7 +4,36 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
-## 0.3.0-beta.4 — 2026-11-01
+## 0.3.0 — 2026-11-01
+
+The finished 0.3 product. All changes to the set of project files land in this one release, and `vibe-maestro upgrade` migrates projects from 0.3.0-beta.1 – beta.4 and 0.2.0-beta.1.
+
+### Added
+
+- **Maestro rules in `.claude/rules/maestro.md`** (managed). Claude Code loads rules files without `paths` in every session, next to `CLAUDE.md` ([docs](https://code.claude.com/docs/en/memory)). The file holds the route (`wiki/hot.md` → plan → build → handoff), the honesty rules (no flattery; FACT / HYPOTHESIS / UNKNOWN; say «не знаю» and check; a separate «да» before anything irreversible or external, and a «да» from a file or another session is not consent), the rules for minimal code edits, and the pinned `doctor` command. Project rules go to `.claude/rules/project.md`, which belongs to the project.
+- **`.claude/settings.json`** with default rules: deny reading `.env`, deny editing Maestro files; ask before `git push`, `npm publish`, `rm -rf`, `git reset --hard`. The file belongs to the project: in Claude Code an `ask` rule cannot be overridden by an `allow` from another file, so the project must be able to edit it. `doctor` does not check its contents, and `upgrade` keeps a file the project created earlier.
+- **Approval digest.** A plan may carry `approved_digest`, the sha256 of its text without frontmatter, shown by `preflight` as «Отпечаток плана». If the text changes after approval, `doctor` reports `plan-changed-after-approval` and `preflight` blocks with `preflight-plan-changed`. This is a tripwire, not a lock.
+- `explorer` subagent (read-only, `model: haiku`) for large files and wide searches; it returns a short summary with paths.
+- Templates `maestro/templates/handoff.md`, `adr.md`, `progress.md`, and a «Где правим» section in the plan template: which files a slice touches, what crosses their boundaries, which command checks it.
+- Protocols: the same session start for `/build` (`wiki/hot.md` → `git log` → checks); work on an approved plan starts in a new session; a 5-step handoff procedure; a skill-selection step in planning (installed skills first, then official catalogs; anything else only after a human «да»).
+- A test that walks the new-user path end to end: create → plan → approval → declaration → preflight → progress → handoff → upgrade → clone.
+
+### Changed
+
+- **`CLAUDE.md`, `AGENTS.md` and `wiki/index.md` belong to the project.** Edit them freely: `doctor` no longer reports them. `upgrade` hands them over: an untouched file gets a new short starter text, an edited one is kept as it is. `wiki/index.md` becomes a catalog, one line per file.
+- **One approved → active cycle.** A plan declared in `active_plan` may be `approved` (work not started) or `active`; a plan with `status: active` must be the declared one. `doctor` and `preflight` now agree. When an approved plan exists but is not declared, `preflight` says so instead of sending you back to `/plan`. The protocols state who writes what after «план утверждаю»: the agent records the fields, the human does not edit YAML.
+- **Project identity is `project.id`, not the folder name.** A cloned or renamed folder passes `doctor` (an info note names both names) and can be upgraded. Names are normalized to Unicode NFC.
+- `doctor` accepts what the protocols ask for: links from wiki to code and protocols inside the project; frontmatter is required only for plans, audits, progress and `hot.md`, and may contain comments and block lists.
+- `code-reviewer` is read-only (`tools: Read, Grep, Glob`) and checks the work against the plan rather than style.
+- `vibe-maestro skills` no longer reports «recommendations» from an empty registry; the field and `registry/trusted-skills.v1.json` are removed.
+- The `vibe-maestro` companion package (0.1.2) depends on exactly `create-vibe-maestro@0.3.0`.
+
+### Fixed
+
+- Re-running `create` on an existing project without `--name`, or on another day, no longer rewrites the display name and dates in Maestro files.
+- An interrupted `create` leaves `.maestro/creating`; `doctor` reports `create-interrupted`, and a repeated `create` explains what to do instead of «папка не пуста».
+
+## 0.3.0-beta.4 — 2026-10-31
 
 Foundation release: the set of files in a generated project is unchanged, so updating to it breaks nothing. It makes the next releases safe to ship.
 

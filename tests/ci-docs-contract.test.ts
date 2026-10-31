@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.3.0-beta.4';
+const BETA_VERSION = '0.3.0';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -136,7 +136,7 @@ describe('этапы 12–13: CI и документационные контр�
   it('README честно документирует prerelease, beginner flow и canonical-only beta', async () => {
     const readme = (await text('README.md')).toLowerCase();
     for (const value of [
-      'public beta on npm',
+      'published on npm',
       'npx create-vibe-maestro@latest',
       'no more than three decisions',
       'desktop',
@@ -151,7 +151,7 @@ describe('этапы 12–13: CI и документационные контр�
       '/wiki',
       '/handoff',
       'skills',
-      '0.3 beta',
+      'level in 0.3',
       'canonical',
       '--depth',
       'light',

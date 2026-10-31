@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, parse, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { describeFsError } from './fs-errors.js';
@@ -9,6 +9,7 @@ import { CREATE_COMMAND, quotePathArg, serviceInvocation, VERSION } from './meta
 import type { StartingPoint } from './meta.js';
 import {
   CHECKSUMS_PATH,
+  CREATING_MARKER_PATH,
   contentChecksum,
   loadChecksums,
   MAESTRO_DIR,
@@ -23,6 +24,7 @@ import { DEPTHS } from './manifest.js';
 import type { ManagedEntry, Manifest, ProjectDepth } from './manifest.js';
 import { normalizeTarget, readPackageJson, templatesDir } from './paths.js';
 import { renderTemplate } from './template.js';
+import { recoverTemplateVars, templateUses } from './template-recover.js';
 import { canonicalOwnershipInventory, CONTENT_OWNED_FILES, lazyDirsForDepth, TEMPLATE_FILES } from './inventory.js';
 import { canonicalizeSystemTempPrefix, onDiskBasename } from './platform-paths.js';
 import { compareVersions } from './version.js';
@@ -139,6 +141,38 @@ async function findAncestorSymlink(target: string): Promise<string | null> {
     }
   }
   return null;
+}
+
+/**
+ * Подстановки существующего проекта (отображаемое имя, дата создания) по его же
+ * неизменённым managed-файлам. Версия та же, что у пакета (create не работает с
+ * проектами других версий), поэтому источник — текущие шаблоны. Файл, изменённый
+ * пользователем, не используется: восстановление по нему было бы угадыванием.
+ */
+async function recoverProjectVars(
+  target: string,
+  startingPoint: StartingPoint,
+  checksums: Readonly<Record<string, string>>,
+): Promise<{ projectName?: string; date?: string }> {
+  const found: { projectName?: string; date?: string } = {};
+  for (const relativePath of TEMPLATE_FILES) {
+    if (relativePath === GITATTRIBUTES_PATH || checksums[relativePath] === undefined) continue;
+    const source = await readTemplate(relativePath);
+    const uses = templateUses(source);
+    if ((!uses.projectName || found.projectName !== undefined) && (!uses.date || found.date !== undefined)) continue;
+    let actual: string;
+    try {
+      actual = await readFile(join(target, relativePath), 'utf8');
+    } catch {
+      continue;
+    }
+    if (contentChecksum(relativePath, actual) !== checksums[relativePath]) continue;
+    const vars = recoverTemplateVars(source, actual, startingPoint, VERSION);
+    if (vars === null) continue;
+    found.projectName ??= vars.projectName;
+    found.date ??= vars.date;
+  }
+  return found;
 }
 
 /**
@@ -263,6 +297,14 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
     }
   }
 
+  if (existsSync(join(target, CREATING_MARKER_PATH))) {
+    return failure(
+      target,
+      options.name ?? basename(target),
+      `Прошлый запуск create в этой папке был прерван: осталась метка ${CREATING_MARKER_PATH}, файлы Maestro могут быть неполными. Если папка была новой — удалите её целиком и запустите create заново; если в ней есть ваши файлы — сначала проверьте git status.`,
+    );
+  }
+
   let previousManifest = null;
   if (existsSync(join(target, MANIFEST_PATH))) {
     try {
@@ -283,9 +325,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
           : `Это проект Vibe Coding Maestro версии ${projectVersion}, а create — версии ${VERSION}. Create не обновляет проекты; используйте ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(target)} (без --apply только показывает изменения).`,
       );
     }
+    // Личность проекта — project.id: клон или переименованная папка остаются тем же проектом.
     if (
       !isCanonicalManifest(previousManifest)
-      || previousManifest.project.name !== onDiskBasename(target)
       || !(await hasCompleteCanonicalTree(target, previousManifest))
     ) {
       return failure(
@@ -310,8 +352,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
    * - в манифесте проект опознаётся по имени папки (идентичность на диске);
    * - отображаемое название в документах берётся из --name, иначе из имени папки.
    */
-  const folderName = onDiskBasename(target);
-  const displayName = options.name ?? folderName;
+  // Unicode приводится к NFC: одно и то же имя, набранное на macOS и на Linux, совпадает.
+  const folderName = onDiskBasename(target).normalize('NFC');
+  const displayName = (options.name ?? folderName).normalize('NFC');
 
   // Параметры существующего проекта не переписываются: манифест должен остаться стабильным.
   const projectName = previousManifest?.project.name ?? folderName;
@@ -346,8 +389,16 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   progress.existingProject = isExistingProject;
   progress.started = true;
   await mkdir(join(target, MAESTRO_DIR), { recursive: true });
+  // Метка ставится до первой записи и снимается после последней: прерванный create виден.
+  if (!isExistingProject) await writeFile(join(target, CREATING_MARKER_PATH), `${now.toISOString()}\n`, 'utf8');
 
-  const vars = { projectName: displayName, date: isoDate(now), startingPoint };
+  // Повторный запуск не переписывает подстановки: имя и дату берём из неизменённых файлов проекта.
+  const recovered = isExistingProject ? await recoverProjectVars(target, startingPoint, previousChecksums) : {};
+  const vars = {
+    projectName: options.name === undefined ? recovered.projectName ?? displayName : displayName,
+    date: recovered.date ?? isoDate(now),
+    startingPoint,
+  };
 
   /**
    * Записывает managed-файл, если его нет; сохраняет содержимое, если пользователь его изменил.
@@ -461,6 +512,7 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   });
 
   await writeManifest(target, manifest);
+  if (!isExistingProject) await rm(join(target, CREATING_MARKER_PATH), { force: true });
   await writeChecksums(target, nextChecksums);
 
   if (options.git === true) {

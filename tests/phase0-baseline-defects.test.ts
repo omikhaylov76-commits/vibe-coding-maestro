@@ -44,17 +44,17 @@ describe('D2: Git-контроль канонического проекта', (
   it('не переусердствовать: отслеживаемая правка управляемого документа остаётся git-managed-dirty', async () => {
     const target = await makeTempDir('vcm phase0 dirty tracked ');
     expect((await init(target, { git: true })).ok).toBe(true);
-    // Инициализация с git создаёт чистый первый commit, где wiki/index.md отслеживается.
+    // Инициализация с git создаёт чистый первый commit, где wiki/plans/README.md отслеживается.
     expect(await gitOut(target, ['status', '--porcelain'])).toBe('');
-    expect(await gitOut(target, ['ls-files', '--error-unmatch', 'wiki/index.md'])).toMatch(/wiki\/index\.md/);
+    expect(await gitOut(target, ['ls-files', '--error-unmatch', 'wiki/plans/README.md'])).toMatch(/wiki\/plans\/README\.md/);
 
-    await writeFile(join(target, 'wiki/index.md'), `${await readUtf8(target, 'wiki/index.md')}\nправка в рабочем дереве\n`, 'utf8');
-    expect(await gitOut(target, ['status', '--porcelain'])).toMatch(/^ M wiki\/index\.md$/m);
+    await writeFile(join(target, 'wiki/plans/README.md'), `${await readUtf8(target, 'wiki/plans/README.md')}\nправка в рабочем дереве\n`, 'utf8');
+    expect(await gitOut(target, ['status', '--porcelain'])).toMatch(/^ M wiki\/plans\/README\.md$/m);
 
     const report = await doctorProject(target);
 
     expect(report.findings).toContainEqual(
-      expect.objectContaining({ level: 'error', code: 'git-managed-dirty', path: 'wiki/index.md' }),
+      expect.objectContaining({ level: 'error', code: 'git-managed-dirty', path: 'wiki/plans/README.md' }),
     );
     expect(report.ok).toBe(false);
   });

@@ -51,7 +51,12 @@ export async function checkManagedFiles(
     }
     if (entry.kind === 'merged') continue;
     const absolute = join(root, entry.path);
-    if (!existsSync(absolute)) { findings.push(error('managed-missing', 'Управляемый файл отсутствует.', entry.path)); continue; }
+    if (!existsSync(absolute)) {
+      findings.push(error('managed-missing', entry.kind === 'managed'
+        ? 'Управляемый файл Maestro отсутствует.'
+        : 'Обязательный файл проекта отсутствует: его содержимое принадлежит проекту, но сам файл должен быть.', entry.path));
+      continue;
+    }
 
     // Дальше — проверка целостности по checksum, которая применима только к
     // файлам, чьим содержимым владеет Maestro.

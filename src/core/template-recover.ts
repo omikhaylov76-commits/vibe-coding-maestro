@@ -1,7 +1,7 @@
-import { normalizeEol } from '../manifest.js';
-import type { StartingPoint } from '../meta.js';
-import { renderTemplate } from '../template.js';
-import type { TemplateVars } from '../template.js';
+import { normalizeEol } from './manifest.js';
+import type { StartingPoint } from './meta.js';
+import { renderTemplate } from './template.js';
+import type { TemplateVars } from './template.js';
 
 /**
  * Доказательство того, что файл на диске — это буквально прошлый канонический

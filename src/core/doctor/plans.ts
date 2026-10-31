@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ACTIVE_PLAN_NONE, isExternalSourceRef, isWikiRelativePlanRef, validatePlanFrontmatter } from '../plan.js';
+import { ACTIVE_PLAN_NONE, APPROVAL_REQUIRED_STATUSES, isExternalSourceRef, isWikiRelativePlanRef, planBodyDigest, validatePlanFrontmatter } from '../plan.js';
 import type { PlanDocument } from '../plan.js';
 import { frontmatter } from './text.js';
 import { error } from './types.js';
@@ -40,7 +40,11 @@ export function checkPlans(root: string, decoded: ReadonlyMap<string, string>, f
     if (meta === null) continue;
     const { plan, issues } = validatePlanFrontmatter(meta);
     for (const item of issues) findings.push(error(item.code, item.message, path));
-    if (plan !== null) plans.set(path, plan);
+    if (plan === null) continue;
+    plans.set(path, plan);
+    if (APPROVAL_REQUIRED_STATUSES.includes(plan.status) && plan.approvedDigest !== null && plan.approvedDigest !== planBodyDigest(text)) {
+      findings.push(error('plan-changed-after-approval', 'Текст утверждённого плана изменился после утверждения (approved_digest не совпадает). Покажите изменения человеку; после повторного «план утверждаю» запишите новый отпечаток из вывода preflight.', path));
+    }
   }
 
   const byId = new Map<string, string[]>();
@@ -84,8 +88,20 @@ export function checkPlans(root: string, decoded: ReadonlyMap<string, string>, f
     findings.push(error('plan-multiple-active', `В project scope допустим не более одного active плана; найдены: ${active.join(', ')}.`));
     return;
   }
-  const expected = active.length === 0 ? ACTIVE_PLAN_NONE : active[0]!.slice('wiki/'.length);
-  if (declared !== expected) {
-    findings.push(error('hot-active-plan-mismatch', 'Contract: hot.md active_plan должен быть none либо путём единственного плана со status: active.', HOT_PATH));
+  /**
+   * Тот же договор, что у preflight: объявленный план утверждён (approved — работа
+   * ещё не начата, active — идёт), а план со status: active обязан быть объявлен.
+   */
+  if (declared === ACTIVE_PLAN_NONE) {
+    if (active.length === 1) {
+      findings.push(error('hot-active-plan-mismatch', `План ${active[0]} имеет status: active, но не объявлен: запишите active_plan: ${active[0]!.slice('wiki/'.length)} в wiki/hot.md.`, HOT_PATH));
+    }
+    return;
+  }
+  const declaredPlan = plans.get(`wiki/${declared}`);
+  if (active.length === 1 && active[0] !== `wiki/${declared}`) {
+    findings.push(error('hot-active-plan-mismatch', `В hot.md объявлен ${declared}, а status: active у ${active[0]}: активный план один, и он объявлен.`, HOT_PATH));
+  } else if (declaredPlan !== undefined && !APPROVAL_REQUIRED_STATUSES.includes(declaredPlan.status)) {
+    findings.push(error('hot-active-plan-mismatch', `Объявленный план ${declared} имеет status: ${declaredPlan.status}; объявлять можно только утверждённый план (approved или active).`, HOT_PATH));
   }
 }

@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.3.0-beta.4 is a public beta on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in its `CLAUDE.md` and `AGENTS.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change between beta versions. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.3.0 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -43,7 +43,7 @@ It is **not another coding agent or IDE**. Keep using Claude Code, Codex, Cursor
 
 ![Vibe Coding Maestro: from a lost AI session to shared project memory and a green doctor check](docs/assets/quick-demo.gif)
 
-The recording shows the real create-and-`doctor` surface of the beta CLI; the Planning Gate flow below was added after it.
+The recording shows the real create-and-`doctor` surface of an earlier 0.3 beta; the Planning Gate flow below was added after it.
 
 ## Quick start
 
@@ -79,7 +79,7 @@ Vibe Coding Maestro doctor: всё сходится.
 `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.3). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -95,9 +95,9 @@ Vibe Coding Maestro doctor: всё сходится.
 3. **Проверьте классификацию.** Агент называет масштаб, режим, глубину гарантий, риск и профили с причинами. Вы можете принять её, изменить или сузить объём.
 4. **Покажите существующий код**, если он есть: команда `sources` читает его read-only и по умолчанию ничего не пишет.
 5. **Получите черновик** в `wiki/plans/<номер>-<слаг>.md`. Пока он `draft`, гейт показывает `CODE_ALLOWED: NO`.
-6. **Утвердите план сами** — словами «план утверждаю». Утверждение записывается в поля `approved_by` и `approved_at`. Maestro не может механически отличить, кто их заполнил — человек или агент: следите, чтобы они появлялись только после ваших слов.
+6. **Утвердите план сами** — словами «план утверждаю». После этих слов агент сам записывает поля плана, объявляет его в `wiki/hot.md` и ставит отпечаток утверждения: если текст плана потом изменится, `doctor` и `preflight` это заметят. Maestro не может механически отличить, кто заполнил поля — человек или агент: следите, чтобы они появлялись только после ваших слов.
 7. **Проверьте право на код** механическим гейтом `preflight` (команды ниже).
-8. **`/build` ровно одной порции** → тесты → `doctor` → `/handoff`.
+8. **`/build` ровно одной порции — лучше в новой сессии** → тесты → `doctor` → `/handoff`. Агент правит только файлы из раздела плана «Где правим».
 
 ### Откуда запускать команды
 
@@ -119,7 +119,7 @@ npx --package create-vibe-maestro@latest vibe-maestro doctor --path .
 | `PROJECT` | полный пакет планирования в одном основном плане |
 | `PROGRAM` / `INTEGRATION` | `wiki/programs/<слаг>/`: программа, фазы и source inventory |
 
-В 0.3 beta активный план обязан лежать в `wiki/plans/`: только этот каталог проверяют `doctor` и `preflight`. `wiki/programs/<слаг>/` в этой бете — проектные материалы программы, не проверяемые doctor.
+В 0.3 активный план обязан лежать в `wiki/plans/`: только этот каталог проверяют `doctor` и `preflight`. `wiki/programs/<слаг>/` в этой бете — проектные материалы программы, не проверяемые doctor.
 
 ### Что делает человек, а что агент
 
@@ -141,12 +141,15 @@ A Standard project starts with a structure like this:
 
 ```text
 My Project/
-├── AGENTS.md          # universal entry for compatible AI agents
-├── CLAUDE.md          # Claude Code entry
+├── AGENTS.md          # yours: entry for Codex and other AGENTS.md tools
+├── CLAUDE.md          # yours: project instructions for Claude Code
+├── .claude/rules/     # maestro.md (Maestro rules, loaded every session) + project.md (yours)
+├── .claude/settings.json  # yours: default deny/ask rules (.env, Maestro files, push, publish)
 ├── .claude/commands/  # /status, /plan, /build, /wiki, /handoff adapters
+├── .claude/agents/    # read-only code-reviewer and explorer
 ├── protocols/         # canonical rules for planning, building and handoff
 ├── wiki/              # shared memory: plans, decisions, progress and audits
-├── maestro/           # inbox and human-controlled discovery/audit runbooks
+├── maestro/           # inbox, runbooks, and templates for handoff, ADR and progress
 └── .maestro/          # manifest, ownership inventory and integrity metadata
 ```
 
@@ -196,7 +199,9 @@ Maestro is deliberately conservative around existing data and Git state:
 - Git bootstrap uses `main`, does not run `git add -A` over unrelated work, and does not change global Git configuration;
 - `doctor` is deterministic, has versioned JSON output, and makes no LLM call;
 - `doctor --strict` also treats warnings as blocking;
-- audit findings must be resolved with evidence; `waived` is not accepted by the 0.3 beta contract;
+- audit findings must be resolved with evidence; `waived` is not accepted by the 0.3 contract;
+- a plan approval carries a digest of the plan text: a later edit closes the gate until a human approves again (a tripwire, not a lock);
+- `.claude/settings.json` ships default rules: the agent cannot read `.env` or edit Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; the file belongs to the project, so a team can change them;
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
 - `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
@@ -242,10 +247,10 @@ Maestro also cannot replace project tests, backups, code review, or human judgme
 
 The core format is vendor-neutral; integration depth is not identical across tools.
 
-| Interface | Level in 0.3 beta | What is available |
+| Interface | Level in 0.3 | What is available |
 |---|---|---|
 | Humans | Native | Plain Markdown, Git diffs, explicit ownership, runbooks |
-| Claude Code | Native adapter | `CLAUDE.md`, five project commands including `/plan`, code-reviewer adapter |
+| Claude Code | Native adapter | `.claude/rules/` loaded every session, five project commands including `/plan`, read-only reviewer and explorer, default `settings.json` |
 | Codex and other `AGENTS.md` tools | Generic adapter | Universal `AGENTS.md` entry into canonical protocols |
 | Cursor and other filesystem-aware tools | Generic | They can read the same Markdown; no dedicated adapter yet |
 | Cowork-style research/audit | Runbook | Copyable plan, discovery, and independent-audit workflows; human imports the result |
@@ -287,9 +292,9 @@ npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 
 The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
-## Current beta scope
+## Current scope
 
-Available now in the npm beta:
+Available now:
 
 - Guided First Run;
 - fresh canonical project creation;
@@ -298,6 +303,10 @@ Available now in the npm beta:
 - read-only `sources` inventory of existing code;
 - safe `upgrade` of a provably canonical project from an earlier published version;
 - exact Maestro version pinned in every generated project;
+- Maestro rules in `.claude/rules/`, with `CLAUDE.md`, `AGENTS.md` and `wiki/index.md` owned by the project;
+- approval digest for plans and one consistent approved → active cycle in `doctor` and `preflight`;
+- project identity by `project.id`: a cloned or renamed folder is the same project;
+- templates for handoff, ADR and progress;
 - `light`, `standard`, and `advanced` depth projections;
 - shared project memory and handoffs;
 - canonical protocols with thin adapters;
@@ -316,7 +325,7 @@ Not available yet:
 - automatic installation or execution of third-party skills;
 - a guarantee that an AI agent will not make mistakes.
 
-Known gaps that 0.3.0 is meant to close — the step from an approved plan to `/build`, project identity that survives a renamed folder, `doctor` complaints about edits the protocols themselves ask for — are listed in the [roadmap](docs/ROADMAP.md).
+What comes next — a `handoff` command, tracked closed slices, a code map, archiving of old plan deltas and audits — is listed in the [roadmap](docs/ROADMAP.md).
 
 ## Documentation
 

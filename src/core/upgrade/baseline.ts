@@ -179,4 +179,9 @@ export const BASELINE_TEMPLATES: readonly BaselineTemplate[] = [
   { path: 'wiki/index.md', source: 'registry/baseline/0.2/project/wiki/index.md', sha256: 'a6989e7ac718c72157adf2ff80eef7921701f83b45b7da60a9569cfbf1bc538a' },
   { path: '.claude/commands/build.md', source: 'registry/baseline/0.2/project/.claude/commands/build.md', sha256: 'aac17f7752c67645e7e5b027ffc08f9a144f075aa06acf7208853070c0b4c3c7' },
   { path: 'protocols/build.md', source: 'registry/baseline/0.2/project/protocols/build.md', sha256: '2ce00c73e5f3c03bee48e1b34ce34c8253383e2a9469feb5ae05b87b68c1a499' },
+  // Изменены в 0.3.0; в 0.2 и во всех 0.3 beta эти файлы побайтово одинаковы, поэтому копия общая.
+  { path: '.claude/agents/code-reviewer.md', source: 'registry/baseline/0.3.0-beta.4/project/.claude/agents/code-reviewer.md', sha256: 'b522bf8dfaef73df89c0045e98cee5636efea4b2787eef434b1c3700035c1568' },
+  { path: 'protocols/wiki.md', source: 'registry/baseline/0.3.0-beta.4/project/protocols/wiki.md', sha256: 'c8c2f901e88d6c13595bbd41239755d823d278acdb9c0202aeb1b5832ef24632' },
+  { path: 'protocols/handoff.md', source: 'registry/baseline/0.3.0-beta.4/project/protocols/handoff.md', sha256: '7aec6bf47408b42fc4bb9e977664295c9461dfd69c3ff438676c99e2d2b86b80' },
+  { path: 'protocols/context-budget.md', source: 'registry/baseline/0.3.0-beta.4/project/protocols/context-budget.md', sha256: 'e121d6dc75de04ea3624608be5f778d43e99afa815540738ec3a43e47ccdcf8c' },
 ];

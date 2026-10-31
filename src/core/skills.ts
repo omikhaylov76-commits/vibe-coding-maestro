@@ -1,7 +1,5 @@
-import { lstat, opendir, open, readFile } from 'node:fs/promises';
+import { lstat, opendir, open } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
-import { tryLoadManifest } from './manifest.js';
-import { packageRoot } from './paths.js';
 
 export const SKILL_MAX_DEPTH = 4;
 export const SKILL_MAX_FILES = 200;
@@ -19,17 +17,16 @@ export interface SkillFrontmatter {
 }
 export interface SkillResult { code: string; level: 'warning'; path?: string; message: string }
 export interface SkillEntry { path: string; frontmatter: SkillFrontmatter; status: 'ok' | 'warning' }
-export interface SkillRecommendation { id: string; name: string; source: string; version: string; license: string; requiredTools: string[] }
+/**
+ * Только инвентаризация. Рекомендаций нет: пустой «реестр доверенных навыков»
+ * обещал то, чего не было. Выбор навыков — шаг протокола планирования, а не CLI.
+ */
 export interface SkillsReport {
-  registryVersion: number;
   installed: false;
   notice: string;
   skills: SkillEntry[];
   results: SkillResult[];
-  recommendations: SkillRecommendation[];
 }
-interface RegistryEntry extends SkillRecommendation { startingPoints: string[] }
-interface Registry { version: number; skills: RegistryEntry[] }
 
 function posix(root: string, path: string): string { return relative(root, path).split(sep).join('/'); }
 function unquote(value: string): string {
@@ -127,15 +124,6 @@ async function readBounded(path: string): Promise<string | null> {
   } finally { await handle.close(); }
 }
 
-async function recommendations(root: string): Promise<{ version: number; items: SkillRecommendation[] }> {
-  const registry = JSON.parse(await readFile(join(packageRoot(), 'registry/trusted-skills.v1.json'), 'utf8')) as Registry;
-  const startingPoint = (await tryLoadManifest(root))?.project.startingPoint;
-  const items = startingPoint === undefined ? [] : registry.skills
-    .filter((item) => item.startingPoints.includes(startingPoint)).slice(0, 5)
-    .map(({ startingPoints: _, ...item }) => item);
-  return { version: registry.version, items };
-}
-
 export async function scanSkills(projectPath: string): Promise<SkillsReport> {
   const root = resolve(projectPath);
   const results: SkillResult[] = [];
@@ -149,6 +137,5 @@ export async function scanSkills(projectPath: string): Promise<SkillsReport> {
     if (parsed.warning) results.push({ code: 'frontmatter-malformed', level: 'warning', path: relativePath, message: parsed.warning });
     skills.push({ path: relativePath, frontmatter: parsed.value, status: parsed.warning ? 'warning' : 'ok' });
   }
-  const trusted = await recommendations(root);
-  return { registryVersion: trusted.version, installed: false, notice: 'ничего не установлено', skills, results, recommendations: trusted.items };
+  return { installed: false, notice: 'ничего не установлено', skills, results };
 }

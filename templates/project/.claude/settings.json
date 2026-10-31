@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./protocols/**)",
+      "Edit(./maestro/templates/**)",
+      "Edit(./.maestro/**)",
+      "Edit(./.claude/rules/maestro.md)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(npm publish *)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)"
+    ]
+  }
+}

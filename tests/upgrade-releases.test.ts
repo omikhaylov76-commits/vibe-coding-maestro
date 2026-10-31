@@ -21,8 +21,20 @@ afterEach(cleanupTempDirs);
 
 const DEPTHS: readonly ProjectDepth[] = ['light', 'standard', 'advanced'];
 
-/** Managed-файлы, в которых beta.4 закрепляет версию вместо `@latest`. */
-const PINNED_PATHS = ['.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'protocols/build.md', 'protocols/plan.md'];
+/** Файлы, в которых после upgrade стоит закреплённая версия вместо `@latest`. */
+const PINNED_PATHS = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/plan.md'];
+
+/** Новые пути канона 0.3.0 относительно 0.3 beta. */
+const NEW_IN_030 = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md'];
+
+/** Бывшие managed-файлы, которые 0.3.0 передаёт проекту. */
+const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
+
+/** Всё, что upgrade с 0.3 beta переписывает на нетронутом проекте. */
+const UPDATED_FROM_BETA = [
+  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'protocols/build.md', 'protocols/context-budget.md',
+  'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md', 'wiki/index.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
+];
 
 interface PublishedFixture {
   generatedBy: string;
@@ -164,8 +176,9 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(analysis.status).toBe('upgradable');
     expect(analysis.fromVersion).toBe(data.version);
     expect(analysis.toVersion).toBe(VERSION);
-    expect(analysis.creates).toEqual([]);
-    expect(analysis.updates.map((item) => item.path).sort()).toEqual(PINNED_PATHS);
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_030);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_BETA);
+    expect(analysis.handedOver).toEqual(HANDED_OVER);
     expect(analysis.preserves).toContain('wiki/hot.md');
     expect(await snapshotTree(root)).toEqual(before);
   });
@@ -178,7 +191,8 @@ describe('upgrade с опубликованных бет на текущую в�
     const result = await upgradeProject(root, { apply: true });
     expect(result.error).toBeUndefined();
     expect(result.applied).toBe(true);
-    expect(result.updatedFiles.filter((path) => !path.startsWith('.maestro/')).sort()).toEqual(PINNED_PATHS);
+    expect(result.updatedFiles.filter((path) => !path.startsWith('.maestro/')).sort()).toEqual(UPDATED_FROM_BETA);
+    expect(result.createdFiles.sort()).toEqual(NEW_IN_030);
 
     for (const path of PINNED_PATHS) {
       const text = await readUtf8(root, path);
@@ -219,25 +233,27 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(await snapshotTree(root)).toEqual(before);
   });
 
-  it('контрольные суммы обновлённых файлов пересчитаны, остальные не тронуты', async () => {
+  it('контрольные суммы: обновлённые пересчитаны, переданные проекту сняты, новые добавлены, остальные не тронуты', async () => {
     const { root } = await materialize('0.3.0-beta.3-standard');
     const before = (await loadChecksums(root))?.files ?? {};
     expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
     const after = (await loadChecksums(root))?.files ?? {};
-    expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
+    for (const path of HANDED_OVER) expect(after[path], path).toBeUndefined();
+    for (const path of NEW_IN_030.filter((item) => !['.claude/rules/project.md', '.claude/settings.json'].includes(item))) expect(after[path], path).toMatch(/^[0-9a-f]{64}$/);
     for (const path of Object.keys(before)) {
-      if (PINNED_PATHS.includes(path)) expect(after[path], path).not.toBe(before[path]);
+      if (HANDED_OVER.includes(path)) continue;
+      if (UPDATED_FROM_BETA.includes(path)) expect(after[path], path).not.toBe(before[path]);
       else expect(after[path], path).toBe(before[path]);
     }
   });
 
-  it('изменённый вручную файл с версией блокирует весь upgrade и ничего не пишет', async () => {
+  it('изменённый вручную файл Maestro блокирует весь upgrade и ничего не пишет', async () => {
     const { root } = await materialize('0.3.0-beta.3-standard');
-    await writeFile(join(root, 'CLAUDE.md'), `${await readUtf8(root, 'CLAUDE.md')}\nМоя строка.\n`, 'utf8');
+    await writeFile(join(root, 'protocols/plan.md'), `${await readUtf8(root, 'protocols/plan.md')}\nМоя строка.\n`, 'utf8');
     const before = await snapshotTree(root);
     const result = await upgradeProject(root, { apply: true });
     expect(result.ok).toBe(false);
-    expect(result.analysis.blockers).toContainEqual(expect.objectContaining({ code: 'upgrade-managed-modified', path: 'CLAUDE.md' }));
+    expect(result.analysis.blockers).toContainEqual(expect.objectContaining({ code: 'upgrade-managed-modified', path: 'protocols/plan.md' }));
     expect(result.analysis.blockers[0]?.message).toContain('0.3.0-beta.3');
     expect(await snapshotTree(root)).toEqual(before);
   });
@@ -283,17 +299,17 @@ describe('upgrade с опубликованных бет на текущую в�
 });
 
 describe('doctor и версия проекта', () => {
-  it('проект беты с тем же составом файлов зелёный и получает подсказку об upgrade', async () => {
+  it('проект беты с другим составом файлов: одна находка с командами проверки его версией и upgrade', async () => {
     const { root } = await materialize('0.3.0-beta.3-standard');
     const report = await doctorProject(root, { strict: true });
-    expect(report.ok).toBe(true);
-    expect(report.findings.map((item) => item.code)).toEqual(['project-version-older']);
-    expect(report.findings[0]?.level).toBe('info');
+    expect(report.ok).toBe(false);
+    expect(report.findings.map((item) => item.code)).toEqual(['project-outdated']);
+    expect(report.findings[0]?.message).toContain(`npx --package create-vibe-maestro@0.3.0-beta.3 vibe-maestro doctor --path ${quotePathArg(root)}`);
     expect(report.findings[0]?.message).toContain(`npx --package create-vibe-maestro@${VERSION} vibe-maestro upgrade --path ${quotePathArg(root)}`);
 
     const cli = collect();
-    expect(await runMaestroCli(['doctor', '--path', root], cli.io)).toBe(0);
-    expect(cli.stdout()).toContain('project-version-older');
+    expect(await runMaestroCli(['doctor', '--path', root], cli.io)).toBe(1);
+    expect(cli.stderr()).toContain('project-outdated');
   });
 
   it('проект более новой версии с другим составом файлов — одна понятная находка', async () => {
@@ -329,15 +345,16 @@ describe('doctor и версия проекта', () => {
     expect(empty.findings[0]?.message).toContain('npx create-vibe-maestro@latest');
   });
 
-  it('переименованная папка: сообщение называет оба имени', async () => {
+  it('переименованная папка остаётся тем же проектом: только пометка с обоими именами', async () => {
     const { root } = await materialize('0.3.0-beta.3-standard');
     expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
     const renamed = join(dirname(root), 'другое-имя');
     await cp(root, renamed, { recursive: true });
-    const report = await doctorProject(renamed);
-    const finding = report.findings.find((item) => item.code === 'manifest-canonical-mismatch');
-    expect(finding?.message).toContain('«maestro-fixture»');
-    expect(finding?.message).toContain('«другое-имя»');
+    const report = await doctorProject(renamed, { strict: true });
+    expect(report.ok).toBe(true);
+    expect(report.findings.map((item) => item.code)).toEqual(['project-folder-renamed']);
+    expect(report.findings[0]?.message).toContain('«maestro-fixture»');
+    expect(report.findings[0]?.message).toContain('«другое-имя»');
   });
 });
 
@@ -374,10 +391,10 @@ describe('находки независимого ревью beta.4', () => {
       hooks: {
         beforeCommit: async (path) => {
           calls += 1;
-          if (calls === 3) {
-            // Имитация того, что backup первого пути потерян (на Windows — блокировка файла).
-            await rm(join(root, STAGING_DIR, 'backup', 'CLAUDE.md'), { force: true });
-            throw new Error(`сбой на ${path}`);
+          if (path === '.maestro/checksums.json') {
+            // Имитация того, что backup уже опубликованного пути потерян (на Windows — блокировка файла).
+            await rm(join(root, STAGING_DIR, 'backup', 'protocols', 'plan.md'), { force: true });
+            throw new Error(`сбой на ${path} (вызов ${calls})`);
           }
         },
       },
@@ -385,7 +402,7 @@ describe('находки независимого ревью beta.4', () => {
     expect(result.ok).toBe(false);
     expect(result.rolledBack).toBe(false);
     expect(result.error).toContain('откатить удалось не всё');
-    expect(result.error).toContain('CLAUDE.md');
+    expect(result.error).toContain('protocols/plan.md');
     expect(existsSync(join(root, STAGING_DIR, 'backup'))).toBe(true);
   });
 

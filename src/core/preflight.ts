@@ -16,13 +16,15 @@
  */
 
 import { existsSync, statSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { MANIFEST_PATH } from './manifest.js';
 import { decodeUtf8, frontmatter } from './doctor/text.js';
 import {
   ACTIVE_PLAN_NONE,
+  APPROVAL_REQUIRED_STATUSES,
   isWikiRelativePlanRef,
+  planBodyDigest,
   validatePlanFrontmatter,
   PLAN_SCALES,
 } from './plan.js';
@@ -66,6 +68,8 @@ export interface PreflightDecision {
   slice: string | null;
   /** Единственное исключение канона: QUICK mini-plan без plan-документа. */
   exception: 'quick-mini-plan' | null;
+  /** sha256 тела объявленного плана: его записывают в approved_digest при утверждении. */
+  planDigest: string | null;
   findings: PreflightFinding[];
 }
 
@@ -82,6 +86,8 @@ export interface PreflightState {
   planPath: string | null;
   planText: string | null;
   hotFound: boolean;
+  /** Утверждённые, но не объявленные планы: подсказка, а не основание для решения. */
+  approvedPlans?: readonly string[];
 }
 
 const finding = (level: PreflightLevel, code: string, message: string, path?: string): PreflightFinding =>
@@ -94,6 +100,7 @@ const decision = (patch: Partial<PreflightDecision>): PreflightDecision => ({
   plan: null,
   slice: null,
   exception: null,
+  planDigest: null,
   findings: [],
   ...patch,
 });
@@ -114,9 +121,11 @@ export function decideBuildPreflight(state: PreflightState, request: PreflightRe
       return decision({ findings: [finding('block', 'preflight-quick-criteria-unknown', `Неизвестные критерии QUICK: ${unknown.join(', ')}. Допустимы: ${QUICK_CRITERIA.join(', ')}.`)] });
     }
     if (request.scale !== 'quick') {
-      return decision({
-        findings: [finding('block', 'preflight-plan-absent', `Активного плана нет, а масштаб работы ${request.scale} требует утверждённого плана. Маршрут: protocols/plan.md.`, HOT_PATH)],
-      });
+      const approved = state.approvedPlans ?? [];
+      const message = approved.length > 0
+        ? `Утверждённый план есть, но не объявлен: запишите active_plan: ${approved[0]!.slice('wiki/'.length)} в wiki/hot.md (protocols/plan.md, Stage G) и повторите проверку.`
+        : `Активного плана нет, а масштаб работы ${request.scale} требует утверждённого плана. Маршрут: protocols/plan.md.`;
+      return decision({ findings: [finding('block', 'preflight-plan-absent', message, HOT_PATH)] });
     }
     const missing = QUICK_CRITERIA.filter((item) => !(request.quickCriteria ?? []).includes(item));
     if (missing.length > 0) {
@@ -151,22 +160,26 @@ export function decideBuildPreflight(state: PreflightState, request: PreflightRe
     });
   }
 
-  return decideForPlan(validation.plan, state.planPath);
+  return decideForPlan(validation.plan, state.planPath, planBodyDigest(state.planText));
 }
 
-function decideForPlan(plan: PlanDocument, planPath: string): PreflightDecision {
+function decideForPlan(plan: PlanDocument, planPath: string, digest: string): PreflightDecision {
   const findings: PreflightFinding[] = [];
   const at = (code: string, message: string): void => { findings.push(finding('block', code, message, planPath)); };
   let route: PreflightRoute = 'plan';
 
   if (plan.status !== 'approved' && plan.status !== 'active') {
     at('preflight-plan-not-approved', `Статус плана ${plan.status}: код по неутверждённому плану не пишется.`);
-    return decision({ plan: planPath, route, findings });
+    return decision({ plan: planPath, route, planDigest: digest, findings });
   }
   if (plan.approvedBy === null || plan.approvedAt === null) {
     route = 'human';
     at('preflight-approval-missing', 'У утверждённого плана нет следа человеческого решения.');
-    return decision({ plan: planPath, route, findings });
+    return decision({ plan: planPath, route, planDigest: digest, findings });
+  }
+  if (plan.approvedDigest !== null && plan.approvedDigest !== digest) {
+    at('preflight-plan-changed', 'Текст плана изменился после утверждения: покажите изменения человеку; после повторного «план утверждаю» запишите в approved_digest новый отпечаток.');
+    return decision({ plan: planPath, route: 'human', planDigest: digest, findings });
   }
 
   const missing: string[] = [];
@@ -197,14 +210,19 @@ function decideForPlan(plan: PlanDocument, planPath: string): PreflightDecision 
   }
 
   const blocked = findings.some((item) => item.level === 'block');
+  const allowed: PreflightFinding[] = [
+    finding('info', 'preflight-slice-selected', `Разрешена ровно одна порция: ${plan.currentSlice}. Остановка на её стоп-гейте обязательна.`, planPath),
+  ];
+  if (plan.approvedDigest === null) {
+    allowed.push(finding('info', 'preflight-digest-missing', 'Отпечаток утверждения не записан: правку текста плана после утверждения гейт не заметит. Запишите в approved_digest строку «Отпечаток плана».', planPath));
+  }
   return decision({
     ok: !blocked,
     route: blocked ? route : 'build',
     plan: planPath,
     slice: blocked ? null : plan.currentSlice,
-    findings: blocked ? findings : [
-      finding('info', 'preflight-slice-selected', `Разрешена ровно одна порция: ${plan.currentSlice}. Остановка на её стоп-гейте обязательна.`, planPath),
-    ],
+    planDigest: digest,
+    findings: blocked ? findings : allowed,
   });
 }
 
@@ -216,11 +234,28 @@ export async function inspectBuildPreflight(rootInput: string): Promise<Prefligh
 
   const meta = frontmatter(hotText);
   const declared = meta?.active_plan ?? ACTIVE_PLAN_NONE;
-  if (declared === ACTIVE_PLAN_NONE) return { declared: null, planPath: null, planText: null, hotFound: true };
+  if (declared === ACTIVE_PLAN_NONE) return { declared: null, planPath: null, planText: null, hotFound: true, approvedPlans: await approvedPlans(root) };
   if (!isWikiRelativePlanRef(declared)) return { declared, planPath: null, planText: null, hotFound: true };
 
   const planPath = `wiki/${declared}`;
   return { declared, planPath, planText: await readText(join(root, planPath)), hotFound: true };
+}
+
+/** Утверждённые планы в wiki/plans/ — только для подсказки «план есть, но не объявлен». */
+async function approvedPlans(root: string): Promise<string[]> {
+  let names: string[];
+  try {
+    names = (await readdir(join(root, 'wiki/plans'))).filter((name) => name.endsWith('.md') && name !== 'README.md' && name !== 'TEMPLATE.md').sort();
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  for (const name of names) {
+    const text = await readText(join(root, 'wiki/plans', name));
+    const status = text === null ? undefined : frontmatter(text)?.status;
+    if (status !== undefined && (APPROVAL_REQUIRED_STATUSES as readonly string[]).includes(status)) found.push(`wiki/plans/${name}`);
+  }
+  return found;
 }
 
 async function readText(absolute: string): Promise<string | null> {

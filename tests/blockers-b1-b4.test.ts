@@ -11,8 +11,8 @@ import { cleanupTempDirs, FIXED_NOW, makeTempDir, snapshotTree } from './helpers
 const exec = promisify(execFile);
 afterEach(cleanupTempDirs);
 
-async function init(target: string, force = false, git = false) {
-  return initProject({ target, name: 'Regression', startingPoint: 'idea', force, git, now: FIXED_NOW });
+async function init(target: string) {
+  return initProject({ target, name: 'Regression', startingPoint: 'idea', git: false, now: FIXED_NOW });
 }
 
 async function fresh(): Promise<string> {
@@ -30,7 +30,7 @@ describe('B1: init не следует по symlink', () => {
     await exec('mkdir', ['-p', target]);
     await symlink(victim, join(target, '.gitignore'));
 
-    const result = await init(target, true);
+    const result = await init(target);
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/symbolic link|symlink|символическ/i);
@@ -46,7 +46,7 @@ describe('B1: init не следует по symlink', () => {
     await exec('mkdir', ['-p', target, outside]);
     await symlink(outside, join(target, 'wiki'));
 
-    const result = await init(target, true);
+    const result = await init(target);
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/symbolic link|symlink|символическ/i);
@@ -60,7 +60,7 @@ describe('B1: init не следует по symlink', () => {
     await exec('mkdir', ['-p', outside]);
     await symlink(outside, target);
 
-    const result = await init(target, true);
+    const result = await init(target);
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/symbolic link|symlink|символическ/i);
@@ -75,7 +75,7 @@ describe('B1: init не следует по symlink', () => {
     await exec('mkdir', ['-p', outside]);
     await symlink(outside, linkedParent);
 
-    const result = await init(target, false);
+    const result = await init(target);
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/symbolic link|symlink|символическ/i);
@@ -132,7 +132,7 @@ describe('B3/B4: строгая runtime-валидация metadata', () => {
     const target = await fresh();
     await writeFile(join(target, MANIFEST_PATH), '{broken', 'utf8');
     const before = await readFile(join(target, MANIFEST_PATH));
-    const result = await init(target, true);
+    const result = await init(target);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/manifest|манифест/i);
     expect(await readFile(join(target, MANIFEST_PATH))).toEqual(before);

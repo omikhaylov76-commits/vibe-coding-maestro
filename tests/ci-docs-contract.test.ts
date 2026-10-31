@@ -1,10 +1,22 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.3.0-beta.1';
+const BETA_VERSION = '0.3.0-beta.2';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+}
+
+const TEXT_FILE = /\.(md|ts|mjs|js|json|ya?ml)$/;
+
+/** Все текстовые файлы, которые доходят до пользователя или агента: код, шаблоны, документация. */
+async function shippedTextFiles(): Promise<string[]> {
+  const files = ['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md'];
+  for (const dir of ['src', 'templates', 'docs', 'registry', 'scripts']) {
+    const entries = await readdir(new URL(`../${dir}`, import.meta.url), { recursive: true });
+    for (const entry of entries) if (TEXT_FILE.test(entry)) files.push(`${dir}/${entry.split('\\').join('/')}`);
+  }
+  return files;
 }
 
 describe('этапы 12–13: CI и документационные контракты', () => {
@@ -14,6 +26,24 @@ describe('этапы 12–13: CI и документационные контр�
     expect(pkg.version).toBe(BETA_VERSION);
     expect(lock.version).toBe(BETA_VERSION);
     expect(lock.packages[''].version).toBe(BETA_VERSION);
+  });
+
+  it('каждая команда npx тянет только пакет create-vibe-maestro, а не чужое имя', async () => {
+    // `vibe-maestro` — bin внутри create-vibe-maestro, а не пакет. `npx vibe-maestro`
+    // скачал бы того, кто первым займёт это имя в npm.
+    const invocation = /\bnpx\s+(?:(?:--package|-p)[=\s]+)?([^\s`'"]+)/g;
+    const packages = new Set<string>();
+    let checked = 0;
+    for (const file of await shippedTextFiles()) {
+      for (const match of (await text(file)).matchAll(invocation)) {
+        const spec = match[1] as string;
+        const name = spec.replace(/(?<=.)@[^@/]*$/, '');
+        packages.add(`${name} (${file})`);
+        expect(['create-vibe-maestro', '${CREATE_COMMAND}'], `${file}: npx ${spec}`).toContain(name);
+        checked += 1;
+      }
+    }
+    expect(checked, [...packages].join('\n')).toBeGreaterThan(5);
   });
 
   it('CI покрывает три ОС, Node 20/22 и все обязательные gates', async () => {
@@ -55,8 +85,8 @@ describe('этапы 12–13: CI и документационные контр�
   it('README честно документирует prerelease, beginner flow и canonical-only beta', async () => {
     const readme = (await text('README.md')).toLowerCase();
     for (const value of [
-      'unreleased beta',
-      'npm package is not published yet',
+      'public beta on npm',
+      'npx create-vibe-maestro@latest',
       'no more than three decisions',
       'desktop',
       'explicit path',
@@ -81,6 +111,7 @@ describe('этапы 12–13: CI и документационные контр�
       'converter',
     ]) expect(readme).toContain(value);
     expect(readme).toContain('refuses to modify a non-empty, non-canonical directory');
+    for (const stale of ['unreleased', 'not published yet', 'still unpublished']) expect(readme).not.toContain(stale);
     expect(readme).not.toContain('подключить существующий проект');
     expect(readme).not.toContain('maestro добавляет собственную структуру');
   });

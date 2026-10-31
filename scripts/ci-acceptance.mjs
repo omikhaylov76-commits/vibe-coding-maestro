@@ -40,7 +40,7 @@ try {
   run('git', ['add', 'sentinel user file.txt'], target);
   run('git', ['-c', 'user.name=CI', '-c', 'user.email=ci@example.invalid', 'commit', '-m', 'Add sentinel'], target);
 
-  run(process.execPath, [createCli, '--yes', '--force', '--target', target, '--name', 'CI Acceptance', '--start', 'idea']);
+  run(process.execPath, [createCli, '--yes', '--target', target, '--name', 'CI Acceptance', '--start', 'idea']);
   await access(sentinel);
   assert.equal(await readFile(sentinel, 'utf8'), 'preserve me\n', 'second init must preserve sentinel');
   run(process.execPath, [maestroCli, 'doctor', '--path', target]);
@@ -115,8 +115,8 @@ try {
   await mkdir(join(incompleteRoot, '.maestro'), { recursive: true });
   await writeFile(join(incompleteRoot, 'app.ts'), 'export const foreign = true;\n', 'utf8');
   await writeFile(join(incompleteRoot, '.maestro/manifest.json'), canonicalManifestText, 'utf8');
-  const incomplete = runResult(process.execPath, [installedCreate, '--yes', '--force', '--target', incompleteProject, '--start', 'code'], installDir);
-  assert.notEqual(incomplete.status, 0, 'packed --force must reject a copied canonical manifest without the complete canonical tree');
+  const incomplete = runResult(process.execPath, [installedCreate, '--yes', '--target', incompleteProject, '--start', 'code'], installDir);
+  assert.notEqual(incomplete.status, 0, 'packed create must reject a copied canonical manifest without the complete canonical tree');
   assert.equal(await readFile(join(incompleteRoot, 'app.ts'), 'utf8'), 'export const foreign = true;\n', 'rejected incomplete project must preserve user files');
   assert.equal(await readFile(join(incompleteRoot, '.maestro/manifest.json'), 'utf8'), canonicalManifestText, 'rejected incomplete project must not rewrite manifest');
   await assert.rejects(access(join(incompleteRoot, 'protocols')), 'rejected incomplete project must not receive protocols');
@@ -129,9 +129,15 @@ try {
   const forgedManifest = JSON.parse(canonicalManifestText);
   forgedManifest.product.name = 'not-maestro';
   await writeFile(join(forgedRoot, '.maestro/manifest.json'), JSON.stringify(forgedManifest, null, 2), 'utf8');
-  const forged = runResult(process.execPath, [installedCreate, '--yes', '--force', '--target', forgedProject, '--start', 'code'], installDir);
-  assert.notEqual(forged.status, 0, 'packed --force must reject foreign structurally-valid manifest');
+  const forged = runResult(process.execPath, [installedCreate, '--yes', '--target', forgedProject, '--start', 'code'], installDir);
+  assert.notEqual(forged.status, 0, 'packed create must reject foreign structurally-valid manifest');
   await assert.rejects(access(join(forgedRoot, 'protocols')), 'rejected foreign project must not receive protocols');
+
+  // Флага --force больше нет: он ничего не делал. Старый вызов — ошибка использования без записи.
+  const removedForceProject = './packed removed force project';
+  const removedForce = runResult(process.execPath, [installedCreate, '--yes', '--force', '--target', removedForceProject], installDir);
+  assert.equal(removedForce.status, 2, 'packed create must reject the removed --force flag as a usage error');
+  await assert.rejects(access(join(installDir, removedForceProject)), 'rejected --force call must not create the target');
 
   const forgedDoctorProject = './packed forged doctor project';
   run(process.execPath, [installedCreate, '--yes', '--no-git', '--target', forgedDoctorProject, '--start', 'idea'], installDir);
@@ -217,8 +223,8 @@ status: waived
   console.log('CI acceptance passed (source + canonical packed install)');
 } finally {
   await Promise.all([
-    rm(tempRoot, { recursive: true, force: true }),
-    packDir ? rm(packDir, { recursive: true, force: true }) : Promise.resolve(),
-    installDir ? rm(installDir, { recursive: true, force: true }) : Promise.resolve(),
+    rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+    packDir ? rm(packDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) : Promise.resolve(),
+    installDir ? rm(installDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) : Promise.resolve(),
   ]);
 }

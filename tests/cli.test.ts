@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -35,7 +36,17 @@ describe('create-vibe-maestro CLI', () => {
     expect(code).toBe(0);
     expect(c.stdout()).toContain(PRODUCT_NAME);
     expect(c.stdout()).toContain('--target');
-    expect(c.stdout()).toContain('--force');
+    expect(c.stdout()).not.toContain('--force');
+  });
+
+  it('отклоняет удалённый флаг --force как неизвестный аргумент и ничего не создаёт', async () => {
+    const parent = await makeTempDir();
+    const target = join(parent, 'project');
+    const c = collect();
+    const code = await runCreateCli(['--yes', '--force', '--target', target], c.io);
+    expect(code).toBe(2);
+    expect(c.stderr()).toContain('--force');
+    expect(existsSync(target)).toBe(false);
   });
 
   it('на неизвестный флаг возвращает код 2 и пишет ошибку в stderr', async () => {
@@ -82,6 +93,13 @@ describe('vibe-maestro CLI', () => {
     const code = await runMaestroCli(['--help'], c.io);
     expect(code).toBe(0);
     expect(c.stdout()).toContain('doctor');
+  });
+
+  it('справка зовёт bin vibe-maestro из пакета create-vibe-maestro, а не несуществующий пакет', async () => {
+    const c = collect();
+    await runMaestroCli(['--help'], c.io);
+    expect(c.stdout()).toContain('npx --package create-vibe-maestro@latest vibe-maestro <команда>');
+    expect(c.stdout()).not.toMatch(/npx\s+vibe-maestro/);
   });
 
   it('на неизвестную команду возвращает код 2', async () => {

@@ -26,12 +26,11 @@ const codes = (report: Report): string[] => report.findings.map((finding) => fin
 const blockingFindings = (report: Report): Report['findings'] =>
   report.findings.filter((finding) => finding.level === 'critical' || finding.level === 'error');
 
-async function init(target: string, options: { force?: boolean; git?: boolean } = {}) {
+async function init(target: string, options: { git?: boolean } = {}) {
   return initProject({
     target,
     name: 'Phase 0',
     startingPoint: 'idea',
-    force: options.force ?? false,
     git: options.git ?? false,
     now: FIXED_NOW,
   });

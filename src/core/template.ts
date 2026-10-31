@@ -1,4 +1,4 @@
-import { CREATE_COMMAND, PRODUCT_NAME, SERVICE_COMMAND } from './meta.js';
+import { CREATE_COMMAND, PRODUCT_NAME, SERVICE_COMMAND, VERSION } from './meta.js';
 import type { StartingPoint } from './meta.js';
 
 /**
@@ -18,6 +18,12 @@ export interface TemplateVars {
   projectName: string;
   date: string;
   startingPoint: StartingPoint;
+  /**
+   * Версия Maestro, закреплённая в командах проекта (`{{MAESTRO_VERSION}}`).
+   * По умолчанию — версия этого пакета; upgrade передаёт прошлую версию,
+   * чтобы доказать, что файл на диске — её неизменённый рендер.
+   */
+  version?: string;
 }
 
 export interface SplitResult {
@@ -47,6 +53,7 @@ function substituteVars(text: string, vars: TemplateVars): string {
     PROJECT_NAME: vars.projectName,
     DATE: vars.date,
     STARTING_POINT: vars.startingPoint,
+    MAESTRO_VERSION: vars.version ?? VERSION,
     PRODUCT_NAME,
     CREATE_COMMAND,
     SERVICE_COMMAND,

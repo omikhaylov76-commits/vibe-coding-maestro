@@ -89,7 +89,7 @@ describe('0.3 Phase 3: baseline 0.2 не дрейфует', () => {
 });
 
 describe('0.3 Phase 3: воспроизведение дефекта на проекте 0.2', () => {
-  it('канонический проект 0.2 считается текущим бинарником неканоническим', async () => {
+  it('канонический проект 0.2 неканоничен для текущей версии, и doctor говорит, как его обновить', async () => {
     const legacy = await makeLegacy02Project();
     const manifest = await loadManifest(legacy.root);
 
@@ -98,10 +98,14 @@ describe('0.3 Phase 3: воспроизведение дефекта на про
       .toEqual(Object.keys(baselineOwnershipInventory(legacy.depth)).sort());
     expect(isCanonicalManifest(manifest)).toBe(false);
 
+    // Вместо десятков manifest-* находок — одна понятная: какой версией проверить и как обновить.
     const report = await doctorProject(legacy.root, { strict: true });
     expect(report.ok).toBe(false);
-    expect(report.findings.map((finding) => finding.code)).toContain('manifest-canonical-mismatch');
-    expect(report.findings.some((finding) => finding.code === 'manifest-inventory-mismatch')).toBe(true);
+    expect(report.findings.map((finding) => finding.code)).toEqual(['project-outdated']);
+    const message = report.findings[0]?.message ?? '';
+    expect(message).toContain('0.2.0-beta.1');
+    expect(message).toContain(`npx --package create-vibe-maestro@0.2.0-beta.1 vibe-maestro doctor --path ${quotePathArg(legacy.root)}`);
+    expect(message).toContain(`npx --package create-vibe-maestro@${VERSION} vibe-maestro upgrade --path ${quotePathArg(legacy.root)}`);
   });
 
   it('create отказывается достраивать проект 0.2', async () => {
@@ -109,7 +113,8 @@ describe('0.3 Phase 3: воспроизведение дефекта на про
     const before = await snapshotTree(legacy.root);
     const result = await initProject({ target: legacy.root, startingPoint: 'idea', git: false, now: FIXED_NOW });
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('не является каноническим проектом');
+    expect(result.error).toContain('Create не обновляет проекты');
+    expect(result.error).toContain(`vibe-maestro upgrade --path ${quotePathArg(legacy.root)}`);
     expect(await snapshotTree(legacy.root)).toEqual(before);
   });
 });

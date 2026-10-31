@@ -8,9 +8,10 @@ export const SERVICE_COMMAND = 'vibe-maestro';
  * Готовая к копированию команда служебного CLI. Пакет и bin называются по-разному,
  * поэтому `npx` нужен `--package`: голого `vibe-maestro` нет в PATH, и агент,
  * который сам допишет к нему npx, скачает пакет с именем bin, а не этот.
- * `version` фиксирует точную версию там, где важно повторить ту же проверку.
+ * По умолчанию закреплена версия этого пакета: проект проверяется той версией,
+ * которой он создан, а не тем, что окажется под `latest` завтра.
  */
-export function serviceInvocation(version = 'latest'): string {
+export function serviceInvocation(version: string = VERSION): string {
   return `npx --package ${CREATE_COMMAND}@${version} ${SERVICE_COMMAND}`;
 }
 

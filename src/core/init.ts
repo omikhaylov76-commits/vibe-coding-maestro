@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, parse, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { describeFsError } from './fs-errors.js';
 import { mergeGitignore, REQUIRED_GITIGNORE_ENTRIES } from './gitignore.js';
-import { CREATE_COMMAND, VERSION } from './meta.js';
+import { CREATE_COMMAND, quotePathArg, serviceInvocation, VERSION } from './meta.js';
 import type { StartingPoint } from './meta.js';
 import {
   CHECKSUMS_PATH,
@@ -202,6 +203,25 @@ async function initGitRepository(
  */
 export async function initProject(options: InitOptions): Promise<InitResult> {
   const target = await canonicalizeSystemTempPrefix(normalizeTarget(options.target));
+  const progress: WriteProgress = { freshFolder: false, started: false };
+  try {
+    return await initProjectAt(target, options, progress);
+  } catch (cause) {
+    const reason = describeFsError(cause, target);
+    const leftovers = progress.started && progress.freshFolder
+      ? ` В папке могли остаться частично записанные файлы Maestro. До запуска она была пустой, поэтому её можно удалить целиком и повторить команду: ${target}`
+      : '';
+    return failure(target, options.name ?? basename(target), `${reason}${leftovers}`);
+  }
+}
+
+/** Что успело произойти до сбоя: от этого зависит совет пользователю. */
+interface WriteProgress {
+  freshFolder: boolean;
+  started: boolean;
+}
+
+async function initProjectAt(target: string, options: InitOptions, progress: WriteProgress): Promise<InitResult> {
   const now = options.now ?? new Date();
   if (options.depth !== undefined && !DEPTHS.includes(options.depth)) {
     return failure(target, options.name ?? basename(target), `Неизвестная глубина проекта: ${String(options.depth)}`);
@@ -241,6 +261,14 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
       previousManifest = await loadManifest(target);
     } catch (error) {
       return failure(target, options.name ?? basename(target), `Повреждён manifest; сначала запустите doctor: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const ours = previousManifest.product.name === readPackageJson().name && previousManifest.product.createdBy === CREATE_COMMAND;
+    if (ours && previousManifest.product.version !== VERSION && !isCanonicalManifest(previousManifest)) {
+      return failure(
+        target,
+        options.name ?? basename(target),
+        `Это проект Vibe Coding Maestro версии ${previousManifest.product.version}, а create — версии ${VERSION}. Create не обновляет проекты; используйте ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(target)} (без --apply только показывает изменения).`,
+      );
     }
     if (
       !isCanonicalManifest(previousManifest)
@@ -301,6 +329,8 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   const checksumForFile = async (relativePath: string, absolutePath: string): Promise<string> =>
     contentChecksum(relativePath, await readFile(absolutePath));
 
+  progress.freshFolder = !isExistingProject;
+  progress.started = true;
   await mkdir(join(target, MAESTRO_DIR), { recursive: true });
 
   const vars = { projectName: displayName, date: isoDate(now), startingPoint };

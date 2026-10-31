@@ -46,16 +46,18 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
   };
 
   if (result.applied) {
-    io.out(`Обновление применено: ${analysis.baselineId} → ${analysis.toVersion}.`);
+    io.out(`Обновление применено: ${analysis.fromVersion ?? analysis.baselineId} → ${analysis.toVersion}.`);
     list('Добавлено', result.createdFiles);
     list('Обновлено', result.updatedFiles);
     list('Сохранено без изменений', analysis.preserves);
+    // До коммита doctor честно покажет git-managed-dirty: сначала diff и коммит, потом проверка.
+    io.out('Просмотрите git diff и закоммитьте изменённые файлы: до коммита doctor покажет git-managed-dirty.');
     // Та же версия, что применила обновление: doctor проверяет ровно её канон.
-    io.out(`Проверьте полный diff и запустите: ${serviceInvocation(VERSION)} doctor --path ${quotePathArg(options.path)} --strict`);
+    io.out(`Затем проверьте: ${serviceInvocation(VERSION)} doctor --path ${quotePathArg(options.path)} --strict`);
     return EXIT_OK;
   }
 
-  io.out(`Предложение обновления ${analysis.baselineId} → ${analysis.toVersion} (ни один байт не записан).`);
+  io.out(`Предложение обновления ${analysis.fromVersion ?? analysis.baselineId} → ${analysis.toVersion} (ни один байт не записан).`);
   list('Будет добавлено', analysis.creates.map((item) => item.path));
   list('Будет обновлено', analysis.updates.map((item) => item.path));
   list('Уже совпадает', analysis.unchanged);

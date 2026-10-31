@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import { doctorProject } from '../core/doctor.js';
+import { describeFsError } from '../core/fs-errors.js';
 import { initProject } from '../core/init.js';
 import type { StartingPoint } from '../core/meta.js';
 import type { ProjectDepth } from '../core/manifest.js';
@@ -17,6 +18,19 @@ export interface CreateRunOptions {
 }
 
 export async function executeCreate(options: CreateRunOptions, io: CliIo, renderer?: CliRenderer): Promise<number> {
+  try {
+    return await createAndCheck(options, io, renderer);
+  } catch (cause) {
+    // initProject сам переводит ошибки записи; сюда доходит только непредвиденное.
+    const message = describeFsError(cause, options.target);
+    if (options.json) io.out(JSON.stringify({ ok: false, error: message }, null, 2));
+    else if (renderer) renderer.failure(message);
+    else io.err(message);
+    return EXIT_FAILED;
+  }
+}
+
+async function createAndCheck(options: CreateRunOptions, io: CliIo, renderer?: CliRenderer): Promise<number> {
   const result = await initProject({
     target: options.target,
     startingPoint: options.startingPoint,

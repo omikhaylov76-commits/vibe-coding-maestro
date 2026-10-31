@@ -37,7 +37,7 @@ export async function checkGit(root: string, managedDocs: Set<string>, findings:
     for (const entry of parsePorcelainV1Z(status.stdout)) {
       if (entry.status === '??') continue;
       const path = entry.path;
-      if (managedDocs.has(path)) findings.push(error('git-managed-dirty', 'Управляемый документ имеет незакоммиченные изменения.', path));
+      if (managedDocs.has(path)) findings.push(error('git-managed-dirty', 'Управляемый документ имеет незакоммиченные изменения. Если это результат upgrade — просмотрите diff и закоммитьте; если правка ручная — верните файл.', path));
     }
   } catch (cause) { findings.push(error('git-check-failed', `Не удалось проверить Git: ${cause instanceof Error ? cause.message : String(cause)}`, '.git')); }
 }

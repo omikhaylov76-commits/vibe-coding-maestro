@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.3.0-beta.3';
+const BETA_VERSION = '0.3.0-beta.4';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -49,7 +49,27 @@ describe('этапы 12–13: CI и документационные контр�
   it('CI покрывает три ОС, Node 20/22 и все обязательные gates', async () => {
     const ci = await text('.github/workflows/ci.yml');
     for (const value of ['ubuntu-latest', 'macos-latest', 'windows-latest', '20', '22']) expect(ci).toContain(value);
-    for (const command of ['npm ci', 'npm audit --audit-level=low', 'npm test', 'npm run typecheck', 'npm run build', 'npm pack --dry-run --json', 'npm run acceptance']) expect(ci).toContain(command);
+    for (const command of ['npm ci', 'npm audit --audit-level=low', 'npm run check', 'npm pack --dry-run --json', 'npm run acceptance']) expect(ci).toContain(command);
+    // npm run check — это и есть test + typecheck + build; его же запускает prepack.
+    const pkg = JSON.parse(await text('package.json')) as { scripts: Record<string, string> };
+    expect(pkg.scripts.check).toBe('npm test && npm run typecheck && npm run build');
+    expect(pkg.scripts.prepack).toBe('npm run check');
+  });
+
+  it('CI экономный: отмена устаревших прогонов, одна быстрая проверка на ветке, матрица на PR и main', async () => {
+    const ci = await text('.github/workflows/ci.yml');
+    expect(ci).toMatch(/^concurrency:\n {2}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n {2}cancel-in-progress: \$\{\{ github\.ref != 'refs\/heads\/main' \}\}$/m);
+    // Ветка: ровно один job без матрицы.
+    const quick = ci.slice(ci.indexOf('  quick:'), ci.indexOf('  full:'));
+    expect(quick).toContain("if: github.event_name == 'push' && github.ref != 'refs/heads/main'");
+    expect(quick).not.toContain('matrix');
+    expect(quick).toContain('npm run check');
+    // Полная матрица и audit — только pull request и main.
+    const full = ci.slice(ci.indexOf('  full:'), ci.indexOf('  audit:'));
+    const audit = ci.slice(ci.indexOf('  audit:'));
+    for (const job of [full, audit]) expect(job).toContain("if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'");
+    expect(full).toContain('matrix:');
+    expect(audit).not.toContain('matrix');
   });
 
   it('acceptance использует Node API и проверяет путь с пробелом, doctor, main, clean и sentinel', async () => {
@@ -68,10 +88,11 @@ describe('этапы 12–13: CI и документационные контр�
     for (const value of [
       'keep ai coding context in the repo',
       'docs/assets/quick-demo.gif',
-      'quick start from source',
-      'git clone',
-      'npm ci && npm run build',
-      'node dist/bin/create-vibe-maestro.js',
+      '## quick start',
+      'npx create-vibe-maestro@latest',
+      'npx --package create-vibe-maestro@latest vibe-maestro doctor --path .',
+      'updating a project',
+      'vibe-maestro upgrade --path .',
       'what you get',
       'before and after',
       'safety by default',
@@ -80,6 +101,35 @@ describe('этапы 12–13: CI и документационные контр�
       'docs/user_guide.md',
     ]) expect(readme).toContain(value);
     expect(readme.split('\n').length).toBeLessThan(350);
+  });
+
+  it('README и руководство ведут только через npx: без сборки из исходников и скрытых ошибок', async () => {
+    for (const path of ['README.md', 'docs/USER_GUIDE.md']) {
+      const doc = await text(path);
+      expect(doc, path).not.toContain('node dist/');
+      expect(doc, path).not.toContain('git clone');
+      expect(doc, path).not.toContain('2>/dev/null');
+      expect(doc, path).not.toContain('папки исходников');
+    }
+    // Сборка из исходников живёт там, где её ищут разработчики.
+    const contributing = await text('CONTRIBUTING.md');
+    for (const value of ['git clone', 'npm ci', 'npm run build']) expect(contributing).toContain(value);
+  });
+
+  it('документация не обещает, что агент не может проставить утверждение', async () => {
+    for (const path of ['README.md', 'docs/USER_GUIDE.md']) {
+      const doc = (await text(path)).toLowerCase();
+      expect(doc, path).not.toContain('агент не утверждает план за вас');
+      expect(doc, path).not.toContain('агент не имеет права утвердить план за вас');
+      expect(doc, path).toContain('не может');
+    }
+  });
+
+  it('публичный план развития есть и не содержит деталей закрытых проектов', async () => {
+    const roadmap = await text('docs/ROADMAP.md');
+    for (const value of ['0.3.0-beta.4', '0.3.0', '0.4', 'Не делаем']) expect(roadmap).toContain(value);
+    expect(roadmap).not.toMatch(/freelance|promtara|промтар|\bхаб|\/users\/|~\/projects/i);
+    expect(await text('README.md')).toContain('docs/ROADMAP.md');
   });
 
   it('README честно документирует prerelease, beginner flow и canonical-only beta', async () => {
@@ -127,6 +177,6 @@ describe('этапы 12–13: CI и документационные контр�
     const userGuide = (await text('docs/USER_GUIDE.md')).toLowerCase();
     for (const value of ['evidence', 'resolution', 'waived', 'не ремонтирует неполное дерево']) expect(userGuide).toContain(value);
     const contributing = (await text('CONTRIBUTING.md')).toLowerCase();
-    for (const value of ['npm ci', 'npm audit --audit-level=low', 'npm test', 'npm run typecheck', 'npm run build', 'npm pack --dry-run --json', 'ci-acceptance']) expect(contributing).toContain(value);
+    for (const value of ['npm ci', 'npm audit --audit-level=low', 'npm run check', 'npm pack --dry-run --json', 'npm run acceptance']) expect(contributing).toContain(value);
   });
 });

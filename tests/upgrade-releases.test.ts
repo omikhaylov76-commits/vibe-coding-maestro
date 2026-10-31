@@ -32,7 +32,7 @@ const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
 
 /** Всё, что upgrade с 0.3 beta переписывает на нетронутом проекте. */
 const UPDATED_FROM_BETA = [
-  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'protocols/build.md', 'protocols/context-budget.md',
+  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'AGENTS.md', 'CLAUDE.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md', 'protocols/context-budget.md',
   'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md', 'wiki/index.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
 ];
 

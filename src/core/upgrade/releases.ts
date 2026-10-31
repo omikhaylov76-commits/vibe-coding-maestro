@@ -173,6 +173,7 @@ const v03Beta4Copy = (path: string): BaselineTemplate => ({
 
 /** Пути, которые 0.3.0 изменил, не трогая версию: в 0.3-beta и beta.4 они одинаковы. */
 const CHANGED_IN_030_SAME_SINCE_BETA1: readonly string[] = [
+  'maestro/runbooks/cowork-audit.md',
   'wiki/index.md',
   'wiki/plans/README.md',
   'wiki/plans/TEMPLATE.md',
@@ -255,7 +256,7 @@ const V030_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'wiki/plans/TEMPLATE.md': 'c1342f4578b42c7e23cde4caf010a3d7645141e274e284cfcdf2411469fe9dd4',
   'maestro/inbox/README.md': '5c3107b469d1c65d5a9d84132f2b0cfb85804b813ad5b9b65248dc434d6981a3',
   'maestro/runbooks/cowork-discovery.md': '1a32c070375783cfa54a3fad5c9644810f6eda37b7cd1a272f811278360b35c4',
-  'maestro/runbooks/cowork-audit.md': 'c3326dfd63dc94bce1bd1779e2d8116685cf7281b7d902c58f9138db6343f50b',
+  'maestro/runbooks/cowork-audit.md': '85b988f6079339ce188dd75aa781bc170c4fd0a8081fc7097705fa12648ebafa',
   'maestro/runbooks/cowork-plan.md': '9f56abbd43aeb148f442f9a69fc45dd564264c0478defb385772cd55af9a50fb',
   '.claude/commands/build.md': 'e677a3cb59f21e322cfd87e5b63ce6aac80446c1eeeb1c908ca5320391339cf0',
   '.claude/commands/status.md': '5992b7a927a424539e5cb93fc8c29d109656038b4f5f3093bb3a50fb037e53d1',
@@ -273,7 +274,7 @@ const V030_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/wiki.md': '4054ae1b6f0912430521baaf6230ebeb8263cbbf00195113291fb8206d3c5338',
   'protocols/handoff.md': '104a875baf39320d988fe07d9c3a9db6f94dd00015312c937b6fd1e58195a5a1',
   'protocols/discovery.md': '20ef8084561a1c93a16003d3dac0426b43bb97b715f445f06ef79dd738e1430a',
-  'protocols/plan.md': '4a083cf280edf62f09e49e8073979c9962ab8ec3326dac32489174bd83911b8d',
+  'protocols/plan.md': 'a07b4c86bc2fb4990d5e1388e98a289ba88cf6fdf431af676a6ff94b2e3be856',
   'protocols/audit.md': 'c49f38b83db21af01f0f01552c7e8dc9743cd01c3ad12f3f31940f9cf83f76c6',
   'protocols/context-budget.md': '2747055ef1c39200043b24ed4ee7d59e93a05896b3a4ebd457f21fa725c7ab06',
   'protocols/seams.md': 'c7669b55b5d298cbfea97cd3c2284c9cb33aceacc9504e6e3ae3851e669ff5bd',

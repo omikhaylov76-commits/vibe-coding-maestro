@@ -149,6 +149,18 @@ describe('ревью 0.3.0', () => {
     expect(again.all()).not.toContain('добавьте');
   });
 
+  it('create в папку, где есть только .git, проходит: неиндексированные файлы — предупреждение, а не провал', async () => {
+    const root = join(await makeTempDir('git-only-'), 'проект');
+    await mkdir(root, { recursive: true });
+    await git(root, 'init', '-q', '-b', 'main');
+    const cli = collect();
+    expect(await runCreateCli(['--yes', '--target', root], cli.io, { isTty: false })).toBe(0);
+    expect(cli.all()).toContain('git add');
+    const report = await doctorProject(root);
+    expect(report.ok).toBe(true);
+    expect(report.findings.every((item) => item.code === 'git-managed-untracked' && item.level === 'warning')).toBe(true);
+  });
+
   it('метка .maestro/creating снимается только после стартового коммита', async () => {
     const source = await readFile(join(process.cwd(), 'src/core/init.ts'), 'utf8');
     const commit = source.indexOf('await initGitRepository(target, ownedPaths');

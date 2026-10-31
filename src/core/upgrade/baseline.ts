@@ -184,4 +184,5 @@ export const BASELINE_TEMPLATES: readonly BaselineTemplate[] = [
   { path: 'protocols/wiki.md', source: 'registry/baseline/0.3.0-beta.4/project/protocols/wiki.md', sha256: 'c8c2f901e88d6c13595bbd41239755d823d278acdb9c0202aeb1b5832ef24632' },
   { path: 'protocols/handoff.md', source: 'registry/baseline/0.3.0-beta.4/project/protocols/handoff.md', sha256: '7aec6bf47408b42fc4bb9e977664295c9461dfd69c3ff438676c99e2d2b86b80' },
   { path: 'protocols/context-budget.md', source: 'registry/baseline/0.3.0-beta.4/project/protocols/context-budget.md', sha256: 'e121d6dc75de04ea3624608be5f778d43e99afa815540738ec3a43e47ccdcf8c' },
+  { path: 'maestro/runbooks/cowork-audit.md', source: 'registry/baseline/0.3.0-beta.4/project/maestro/runbooks/cowork-audit.md', sha256: 'c3326dfd63dc94bce1bd1779e2d8116685cf7281b7d902c58f9138db6343f50b' },
 ];

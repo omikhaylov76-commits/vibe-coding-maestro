@@ -15,8 +15,10 @@
  *   ничего не запускает и ничего не пишет.
  */
 
+import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { MANIFEST_PATH } from './manifest.js';
 import { decodeUtf8, frontmatter } from './doctor/text.js';
 import {
   ACTIVE_PLAN_NONE,
@@ -229,6 +231,16 @@ async function readText(absolute: string): Promise<string | null> {
   }
 }
 
+/** Находки о самой папке: маршрут в plan здесь был бы неверным советом. */
+export const LOCATION_CODES: readonly string[] = ['preflight-path-missing', 'preflight-not-project'];
+
 export async function buildPreflight(rootInput: string, request: PreflightRequest): Promise<PreflightDecision> {
+  const root = resolve(rootInput);
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    return decision({ route: 'human', findings: [finding('block', 'preflight-path-missing', `Папка проекта не найдена: ${root}. Проверьте путь; путь с пробелами возьмите в кавычки.`)] });
+  }
+  if (!existsSync(join(root, MANIFEST_PATH))) {
+    return decision({ route: 'human', findings: [finding('block', 'preflight-not-project', `В папке нет ${MANIFEST_PATH}: это не проект Vibe Coding Maestro или указана не та папка.`, MANIFEST_PATH)] });
+  }
   return decideBuildPreflight(await inspectBuildPreflight(rootInput), request);
 }

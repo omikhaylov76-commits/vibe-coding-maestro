@@ -20,6 +20,7 @@ import type { TemplateVars } from '../template.js';
 /** Сентинелы содержат NUL: этот символ не может встретиться в тексте шаблона. */
 const PROJECT_NAME_SENTINEL = '\u0000{PROJECT_NAME}\u0000';
 const DATE_SENTINEL = '\u0000{DATE}\u0000';
+const VERSION_SENTINEL = '\u0000{MAESTRO_VERSION}\u0000';
 
 export interface RecoveredVars {
   projectName?: string;
@@ -39,11 +40,15 @@ export function recoverTemplateVars(
   source: string,
   actual: string,
   startingPoint: StartingPoint,
+  version: string,
 ): RecoveredVars | null {
+  // Версия не восстанавливается, а берётся из manifest: файл обязан быть рендером
+  // ровно той версии, которая записала проект.
   const shape = renderTemplate(source, {
     projectName: PROJECT_NAME_SENTINEL,
     date: DATE_SENTINEL,
     startingPoint,
+    version,
   });
 
   const parts = shape.split(new RegExp(`(${escapeRegExp(PROJECT_NAME_SENTINEL)}|${escapeRegExp(DATE_SENTINEL)})`));
@@ -75,16 +80,22 @@ export function recoverTemplateVars(
     projectName: recovered.projectName ?? '',
     date: recovered.date ?? '',
     startingPoint,
+    version,
   };
   return normalizeEol(renderTemplate(source, vars)) === normalizeEol(actual) ? recovered : null;
 }
 
 /** Плейсхолдеры, которые шаблон реально использует: нерасшифрованную переменную нельзя угадывать. */
-export function templateUses(source: string): { projectName: boolean; date: boolean } {
+export function templateUses(source: string): { projectName: boolean; date: boolean; version: boolean } {
   const probe = renderTemplate(source, {
     projectName: PROJECT_NAME_SENTINEL,
     date: DATE_SENTINEL,
     startingPoint: 'idea',
+    version: VERSION_SENTINEL,
   });
-  return { projectName: probe.includes(PROJECT_NAME_SENTINEL), date: probe.includes(DATE_SENTINEL) };
+  return {
+    projectName: probe.includes(PROJECT_NAME_SENTINEL),
+    date: probe.includes(DATE_SENTINEL),
+    version: probe.includes(VERSION_SENTINEL),
+  };
 }

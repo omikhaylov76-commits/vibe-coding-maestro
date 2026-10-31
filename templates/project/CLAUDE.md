@@ -7,4 +7,4 @@
 - Основной маршрут: `protocols/build.md`.
 - Команды в `.claude/commands/` только направляют к canonical protocols.
 - Не редактируй managed `protocols/`; живые факты сохраняй по `protocols/wiki.md`.
-- Проверка: `npx --package create-vibe-maestro@latest vibe-maestro doctor --path .`
+- Проверка: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor --path .`

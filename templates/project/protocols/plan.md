@@ -24,7 +24,7 @@
 Механический снимок собирается одной командой, которая по умолчанию ничего не пишет:
 
 ```text
-npx --package create-vibe-maestro@latest vibe-maestro sources --path . --source <путь> --source <путь>
+npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro sources --path . --source <путь> --source <путь>
 ```
 
 Снимок даёт по каждому источнику: тип и доступность пути, переносимый относительный дескриптор вместо абсолютного, Git-корень, ветку, HEAD, чистоту рабочего дерева и remote без учётных данных, экосистемы и конфигурации сборки, тестов и deployment как пути-доказательства, способности только с доказательством или `UNKNOWN`, ревизию, ограничения и неизвестное. Единственное разрешённое действие над источником — `READ_ONLY_SOURCE`: пути с признаками секретов не читаются, symbolic link не раскрываются, обход ограничен, а усечение объявляется явно.
@@ -126,7 +126,7 @@ current_phase_approved: yes      # только для kind: program
 Перед первой строкой кода запусти механический гейт и покажи его вывод:
 
 ```text
-npx --package create-vibe-maestro@latest vibe-maestro preflight --path .
+npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro preflight --path .
 ```
 
 Гейт проверяет только структурно доказуемое: объявлен ли активный план в `wiki/hot.md`, существует ли он, утверждён ли человеком, объявлены ли поля build gate и утверждена ли текущая фаза программы. Единственное исключение — `QUICK`: он допускается без plan-документа, но требует явного объявления всех критериев `--scale quick --quick no-new-architecture,no-external-integration,no-data-change,no-contract-change`, и исключение остаётся видимым в `wiki/progress/`. Блокировка гейта — это возврат сюда, а не повод обойти проверку.

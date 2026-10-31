@@ -34,9 +34,10 @@ describe('пакет-обёртка vibe-maestro', () => {
     expect(existsSync(join(ALIAS_DIR, alias.bin['vibe-maestro'] as string))).toBe(true);
   });
 
-  it('зависит только от create-vibe-maestro по тегу latest и совпадает с ним по Node и лицензии', async () => {
+  it('зависит только от create-vibe-maestro ровно текущей версии и совпадает с ним по Node и лицензии', async () => {
     const [alias, product] = await Promise.all([manifest(ALIAS_DIR), manifest(process.cwd())]);
-    expect(alias.dependencies).toEqual({ [product.name]: 'latest' });
+    // Точная версия, а не тег: один выпуск обёртки всегда запускает одни и те же проверки.
+    expect(alias.dependencies).toEqual({ [product.name]: product.version });
     expect(alias.engines?.node).toBe(product.engines?.node);
     expect(alias.license).toBe(product.license);
     expect(alias.type).toBe('module');
@@ -54,6 +55,14 @@ describe('пакет-обёртка vibe-maestro', () => {
     // и dist входит в опубликованные файлы.
     expect(product.exports).toBeUndefined();
     expect(product.files).toContain('dist');
+  });
+
+  it('README обёртки называет ту же пару версий, что и package.json', async () => {
+    const [alias, product] = await Promise.all([manifest(ALIAS_DIR), manifest(process.cwd())]);
+    const readme = await readFile(join(ALIAS_DIR, 'README.md'), 'utf8');
+    expect(readme).toContain(`create-vibe-maestro@${product.version}`);
+    expect(readme).toContain(`vibe-maestro@${alias.version}`);
+    expect(readme).toContain(`${alias.version} → ${product.version}`);
   });
 
   it('не попадает в архив create-vibe-maestro', async () => {

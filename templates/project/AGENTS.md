@@ -7,4 +7,4 @@
 3. Выполняй маршрут из `protocols/build.md` с учётом depth в manifest.
 4. Для статуса, памяти и завершения используй `protocols/status.md`, `protocols/wiki.md`, `protocols/handoff.md`.
 5. Файлы `protocols/` принадлежат Maestro; проектная память в `wiki/` принадлежит проекту.
-6. Проверка: `npx --package create-vibe-maestro@latest vibe-maestro doctor --path .`
+6. Проверка: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor --path .`

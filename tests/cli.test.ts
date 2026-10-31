@@ -98,7 +98,7 @@ describe('vibe-maestro CLI', () => {
   it('справка зовёт bin vibe-maestro из пакета create-vibe-maestro, а не несуществующий пакет', async () => {
     const c = collect();
     await runMaestroCli(['--help'], c.io);
-    expect(c.stdout()).toContain('npx --package create-vibe-maestro@latest vibe-maestro <команда>');
+    expect(c.stdout()).toContain(`npx --package create-vibe-maestro@${VERSION} vibe-maestro <команда>`);
     expect(c.stdout()).not.toMatch(/npx\s+vibe-maestro/);
   });
 
@@ -107,7 +107,7 @@ describe('vibe-maestro CLI', () => {
     const code = await runMaestroCli(['залечи'], c.io);
     expect(code).toBe(2);
     expect(c.stderr()).toContain('залечи');
-    expect(c.stderr()).toContain('Подсказка: npx --package create-vibe-maestro@latest vibe-maestro --help');
+    expect(c.stderr()).toContain(`Подсказка: npx --package create-vibe-maestro@${VERSION} vibe-maestro --help`);
   });
 
   it('без команды показывает справку и возвращает код 2', async () => {
@@ -120,7 +120,8 @@ describe('vibe-maestro CLI', () => {
 
 describe('готовые к копированию команды', () => {
   it('serviceInvocation зовёт bin vibe-maestro из пакета create-vibe-maestro нужной версии', () => {
-    expect(serviceInvocation()).toBe('npx --package create-vibe-maestro@latest vibe-maestro');
+    expect(serviceInvocation()).toBe(`npx --package create-vibe-maestro@${VERSION} vibe-maestro`);
+    expect(serviceInvocation('latest')).toBe('npx --package create-vibe-maestro@latest vibe-maestro');
     expect(serviceInvocation('0.3.0-beta.3')).toBe('npx --package create-vibe-maestro@0.3.0-beta.3 vibe-maestro');
   });
 

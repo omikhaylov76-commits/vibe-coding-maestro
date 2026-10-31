@@ -236,10 +236,10 @@ describe('cross-platform и distribution contracts', () => {
     expect(isManifest(duplicatePath)).toBe(false);
   });
 
-  it('шаблоны содержат рабочую one-package doctor command', async () => {
+  it('шаблоны содержат рабочую one-package doctor command с закреплённой версией', async () => {
     for (const name of ['AGENTS.md', 'CLAUDE.md']) {
       const text = await readFile(resolve('templates/project', name), 'utf8');
-      expect(text).toContain('npx --package create-vibe-maestro@latest vibe-maestro doctor');
+      expect(text).toContain('npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor');
     }
   });
 });

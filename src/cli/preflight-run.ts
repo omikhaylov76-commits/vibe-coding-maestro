@@ -1,4 +1,4 @@
-import { buildPreflight } from '../core/preflight.js';
+import { buildPreflight, LOCATION_CODES } from '../core/preflight.js';
 import type { PlanScale } from '../core/plan.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
@@ -29,7 +29,9 @@ export async function executePreflightCommand(options: PreflightRunOptions, io: 
   }
 
   const write = (line: string): void => { if (decision.ok) io.out(line); else io.err(line); };
-  write(`Build preflight: ${decision.ok ? 'разрешено' : 'заблокировано'}. ${ROUTE_HINT[decision.route] ?? ''}`.trimEnd());
+  const located = !decision.findings.some((item) => LOCATION_CODES.includes(item.code));
+  const hint = located ? ROUTE_HINT[decision.route] ?? '' : '';
+  write(`Build preflight: ${decision.ok ? 'разрешено' : 'заблокировано'}. ${hint}`.trimEnd());
   if (decision.plan !== null) write(`План: ${decision.plan}`);
   if (decision.slice !== null) write(`Разрешённая порция: ${decision.slice}`);
   if (decision.exception !== null) write(`Исключение: ${decision.exception}`);

@@ -111,10 +111,24 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
       committed.push(write);
     }
   } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    const unrestored: string[] = [];
     for (const write of [...committed].reverse()) {
       const target = join(root, write.path);
-      if (write.action === 'update') await rename(join(backupDir, write.path), target).catch(() => undefined);
-      else await rm(target, { force: true });
+      try {
+        if (write.action === 'update') await rename(join(backupDir, write.path), target);
+        else await rm(target, { force: true });
+      } catch {
+        unrestored.push(write.path);
+      }
+    }
+    if (unrestored.length > 0) {
+      // Откат не удался: backup — единственная копия прежних файлов, удалять его нельзя.
+      return result(plan, {
+        ok: false,
+        rolledBack: false,
+        error: `Применение прервано (${reason}), и откатить удалось не всё: ${unrestored.join(', ')}. Прежние версии файлов оставлены в ${STAGING_DIR}/backup/ — верните их вручную, затем удалите ${STAGING_DIR}.`,
+      });
     }
     // Каталоги, созданные ради новых путей, удаляются только пустыми и только свои.
     for (const dir of [...createdDirs].reverse()) await rmdir(join(root, dir)).catch(() => undefined);
@@ -122,7 +136,7 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
     return result(plan, {
       ok: false,
       rolledBack: true,
-      error: `Применение прервано и откачено: ${cause instanceof Error ? cause.message : String(cause)}`,
+      error: `Применение прервано и откачено: ${reason}`,
     });
   }
 

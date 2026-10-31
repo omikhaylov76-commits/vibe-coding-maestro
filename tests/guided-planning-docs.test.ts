@@ -37,24 +37,33 @@ function tokenize(line: string): string[] {
   return tokens;
 }
 
-/** Собирает вызовы CLI из документации, склеивая перенос строки обратным слешем. */
-function cliInvocations(markdown: string, binary: string): string[][] {
+/**
+ * Собирает вызовы CLI из документации в npx-форме, склеивая перенос строки обратным слешем.
+ * `vibe-maestro` — bin пакета create-vibe-maestro: `npx --package create-vibe-maestro@<версия> vibe-maestro …`;
+ * создание проекта — `npx create-vibe-maestro@<версия> …`.
+ */
+function cliInvocations(markdown: string, binary: 'vibe-maestro' | 'create-vibe-maestro'): string[][] {
+  const marker = binary === 'vibe-maestro'
+    ? /npx --package create-vibe-maestro@\S+ vibe-maestro(?=\s|`|$)/
+    : /npx create-vibe-maestro@[^\s`]+/;
   const lines = markdown.split('\n');
   const found: string[][] = [];
   for (let i = 0; i < lines.length; i += 1) {
     let line = lines[i] as string;
-    if (!line.includes(`dist/bin/${binary}.js`)) continue;
+    if (!marker.test(line)) continue;
     while (line.trimEnd().endsWith('\\') && i + 1 < lines.length) {
       line = `${line.trimEnd().slice(0, -1)} ${lines[i + 1] as string}`;
       i += 1;
     }
     // Команда внутри строки таблицы обёрнута в backticks: берём саму команду, а не ячейку.
     if (line.includes('`')) {
-      const inline = line.split('`').find((part) => part.includes(`dist/bin/${binary}.js`));
+      const inline = line.split('`').find((part) => marker.test(part));
       if (inline !== undefined) line = inline;
     }
     const tokens = tokenize(line);
-    const start = tokens.findIndex((token) => token.endsWith(`dist/bin/${binary}.js`));
+    const start = binary === 'vibe-maestro'
+      ? tokens.findIndex((token, index) => token === 'vibe-maestro' && tokens[index - 2] === '--package')
+      : tokens.findIndex((token, index) => token.startsWith('create-vibe-maestro@') && tokens[index - 1] === 'npx');
     found.push(tokens.slice(start + 1));
   }
   return found;
@@ -90,8 +99,8 @@ function localLinks(markdown: string): { target: string; anchor: string | null }
 }
 
 describe('Phase 5: версия публикуется одинаково везде', () => {
-  it('package, lock, runtime и документация называют одну версию 0.3.0-beta.3', async () => {
-    const expected = '0.3.0-beta.3';
+  it('package, lock, runtime и документация называют одну версию 0.3.0-beta.4', async () => {
+    const expected = '0.3.0-beta.4';
     const pkg = JSON.parse(await doc('package.json')) as { version: string };
     const lock = JSON.parse(await doc('package-lock.json')) as { version: string; packages: Record<string, { version: string }> };
     expect(pkg.version).toBe(expected);
@@ -134,7 +143,7 @@ describe('Phase 5: команды документации совпадают с
     expect(help.kind).toBe('help');
     const guide = await doc(GUIDE);
     for (const command of ['doctor', 'skills', 'sources', 'upgrade', 'preflight']) {
-      expect(guide, command).toContain(`vibe-maestro.js ${command}`);
+      expect(guide, command).toContain(`vibe-maestro ${command}`);
     }
   });
 
@@ -190,7 +199,7 @@ describe('Phase 5: главный путь новичка объявлен и у
   it('README остаётся короткой входной страницей со ссылками в руководство', async () => {
     const readme = await doc(README);
     expect(readme.split('\n').length).toBeLessThan(350);
-    for (const anchor of ['#два-примера-от-идеи-до-первой-порции', '#инвентаризация-существующих-исходников', '#preflight-механический-гейт-перед-кодом', '#обновление-проекта-с-02-на-03', '#если-что-то-пошло-не-так']) {
+    for (const anchor of ['#два-примера-от-идеи-до-первой-порции', '#инвентаризация-существующих-исходников', '#preflight-механический-гейт-перед-кодом', '#обновление-проекта-на-новую-версию', '#если-что-то-пошло-не-так']) {
       expect(readme, anchor).toContain(anchor);
     }
   });

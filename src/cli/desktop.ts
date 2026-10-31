@@ -63,8 +63,18 @@ export async function resolveDesktopDirectory(options: DesktopOptions): Promise<
   return posix.join(home, 'Desktop');
 }
 
+/**
+ * Терминалы macOS и Linux при перетаскивании папки экранируют пробелы и скобки
+ * обратной косой (`My\ Project`). На этих ОС обратная косая в пути не встречается,
+ * поэтому снимаем экранирование так же, как это сделал бы shell. На Windows
+ * обратная косая — разделитель пути и остаётся как есть.
+ */
+function unescapeDroppedPath(value: string, platform: NodeJS.Platform): string {
+  return platform === 'win32' ? value : value.replace(/\\(.)/g, '$1');
+}
+
 export async function resolveProjectInput(raw: string, options: ProjectInputOptions): Promise<ResolvedProjectInput> {
-  const value = stripOuterQuotes(raw);
+  const value = unescapeDroppedPath(stripOuterQuotes(raw), options.platform);
   if (!value) throw new Error('Введите название проекта или путь.');
   const paths = options.platform === 'win32' ? win32 : posix;
 

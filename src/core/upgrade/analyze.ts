@@ -1,6 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { absolutePathHasSymlink, pathHasSymlink } from '../doctor/fs-utils.js';
+import { GITATTRIBUTES_CONTENT } from '../init.js';
 import { canonicalManagedKind, canonicalOwnershipInventory, CONTENT_OWNED_FILES, TEMPLATE_FILES } from '../inventory.js';
 import type { CanonicalOwnership } from '../inventory.js';
 import {
@@ -10,22 +11,20 @@ import {
   loadChecksums,
   loadManifest,
   MANIFEST_PATH,
+  normalizeEol,
   serializeJson,
   sha256,
   buildManifest,
 } from '../manifest.js';
 import type { Manifest, ProjectDepth } from '../manifest.js';
-import { CREATE_COMMAND, VERSION } from '../meta.js';
+import { CREATE_COMMAND, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson, packageRoot, templatesDir } from '../paths.js';
-import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
+import { canonicalizeSystemTempPrefix, onDiskBasename } from '../platform-paths.js';
 import { renderTemplate } from '../template.js';
 import type { TemplateVars } from '../template.js';
-import {
-  BASELINE_ID,
-  BASELINE_PRODUCT_VERSIONS,
-  BASELINE_TEMPLATES,
-  baselineOwnershipInventory,
-} from './baseline.js';
+import { compareVersions } from '../version.js';
+import { findRelease, supportedVersions } from './releases.js';
+import type { Release } from './releases.js';
 import { recoverTemplateVars, templateUses } from './instance.js';
 
 /** Каталог транзакции. Внутри `.maestro`, чтобы не появляться в дереве проекта. */
@@ -71,12 +70,12 @@ export interface UpgradePlan {
 const blocker = (code: string, message: string, path?: string): UpgradeBlocker =>
   ({ code, message, ...(path === undefined ? {} : { path }) });
 
-function analysis(root: string, status: UpgradeStatus, fromVersion: string | null, blockers: UpgradeBlocker[]): UpgradeAnalysis {
+function analysis(root: string, status: UpgradeStatus, fromVersion: string | null, blockers: UpgradeBlocker[], baselineId = 'unknown'): UpgradeAnalysis {
   return {
     reportVersion: 1,
     status,
     root,
-    baselineId: BASELINE_ID,
+    baselineId,
     fromVersion,
     toVersion: VERSION,
     creates: [],
@@ -90,6 +89,9 @@ function analysis(root: string, status: UpgradeStatus, fromVersion: string | nul
 
 const blocked = (root: string, fromVersion: string | null, ...blockers: UpgradeBlocker[]): UpgradePlan =>
   ({ analysis: analysis(root, 'blocked', fromVersion, blockers), root, writes: [] });
+
+const blockedAt = (root: string, release: Release, fromVersion: string, blockers: UpgradeBlocker[]): UpgradePlan =>
+  ({ analysis: analysis(root, 'blocked', fromVersion, blockers, release.id), root, writes: [] });
 
 async function isRegularFile(absolute: string): Promise<boolean> {
   try {
@@ -114,9 +116,46 @@ async function readTemplate(relativePath: string): Promise<string> {
   return readFile(join(templatesDir(), 'project', relativePath), 'utf8');
 }
 
-/** Точная форма manifest, которую записал бы init предыдущей версии. */
-function matchesBaselineShape(manifest: Manifest): boolean {
-  const expected = baselineOwnershipInventory(manifest.project.depth);
+/** Исходник managed-пути текущей версии. `.gitattributes` пишет константа init, а не шаблон. */
+async function currentSource(relativePath: string): Promise<string> {
+  if (relativePath === '.gitattributes') return GITATTRIBUTES_CONTENT;
+  return normalizeEol(await readTemplate(relativePath));
+}
+
+/**
+ * Исходник managed-пути в прошлом каноне.
+ *
+ * Изменённые с тех пор пути поставляются копией в `registry/baseline`; остальные
+ * берутся из текущего шаблона, но только если его сумма совпадает с замороженным
+ * слепком. Иначе пакет не знает, как выглядел файл, и не имеет права его трогать.
+ */
+async function releaseSource(release: Release, relativePath: string): Promise<{ source: string } | { blocker: UpgradeBlocker }> {
+  const copy = release.templates.find((template) => template.path === relativePath);
+  if (copy !== undefined) {
+    let source: string;
+    try {
+      source = normalizeEol(await readFile(join(packageRoot(), copy.source), 'utf8'));
+    } catch (cause) {
+      return { blocker: blocker('upgrade-baseline-unreadable', `Baseline-шаблон пакета недоступен: ${cause instanceof Error ? cause.message : String(cause)}`, copy.source) };
+    }
+    if (sha256(source) !== copy.sha256) {
+      return { blocker: blocker('upgrade-baseline-corrupt', 'Baseline-шаблон пакета не совпадает со своей контрольной суммой и не может быть авторитетом.', copy.source) };
+    }
+    return { source };
+  }
+  const source = await currentSource(relativePath);
+  if (release.managedSha256[relativePath] !== sha256(source)) {
+    return { blocker: blocker(
+      'upgrade-baseline-drift',
+      `В пакете нет копии этого файла в версии ${release.versions.join(', ')}: без неё upgrade не может доказать, что файл не изменён. Это дефект пакета — сообщите о нём.`,
+      relativePath,
+    ) };
+  }
+  return { source };
+}
+
+/** Точная форма manifest, которую записал бы init прошлой версии. */
+function matchesShape(manifest: Manifest, expected: Readonly<Record<string, CanonicalOwnership>>): boolean {
   const paths = Object.keys(expected);
   if (manifest.inventory.length !== paths.length || manifest.managed.length !== paths.length) return false;
   const inventory = new Map(manifest.inventory.map((entry) => [entry.path, entry.ownership]));
@@ -129,14 +168,17 @@ function matchesBaselineShape(manifest: Manifest): boolean {
  * Read-only разбор проекта: ни один байт не записывается.
  *
  * Порядок проверок — от авторитета к содержимому. Пока не доказано, что это
- * действительно канонический проект предыдущей версии в его собственной папке,
- * содержимое файлов даже не читается.
+ * действительно канонический проект известной прошлой версии в его собственной
+ * папке, содержимое файлов даже не читается.
  */
 export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   const root = await canonicalizeSystemTempPrefix(resolve(rootInput));
 
   if (await absolutePathHasSymlink(root)) {
     return blocked(root, null, blocker('upgrade-root-symlink', 'Путь к корню проекта не должен содержать symbolic link.', root));
+  }
+  if (!await exists(root)) {
+    return blocked(root, null, blocker('upgrade-path-missing', `Папка не найдена: ${root}. Проверьте путь; путь с пробелами возьмите в кавычки.`));
   }
   if (!await isRegularFile(join(root, MANIFEST_PATH))) {
     return blocked(root, null, blocker(
@@ -163,29 +205,50 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   if (manifest.product.name !== readPackageJson().name || manifest.product.createdBy !== CREATE_COMMAND) {
     return blocked(root, fromVersion, blocker('upgrade-foreign-manifest', 'Manifest создан не этим продуктом.', MANIFEST_PATH));
   }
-  if (manifest.project.name !== basename(root)) {
-    return blocked(root, fromVersion, blocker('upgrade-manifest-not-native', 'Manifest принадлежит другой папке: имя проекта не совпадает с именем каталога.', MANIFEST_PATH));
+  if (manifest.project.name !== onDiskBasename(root)) {
+    return blocked(root, fromVersion, blocker(
+      'upgrade-manifest-not-native',
+      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${onDiskBasename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
+      MANIFEST_PATH,
+    ));
   }
 
   const current = canonicalOwnershipInventory(depth);
-  const baseline = baselineOwnershipInventory(depth);
 
-  if (isCanonicalManifest(manifest)) {
-    return { analysis: analysis(root, 'current', fromVersion, []), root, writes: [] };
+  const order = compareVersions(fromVersion, VERSION);
+  if (order !== null && order > 0) {
+    return blocked(root, fromVersion, blocker(
+      'upgrade-project-newer',
+      `Проект уже на более новой версии ${fromVersion}, а запущена ${VERSION}; откатывать версию upgrade не умеет. Используйте ${serviceInvocation(fromVersion)}.`,
+      MANIFEST_PATH,
+    ));
   }
-  if (!matchesBaselineShape(manifest)) {
+  if (fromVersion === VERSION) {
+    if (isCanonicalManifest(manifest)) {
+      return { analysis: analysis(root, 'current', fromVersion, [], VERSION), root, writes: [] };
+    }
     return blocked(root, fromVersion, blocker(
       'upgrade-unsupported-baseline',
-      `Поддерживается только известный предшественник ${BASELINE_ID}; форма inventory этого проекта ему не соответствует.`,
+      `Manifest называет версию ${VERSION}, но его форма inventory не совпадает с каноном этой версии.`,
       MANIFEST_PATH,
     ));
   }
-  if (!BASELINE_PRODUCT_VERSIONS.includes(fromVersion)) {
+
+  const release = findRelease(fromVersion);
+  if (release === undefined) {
     return blocked(root, fromVersion, blocker(
       'upgrade-unsupported-version',
-      `Версия продукта ${fromVersion} не входит в поддерживаемый baseline ${BASELINE_ID}.`,
+      `Upgrade не знает версию ${fromVersion}. Обновлять он умеет с версий: ${supportedVersions().join(', ')}.`,
       MANIFEST_PATH,
     ));
+  }
+  const baseline = release.inventory(depth);
+  if (!matchesShape(manifest, baseline)) {
+    return blockedAt(root, release, fromVersion, [blocker(
+      'upgrade-unsupported-baseline',
+      `Форма inventory проекта не совпадает с каноном ${release.id}, который записывала версия ${fromVersion}.`,
+      MANIFEST_PATH,
+    )]);
   }
 
   const blockers: UpgradeBlocker[] = [];
@@ -196,83 +259,107 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       blockers.push(blocker('upgrade-incomplete-tree', 'Обязательный путь предыдущего канона отсутствует или не является обычным файлом.', path));
     }
   }
-  // Новый канон обязан быть надмножеством: удаление путей этот upgrade не выполняет.
-  for (const path of Object.keys(baseline)) {
+  // Новый канон обязан быть надмножеством с тем же владением: ни удалять, ни передавать пути этот upgrade не умеет.
+  for (const [path, ownership] of Object.entries(baseline)) {
     if (!(path in current)) blockers.push(blocker('upgrade-removal-unsupported', 'Путь предыдущего канона отсутствует в текущем; upgrade ничего не удаляет.', path));
+    else if (current[path] !== ownership) blockers.push(blocker('upgrade-ownership-change-unsupported', `Владение путём меняется (${ownership} → ${current[path]}); этот upgrade такого перехода не знает.`, path));
   }
-  if (blockers.length > 0) return blocked(root, fromVersion, ...blockers);
+  if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
   if (await exists(join(root, STAGING_DIR))) {
-    return blocked(root, fromVersion, blocker(
+    return blockedAt(root, release, fromVersion, [blocker(
       'upgrade-staging-present',
-      'Каталог транзакции уже существует: возможно, прошлый запуск был прерван. Проверьте и удалите его вручную.',
+      'Каталог транзакции уже существует: прошлый запуск был прерван. В его подпапке backup/ лежат прежние версии файлов. Сверьте проект (git status, git diff), верните нужное из backup/ и только потом удалите каталог.',
       STAGING_DIR,
-    ));
+    )]);
   }
 
-  // 1. Восстановление подстановок по прошлым каноническим шаблонам.
-  const vars: { projectName?: string; date?: string } = {};
-  const baselineSources = new Map<string, string>();
-  for (const template of BASELINE_TEMPLATES) {
-    let source: string;
-    try {
-      source = (await readFile(join(packageRoot(), template.source), 'utf8')).replace(/\r\n/g, '\n');
-    } catch (cause) {
-      blockers.push(blocker('upgrade-baseline-unreadable', `Baseline-шаблон пакета недоступен: ${cause instanceof Error ? cause.message : String(cause)}`, template.source));
-      continue;
-    }
-    if (sha256(source) !== template.sha256) {
-      blockers.push(blocker('upgrade-baseline-corrupt', 'Baseline-шаблон пакета не совпадает со своей контрольной суммой и не может быть авторитетом.', template.source));
-      continue;
-    }
-    baselineSources.set(template.path, source);
+  const checksums = await loadChecksums(root);
+  if (checksums === null) {
+    return blockedAt(root, release, fromVersion, [blocker('upgrade-checksums-invalid', 'Контрольные суммы проекта отсутствуют или повреждены.', CHECKSUMS_PATH)]);
+  }
 
-    if (await pathHasSymlink(root, template.path)) {
-      blockers.push(blocker('upgrade-path-symlink', 'Обновляемый путь не должен содержать symbolic link.', template.path));
-      continue;
-    }
-    const actual = await readFile(join(root, template.path), 'utf8');
-    const recovered = recoverTemplateVars(source, actual, manifest.project.startingPoint);
-    if (recovered === null) {
-      blockers.push(blocker('upgrade-managed-modified', 'Managed-файл изменён относительно прошлого канона: upgrade не перезаписывает изменённое содержимое.', template.path));
-      continue;
-    }
+  // 1. Managed-пути прошлого канона: прошлый исходник, новый исходник и, если upgrade
+  // их затрагивает, доказательство, что файл на диске — неизменённый рендер прошлого.
+  const vars: { projectName?: string; date?: string } = {};
+  const affected: { path: string; next: string; actual: string }[] = [];
+  const optional: { path: string; source: string }[] = [];
+  const startingPoint = manifest.project.startingPoint;
+
+  const remember = (path: string, recovered: { projectName?: string; date?: string }): boolean => {
     for (const key of ['projectName', 'date'] as const) {
       const value = recovered[key];
       if (value === undefined) continue;
       if (vars[key] !== undefined && vars[key] !== value) {
-        blockers.push(blocker('upgrade-variable-conflict', `Подстановка ${key} восстанавливается по-разному в разных managed-файлах.`, template.path));
-        continue;
+        blockers.push(blocker('upgrade-variable-conflict', `Подстановка ${key} восстанавливается по-разному в разных managed-файлах.`, path));
+        return false;
       }
       vars[key] = value;
     }
-  }
-  if (blockers.length > 0) return blocked(root, fromVersion, ...blockers);
+    return true;
+  };
 
-  // 2. Контрольные суммы обязаны подтверждать ту же картину: расхождение metadata — тоже конфликт.
-  const checksums = await loadChecksums(root);
-  if (checksums === null) {
-    return blocked(root, fromVersion, blocker('upgrade-checksums-invalid', 'Контрольные суммы проекта отсутствуют или повреждены.', CHECKSUMS_PATH));
-  }
-  for (const template of BASELINE_TEMPLATES) {
-    const recorded = checksums.files[template.path];
-    const actual = contentChecksum(template.path, await readFile(join(root, template.path)));
-    if (recorded !== actual) {
-      blockers.push(blocker('upgrade-checksum-mismatch', 'Записанная контрольная сумма не совпадает с файлом: metadata проекта противоречива.', template.path));
+  for (const [path, ownership] of Object.entries(baseline)) {
+    if (ownership !== 'managed' && ownership !== 'immutable') continue;
+    // Пустой маркер каталога: во всех канонах это ноль байт, обновлять нечего.
+    if (path.endsWith('/.gitkeep')) continue;
+    const previous = await releaseSource(release, path);
+    if ('blocker' in previous) { blockers.push(previous.blocker); continue; }
+    const next = await currentSource(path);
+    const pinsVersion = templateUses(previous.source).version || templateUses(next).version;
+    if (previous.source === next && !pinsVersion) {
+      // Этот upgrade путь не трогает: правки пользователя в нём — не его забота.
+      optional.push({ path, source: previous.source });
+      continue;
     }
-  }
-  if (blockers.length > 0) return blocked(root, fromVersion, ...blockers);
 
-  // 3. Новые пути канона. Содержимое собирается только из шаблонов текущей версии.
-  const newPaths = Object.keys(current).filter((path) => !(path in baseline));
-  const writes: UpgradePlan['writes'] = [];
-  const creates: UpgradeChange[] = [];
+    if (await pathHasSymlink(root, path)) {
+      blockers.push(blocker('upgrade-path-symlink', 'Обновляемый путь не должен содержать symbolic link.', path));
+      continue;
+    }
+    const actual = normalizeEol(await readFile(join(root, path), 'utf8'));
+    const recovered = recoverTemplateVars(previous.source, actual, startingPoint, fromVersion);
+    if (recovered === null) {
+      blockers.push(blocker(
+        'upgrade-managed-modified',
+        `Файл Maestro изменён вручную относительно версии ${fromVersion}, поэтому upgrade его не перезапишет. Верните файл к исходному виду или перенесите свои правки в собственный файл проекта, затем повторите.`,
+        path,
+      ));
+      continue;
+    }
+    if (!remember(path, recovered)) continue;
+    if (checksums.files[path] !== contentChecksum(path, actual)) {
+      blockers.push(blocker('upgrade-checksum-mismatch', 'Записанная контрольная сумма не совпадает с файлом: metadata проекта противоречива.', path));
+      continue;
+    }
+    affected.push({ path, next, actual });
+  }
+  if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
+
+  // Недостающие подстановки можно взять из файлов, которые upgrade не трогает. Это
+  // только подсказка: правка в таком файле не имеет права остановить обновление,
+  // поэтому расхождение здесь не блокирует, а уже известное значение не меняется.
+  for (const { path, source } of optional) {
+    if (vars.projectName !== undefined && vars.date !== undefined) break;
+    const uses = templateUses(source);
+    if (!uses.projectName && !uses.date) continue;
+    if (await pathHasSymlink(root, path)) continue;
+    const recovered = recoverTemplateVars(source, await readFile(join(root, path), 'utf8'), startingPoint, fromVersion);
+    if (recovered === null) continue;
+    vars.projectName ??= recovered.projectName;
+    vars.date ??= recovered.date;
+  }
 
   const renderVars = (source: string): TemplateVars | null => {
     const uses = templateUses(source);
     if ((uses.projectName && vars.projectName === undefined) || (uses.date && vars.date === undefined)) return null;
-    return { projectName: vars.projectName ?? '', date: vars.date ?? '', startingPoint: manifest.project.startingPoint };
+    return { projectName: vars.projectName ?? '', date: vars.date ?? '', startingPoint, version: VERSION };
   };
+
+  // 2. Новые пути канона. Содержимое собирается только из шаблонов текущей версии.
+  const newPaths = Object.keys(current).filter((path) => !(path in baseline));
+  const writes: UpgradePlan['writes'] = [];
+  const creates: UpgradeChange[] = [];
 
   for (const path of newPaths.sort()) {
     const ownership = current[path] as CanonicalOwnership;
@@ -303,31 +390,29 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     writes.push({ path, content, action: 'create' });
   }
 
-  // 4. Обновления managed-файлов с доказанным preimage.
+  // 3. Обновления managed-файлов с доказанным preimage.
   const updates: UpgradeChange[] = [];
   const unchanged: string[] = [];
-  for (const template of BASELINE_TEMPLATES) {
-    const source = await readTemplate(template.path);
-    const templateVars = renderVars(source);
+  for (const { path, next, actual } of affected) {
+    const templateVars = renderVars(next);
     if (templateVars === null) {
-      blockers.push(blocker('upgrade-variable-unrecoverable', 'Шаблон требует подстановку, которую нельзя восстановить из проекта; угадывать её нельзя.', template.path));
+      blockers.push(blocker('upgrade-variable-unrecoverable', 'Шаблон требует подстановку, которую нельзя восстановить из проекта; угадывать её нельзя.', path));
       continue;
     }
-    const content = renderTemplate(source, templateVars);
-    const actual = (await readFile(join(root, template.path), 'utf8')).replace(/\r\n/g, '\n');
-    if (content.replace(/\r\n/g, '\n') === actual) {
-      unchanged.push(template.path);
+    const content = path === '.gitattributes' ? next : renderTemplate(next, templateVars);
+    if (normalizeEol(content) === actual) {
+      unchanged.push(path);
       continue;
     }
-    updates.push({ path: template.path, ownership: current[template.path] as CanonicalOwnership });
-    writes.push({ path: template.path, content, action: 'update' });
+    updates.push({ path, ownership: current[path] as CanonicalOwnership });
+    writes.push({ path, content, action: 'update' });
   }
-  if (blockers.length > 0) return blocked(root, fromVersion, ...blockers);
+  if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
-  // 5. Metadata. Manifest пересобирается по текущему канону; проектные поля переносятся как есть.
+  // 4. Metadata. Manifest пересобирается по текущему канону; проектные поля переносятся как есть.
   const nextManifest = buildManifest({
     projectName: manifest.project.name,
-    startingPoint: manifest.project.startingPoint,
+    startingPoint,
     createdAt: manifest.project.createdAt,
     productName: readPackageJson().name,
     productVersion: VERSION,
@@ -346,7 +431,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     }
   }
 
-  const result = analysis(root, 'upgradable', fromVersion, []);
+  const result = analysis(root, 'upgradable', fromVersion, [], release.id);
   result.creates = creates;
   result.updates = updates;
   result.unchanged = unchanged.sort();

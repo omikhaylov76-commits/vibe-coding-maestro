@@ -14,6 +14,9 @@ export async function executeDoctorCommand(options: DoctorRunOptions, io: CliIo)
     io.out(JSON.stringify(report, null, 2));
   } else if (report.ok) {
     io.out('Vibe Coding Maestro doctor: всё сходится.');
+    for (const item of report.findings) {
+      if (item.level === 'warning' || item.level === 'info') io.out(`- ${item.code}${item.path ? ` (${item.path})` : ''}: ${item.message}`);
+    }
   } else {
     io.err(`Vibe Coding Maestro doctor: найдено проблем — ${report.findings.length}.`);
     for (const item of report.findings) {

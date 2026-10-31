@@ -42,7 +42,7 @@ const HELP = `${PRODUCT_NAME} — подготовка проекта одной
   --version, -v       версия
 
 После создания проект проверяется командой:
-  ${serviceInvocation()} doctor --path <путь>`;
+  ${serviceInvocation(VERSION)} doctor --path <путь>`;
 
 export function parseCreateArgs(argv: readonly string[]): ParseResult {
   const options: CreateOptions = {
@@ -113,7 +113,7 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
   if (options.target === '') {
     return {
       kind: 'error',
-      message: `Не указана папка проекта. Передайте --target <путь> (интерактивное меню появится позже).`,
+      message: `Не указана папка проекта. Передайте --target <путь> или запустите команду без аргументов в терминале — откроется пошаговый мастер.`,
     };
   }
 
@@ -163,7 +163,7 @@ export async function runCreateCli(
           return code;
         }
         const { executeCreate } = await import('./create-run.js');
-        return executeCreate(
+        return await executeCreate(
           {
             target: answers.target,
             name: answers.name,

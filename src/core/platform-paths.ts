@@ -1,5 +1,20 @@
+import { realpathSync } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
+
+/**
+ * Имя папки так, как оно записано на диске. На файловых системах без учёта
+ * регистра (macOS, Windows) `cd myproject` даёт путь в другом регистре, чем имя
+ * папки, и сравнение с manifest по набранной строке ошибалось бы. Symlink в пути
+ * проверяется до этого вызова, поэтому realpath здесь меняет только регистр.
+ */
+export function onDiskBasename(absolute: string): string {
+  try {
+    return basename(realpathSync.native(absolute));
+  } catch {
+    return basename(absolute);
+  }
+}
 
 interface PlatformPathDeps {
   isSymlink?: (path: string) => Promise<boolean>;

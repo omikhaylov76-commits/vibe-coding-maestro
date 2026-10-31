@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, parse, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { describeFsError } from './fs-errors.js';
 import { mergeGitignore, REQUIRED_GITIGNORE_ENTRIES } from './gitignore.js';
-import { CREATE_COMMAND, VERSION } from './meta.js';
+import { CREATE_COMMAND, quotePathArg, serviceInvocation, VERSION } from './meta.js';
 import type { StartingPoint } from './meta.js';
 import {
   CHECKSUMS_PATH,
@@ -23,7 +24,8 @@ import type { ManagedEntry, Manifest, ProjectDepth } from './manifest.js';
 import { normalizeTarget, readPackageJson, templatesDir } from './paths.js';
 import { renderTemplate } from './template.js';
 import { canonicalOwnershipInventory, CONTENT_OWNED_FILES, lazyDirsForDepth, TEMPLATE_FILES } from './inventory.js';
-import { canonicalizeSystemTempPrefix } from './platform-paths.js';
+import { canonicalizeSystemTempPrefix, onDiskBasename } from './platform-paths.js';
+import { compareVersions } from './version.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -202,6 +204,32 @@ async function initGitRepository(
  */
 export async function initProject(options: InitOptions): Promise<InitResult> {
   const target = await canonicalizeSystemTempPrefix(normalizeTarget(options.target));
+  const progress: WriteProgress = { freshFolder: false, started: false };
+  try {
+    return await initProjectAt(target, options, progress);
+  } catch (cause) {
+    const reason = describeFsError(cause, target);
+    let leftovers = '';
+    if (progress.started && progress.freshFolder) {
+      leftovers = ` В папке могли остаться частично записанные файлы Maestro. До запуска она была пустой, поэтому её можно удалить целиком и повторить команду: ${target}`;
+    } else if (progress.started && progress.existingProject) {
+      leftovers = ' Часть файлов Maestro могла обновиться без manifest и контрольных сумм: проверьте проект командой doctor и git status.';
+    } else if (progress.started) {
+      leftovers = ' В папке могли остаться частично записанные файлы Maestro: проверьте git status, прежде чем удалять что-либо.';
+    }
+    return failure(target, options.name ?? basename(target), `${reason}${leftovers}`);
+  }
+}
+
+/** Что успело произойти до сбоя: от этого зависит совет пользователю. */
+interface WriteProgress {
+  /** Папки не было или в ней не было ничего, даже `.git`: удалить её целиком безопасно. */
+  freshFolder: boolean;
+  existingProject?: boolean;
+  started: boolean;
+}
+
+async function initProjectAt(target: string, options: InitOptions, progress: WriteProgress): Promise<InitResult> {
   const now = options.now ?? new Date();
   if (options.depth !== undefined && !DEPTHS.includes(options.depth)) {
     return failure(target, options.name ?? basename(target), `Неизвестная глубина проекта: ${String(options.depth)}`);
@@ -242,9 +270,22 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     } catch (error) {
       return failure(target, options.name ?? basename(target), `Повреждён manifest; сначала запустите doctor: ${error instanceof Error ? error.message : String(error)}`);
     }
+    const ours = previousManifest.product.name === readPackageJson().name && previousManifest.product.createdBy === CREATE_COMMAND;
+    const projectVersion = previousManifest.product.version;
+    if (ours && projectVersion !== VERSION) {
+      // Create не меняет версию проекта ни вверх, ни вниз: для этого есть upgrade с проверкой каждого файла.
+      const newer = (compareVersions(projectVersion, VERSION) ?? -1) > 0;
+      return failure(
+        target,
+        options.name ?? basename(target),
+        newer
+          ? `Это проект Vibe Coding Maestro более новой версии ${projectVersion}, а create — версии ${VERSION}. Create не меняет версию проекта; проверка: ${serviceInvocation(projectVersion)} doctor --path ${quotePathArg(target)}.`
+          : `Это проект Vibe Coding Maestro версии ${projectVersion}, а create — версии ${VERSION}. Create не обновляет проекты; используйте ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(target)} (без --apply только показывает изменения).`,
+      );
+    }
     if (
       !isCanonicalManifest(previousManifest)
-      || previousManifest.project.name !== basename(target)
+      || previousManifest.project.name !== onDiskBasename(target)
       || !(await hasCompleteCanonicalTree(target, previousManifest))
     ) {
       return failure(
@@ -269,7 +310,7 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
    * - в манифесте проект опознаётся по имени папки (идентичность на диске);
    * - отображаемое название в документах берётся из --name, иначе из имени папки.
    */
-  const folderName = basename(target);
+  const folderName = onDiskBasename(target);
   const displayName = options.name ?? folderName;
 
   // Параметры существующего проекта не переписываются: манифест должен остаться стабильным.
@@ -301,6 +342,9 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
   const checksumForFile = async (relativePath: string, absolutePath: string): Promise<string> =>
     contentChecksum(relativePath, await readFile(absolutePath));
 
+  progress.freshFolder = !isExistingProject && (!existsSync(target) || (await readdir(target)).every((entry) => entry === '.DS_Store'));
+  progress.existingProject = isExistingProject;
+  progress.started = true;
   await mkdir(join(target, MAESTRO_DIR), { recursive: true });
 
   const vars = { projectName: displayName, date: isoDate(now), startingPoint };

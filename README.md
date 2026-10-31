@@ -17,7 +17,7 @@
 <p align="center">
   <a href="docs/USER_GUIDE.md">Подробное руководство на русском</a>
   ·
-  <a href="#quick-start-from-source">Quick start</a>
+  <a href="#quick-start">Quick start</a>
   ·
   <a href="#safety-by-default">Safety</a>
   ·
@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.3.0-beta.3 is a public beta on npm.** Create a project with `npx create-vibe-maestro@latest` and check one with `npx --package create-vibe-maestro@latest vibe-maestro doctor --path .`. Interfaces may still change between beta versions; the source install below remains available. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.3.0-beta.4 is a public beta on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in its `CLAUDE.md` and `AGENTS.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change between beta versions. The current CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -45,39 +45,29 @@ It is **not another coding agent or IDE**. Keep using Claude Code, Codex, Cursor
 
 The recording shows the real create-and-`doctor` surface of the beta CLI; the Planning Gate flow below was added after it.
 
-## Quick start from source
+## Quick start
 
-**Requirements:** Node.js 20.10 or newer, npm, and Git.
+**Requirements:** Node.js 20.10 or newer, npm, and Git. Nothing to clone or build.
 
-> [!TIP]
-> ## 🚀 One command to start
->
-> Copy this into your terminal and press Enter:
->
-> ```bash
-> git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git 2>/dev/null || true && cd vibe-coding-maestro && git checkout main && git pull && npm ci && npm run build && node dist/bin/create-vibe-maestro.js
-> ```
+Run the guided setup:
 
 ```bash
-# 1. Get the beta source
-git clone https://github.com/omikhaylov76-commits/vibe-coding-maestro.git && cd vibe-coding-maestro
-
-# 2. Install and build
-npm ci && npm run build
-
-# 3. Create a new canonical project
-node dist/bin/create-vibe-maestro.js \
-  --yes \
-  --target "../My Project" \
-  --name "My Project" \
-  --start idea \
-  --depth standard
+npx create-vibe-maestro@latest
 ```
 
-Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. Then verify it again at any time:
+The Guided First Run explains where files will be created and asks for no more than three decisions. A simple project name creates the folder on your Desktop; an explicit path always wins. Set `NO_COLOR=1` if you need plain output.
+
+Or pass every decision explicitly:
 
 ```bash
-node dist/bin/vibe-maestro.js doctor --path "../My Project"
+npx create-vibe-maestro@latest --yes --target "My Project" --name "My Project" --start idea --depth standard
+```
+
+Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. To check it again later, open the project folder and run the command written in its `CLAUDE.md` (it names the exact version the project uses):
+
+```bash
+cd "My Project"
+npx --package create-vibe-maestro@latest vibe-maestro doctor --path .
 ```
 
 Expected result:
@@ -86,20 +76,14 @@ Expected result:
 Vibe Coding Maestro doctor: всё сходится.
 ```
 
-Prefer a guided setup? Run the CLI without flags:
-
-```bash
-node dist/bin/create-vibe-maestro.js
-```
-
-The Guided First Run explains where files will be created and asks for no more than three decisions. A simple project name creates the folder on your Desktop; an explicit path always wins. Set `NO_COLOR=1` if you need plain output.
+`@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical 0.2 project. It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.3). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
-Проект создан — **откройте созданную папку** (`../My Project`) в Claude Code или Cowork. Дальше работа идёт по одному маршруту: сначала план, который утверждает человек, и только потом код.
+Проект создан — **откройте созданную папку** (`My Project`) в Claude Code или Cowork. Дальше работа идёт по одному маршруту: сначала план, который утверждает человек, и только потом код.
 
 ```text
 обсудить идею → /plan → классификация → черновик плана
@@ -111,19 +95,19 @@ The Guided First Run explains where files will be created and asks for no more t
 3. **Проверьте классификацию.** Агент называет масштаб, режим, глубину гарантий, риск и профили с причинами. Вы можете принять её, изменить или сузить объём.
 4. **Покажите существующий код**, если он есть: команда `sources` читает его read-only и по умолчанию ничего не пишет.
 5. **Получите черновик** в `wiki/plans/<номер>-<слаг>.md`. Пока он `draft`, гейт показывает `CODE_ALLOWED: NO`.
-6. **Утвердите план сами** — словами «план утверждаю». Агент не утверждает план за вас; утверждение проставляет `approved_by` и `approved_at`.
+6. **Утвердите план сами** — словами «план утверждаю». Утверждение записывается в поля `approved_by` и `approved_at`. Maestro не может механически отличить, кто их заполнил — человек или агент: следите, чтобы они появлялись только после ваших слов.
 7. **Проверьте право на код** механическим гейтом `preflight` (команды ниже).
 8. **`/build` ровно одной порции** → тесты → `doctor` → `/handoff`.
 
 ### Откуда запускать команды
 
 - `/plan`, `/build`, `/status`, `/wiki`, `/handoff` — внутри **папки проекта**, открытой в Claude Code.
-- `doctor`, `preflight`, `sources`, `upgrade` — из **папки исходников Maestro**, с явным `--path` до проекта:
+- `doctor`, `preflight`, `sources`, `upgrade` — тоже из **папки проекта**, через `npx`, с `--path .`. Точная команда с версией вашего проекта записана в его `CLAUDE.md` и `AGENTS.md`; ниже — общая форма:
 
 ```bash
-# из vibe-coding-maestro
-node dist/bin/vibe-maestro.js preflight --path "../My Project"
-node dist/bin/vibe-maestro.js doctor --path "../My Project"
+# из папки проекта
+npx --package create-vibe-maestro@latest vibe-maestro preflight --path .
+npx --package create-vibe-maestro@latest vibe-maestro doctor --path .
 ```
 
 ### Глубина планирования подстраивается под масштаб
@@ -147,7 +131,7 @@ node dist/bin/vibe-maestro.js doctor --path "../My Project"
 | Закрывает блокирующие вопросы | Исполняет одну разрешённую порцию и останавливается на её стоп-гейте |
 | Просматривает diff и решает, что мержить | Прогоняет тесты, `doctor` и готовит `/handoff` |
 
-Два законченных примера — простой лендинг и портал из двух существующих игр — разобраны в [руководстве](docs/USER_GUIDE.md#два-примера-от-идеи-до-первой-порции). Там же — разделы про [`sources`](docs/USER_GUIDE.md#инвентаризация-существующих-исходников), [`preflight`](docs/USER_GUIDE.md#preflight-механический-гейт-перед-кодом), [`upgrade`](docs/USER_GUIDE.md#обновление-проекта-с-02-на-03) и [что делать, если гейт закрыт](docs/USER_GUIDE.md#если-что-то-пошло-не-так).
+Два законченных примера — простой лендинг и портал из двух существующих игр — разобраны в [руководстве](docs/USER_GUIDE.md#два-примера-от-идеи-до-первой-порции). Там же — разделы про [`sources`](docs/USER_GUIDE.md#инвентаризация-существующих-исходников), [`preflight`](docs/USER_GUIDE.md#preflight-механический-гейт-перед-кодом), [`upgrade`](docs/USER_GUIDE.md#обновление-проекта-на-новую-версию) и [что делать, если гейт закрыт](docs/USER_GUIDE.md#если-что-то-пошло-не-так).
 
 Всё состояние проекта живёт в Markdown внутри Git. Новая сессия агента начинает не с нуля, а с `wiki/hot.md`, активного плана и последнего handoff.
 
@@ -215,6 +199,7 @@ Maestro is deliberately conservative around existing data and Git state:
 - audit findings must be resolved with evidence; `waived` is not accepted by the 0.3 beta contract;
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
 - `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
+- generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
 - there is intentionally no `doctor --fix` that could overwrite useful work.
 
 `doctor` checks known mechanical boundaries such as manifest identity, ownership inventory, managed checksums, protocol contracts, wiki links, source integrity, tracked environment files, audit structure, blocking findings, and protected-path symlinks.
@@ -269,45 +254,50 @@ Claude Code and Cowork are two different doors into the same `protocols/plan.md`
 
 “Generic” means the shared files are usable; it does not claim the same tested UX as the native Claude Code adapter.
 
+## Updating a project
+
+Run the preview from the project folder; it writes nothing:
+
+```bash
+npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
+```
+
+It lists every file it would add or update and prints the exact command, with the exact version, that applies the change (`--apply`). A file you edited by hand is never overwritten: the upgrade stops and names it. After applying, review the Git diff and commit it (until then `doctor` reports the uncommitted managed files), then run `doctor --strict` with the same version.
+
 ## Automation and CI
 
 For scripts, pass every decision explicitly:
 
 ```bash
-node dist/bin/create-vibe-maestro.js \
-  --yes \
-  --target "../My Project" \
-  --name "My Project" \
-  --start materials \
-  --depth standard \
-  --json
+npx create-vibe-maestro@latest --yes --target "My Project" --name "My Project" --start materials --depth standard --json
 ```
 
-Useful service commands:
+Useful service commands (run from the project folder; in a real project use the exact version from its `CLAUDE.md`):
 
 ```bash
-node dist/bin/vibe-maestro.js doctor --path "../My Project" --json
-node dist/bin/vibe-maestro.js doctor --path "../My Project" --strict
-node dist/bin/vibe-maestro.js skills --path "../My Project"
-node dist/bin/vibe-maestro.js preflight --path "../My Project" --json
-node dist/bin/vibe-maestro.js sources --path "../My Project" --source "../durak" --source "../dice-poker"
-node dist/bin/vibe-maestro.js upgrade --path "../My 0.2 Project"
+npx --package create-vibe-maestro@latest vibe-maestro doctor --path . --json
+npx --package create-vibe-maestro@latest vibe-maestro doctor --path . --strict
+npx --package create-vibe-maestro@latest vibe-maestro skills --path .
+npx --package create-vibe-maestro@latest vibe-maestro preflight --path . --json
+npx --package create-vibe-maestro@latest vibe-maestro sources --path . --source "../durak" --source "../dice-poker"
+npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 ```
 
 `preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources` and `upgrade` write nothing at all unless you add `--write` or `--apply`.
 
-The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, and symlink boundaries. CI is configured for Ubuntu, macOS, and Windows with Node.js 20 and 22.
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
 ## Current beta scope
 
-Available now in the source beta:
+Available now in the npm beta:
 
 - Guided First Run;
 - fresh canonical project creation;
 - Planning Gate: `/plan`, Cowork plan runbook, project plans, and the human approval gate;
 - mechanical `preflight` before the first line of code;
 - read-only `sources` inventory of existing code;
-- safe `upgrade` of a provably canonical 0.2 project;
+- safe `upgrade` of a provably canonical project from an earlier published version;
+- exact Maestro version pinned in every generated project;
 - `light`, `standard`, and `advanced` depth projections;
 - shared project memory and handoffs;
 - canonical protocols with thin adapters;
@@ -320,13 +310,13 @@ Available now in the source beta:
 
 Not available yet:
 
-- safe conversion of existing non-canonical projects (`upgrade` covers only a canonical 0.2 project);
+- safe conversion of existing non-canonical projects (`upgrade` covers only canonical projects of known versions);
 - English-generated templates;
 - cloud sync, accounts, team dashboard, or billing;
 - automatic installation or execution of third-party skills;
 - a guarantee that an AI agent will not make mistakes.
 
-The 0.3 beta feature set is complete and locally release-verified. Broader dogfooding — including the real two-game integration on the user's Mac — continues as post-release validation and feedback for the next beta. Since 0.3.0-beta.2 the package is published on npm as a beta; the source installation above remains available.
+Known gaps that 0.3.0 is meant to close — the step from an approved plan to `/build`, project identity that survives a renamed folder, `doctor` complaints about edits the protocols themselves ask for — are listed in the [roadmap](docs/ROADMAP.md).
 
 ## Documentation
 
@@ -334,7 +324,8 @@ The 0.3 beta feature set is complete and locally release-verified. Broader dogfo
 - [Changelog](CHANGELOG.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Canonical-only boundary and future Converter](docs/MIGRATION_V1.md)
-- [Contributing and local release gates](CONTRIBUTING.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Contributing, building from source, and local release gates](CONTRIBUTING.md)
 
 Found a confusing step or a safety problem? Please [open an issue](https://github.com/omikhaylov76-commits/vibe-coding-maestro/issues/new) with the command you ran, expected result, actual result, OS, Node version, and a redacted tree or log. Never include credentials or private source material.
 

@@ -11,7 +11,6 @@ export interface CreateRunOptions {
   target: string;
   name?: string;
   startingPoint: StartingPoint;
-  force: boolean;
   git: boolean;
   json: boolean;
   depth: ProjectDepth;
@@ -21,7 +20,6 @@ export async function executeCreate(options: CreateRunOptions, io: CliIo, render
   const result = await initProject({
     target: options.target,
     startingPoint: options.startingPoint,
-    force: options.force,
     git: options.git,
     depth: options.depth,
     ...(options.name === undefined ? {} : { name: options.name }),

@@ -9,7 +9,6 @@ interface CreateOptions {
   target: string;
   name?: string;
   startingPoint: StartingPoint;
-  force: boolean;
   git: boolean;
   json: boolean;
   depth: ProjectDepth;
@@ -36,7 +35,6 @@ const HELP = `${PRODUCT_NAME} — подготовка проекта одной
   --name <имя>        название проекта (по умолчанию — имя папки)
   --start <состояние> исходное состояние идеи: ${STARTING_POINTS.join(' | ')} (по умолчанию idea)
   --depth <глубина>   canonical depth: ${DEPTHS.join(' | ')} (по умолчанию standard)
-  --force             только повторный запуск валидного canonical project; не обходит границу непустой папки
   --no-git            не выполнять git init и стартовый commit
   --yes, -y           неинтерактивный режим (все ответы взяты из флагов)
   --json              машиночитаемый отчёт
@@ -50,7 +48,6 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
   const options: CreateOptions = {
     target: '',
     startingPoint: 'idea',
-    force: false,
     git: true,
     json: false,
     depth: 'standard',
@@ -65,9 +62,6 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
       case '--help':
       case '-h':
         return { kind: 'help' };
-      case '--force':
-        options.force = true;
-        break;
       case '--no-git':
         options.git = false;
         break;
@@ -174,7 +168,6 @@ export async function runCreateCli(
             target: answers.target,
             name: answers.name,
             startingPoint: answers.startingPoint,
-            force: false,
             git: true,
             json: false,
             depth: 'standard',

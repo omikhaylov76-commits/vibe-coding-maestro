@@ -150,7 +150,7 @@ describe('initProject: непустая чужая папка', () => {
     await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
     const before = await snapshotTree(target);
 
-    const result = await init(target, { force: true });
+    const result = await init(target);
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/не является каноническим проектом/i);
@@ -170,7 +170,7 @@ describe('initProject: непустая чужая папка', () => {
     await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
     const before = await snapshotTree(target);
 
-    const result = await init(target, { force: true });
+    const result = await init(target);
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/не является каноническим проектом|неполное.*дерево/i);
@@ -189,19 +189,6 @@ describe('initProject: непустая чужая папка', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/не является каноническим проектом/i);
     expect(after).toEqual(before);
-    expect(existsSync(join(target, '.maestro'))).toBe(false);
-  });
-
-  it('--force не обходит каноническую границу и не пишет ни байта', async () => {
-    const target = await makeTempDir();
-    await writeFile(join(target, 'важное.txt'), 'мои данные\n', 'utf8');
-    const before = await snapshotTree(target);
-
-    const result = await init(target, { force: true });
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/не является каноническим проектом/i);
-    expect(await snapshotTree(target)).toEqual(before);
     expect(existsSync(join(target, '.maestro'))).toBe(false);
   });
 
@@ -284,12 +271,12 @@ describe('initProject: повторный запуск', () => {
     expect(await snapshotTree(target)).toEqual(before);
   });
 
-  it('даже с --force сохраняет изменённый пользователем managed-файл', async () => {
+  it('повторный запуск сохраняет изменённый пользователем managed-файл', async () => {
     const target = await makeTempDir();
     await init(target);
     await writeFile(join(target, 'CLAUDE.md'), 'мои инструкции\n', 'utf8');
 
-    const second = await init(target, { force: true });
+    const second = await init(target);
 
     expect(second.ok).toBe(true);
     expect(await readUtf8(target, 'CLAUDE.md')).toBe('мои инструкции\n');

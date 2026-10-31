@@ -104,10 +104,10 @@ describe('0.3 Phase 3: воспроизведение дефекта на про
     expect(report.findings.some((finding) => finding.code === 'manifest-inventory-mismatch')).toBe(true);
   });
 
-  it('create --force отказывается достраивать проект 0.2', async () => {
+  it('create отказывается достраивать проект 0.2', async () => {
     const legacy = await makeLegacy02Project();
     const before = await snapshotTree(legacy.root);
-    const result = await initProject({ target: legacy.root, startingPoint: 'idea', force: true, git: false, now: FIXED_NOW });
+    const result = await initProject({ target: legacy.root, startingPoint: 'idea', git: false, now: FIXED_NOW });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('не является каноническим проектом');
     expect(await snapshotTree(legacy.root)).toEqual(before);
@@ -234,7 +234,7 @@ describe('0.3 Phase 3: применение upgrade', () => {
     expect((await upgradeProject(legacy.root, { apply: true })).ok).toBe(true);
     const after = await snapshotTree(legacy.root);
 
-    const result = await initProject({ target: legacy.root, startingPoint: 'idea', force: true, git: false, now: FIXED_NOW });
+    const result = await initProject({ target: legacy.root, startingPoint: 'idea', git: false, now: FIXED_NOW });
     expect(result.ok, result.error).toBe(true);
     expect(await snapshotTree(legacy.root)).toEqual(after);
   });

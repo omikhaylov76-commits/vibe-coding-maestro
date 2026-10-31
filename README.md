@@ -95,7 +95,7 @@ node dist/bin/create-vibe-maestro.js
 The Guided First Run explains where files will be created and asks for no more than three decisions. A simple project name creates the folder on your Desktop; an explicit path always wins. Set `NO_COLOR=1` if you need plain output.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical 0.2 project. It refuses to modify a non-empty, non-canonical directory—even with `--force`. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical 0.2 project. It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -206,7 +206,6 @@ Maestro is deliberately conservative around existing data and Git state:
 
 - it refuses a non-empty, non-canonical destination before writing;
 - a copied or forged manifest is not enough—the canonical identity, inventory, and actual tree must agree;
-- `--force` only repeats initialization for a valid canonical project;
 - repeat initialization is not an implicit repair command: an incomplete canonical tree is rejected without writing;
 - user-owned files are not silently overwritten or deleted;
 - protected paths and their parents are checked for symlinks, including dangling links;

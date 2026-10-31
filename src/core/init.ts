@@ -40,7 +40,6 @@ export interface InitOptions {
   target: string;
   name?: string;
   startingPoint: StartingPoint;
-  force?: boolean;
   git?: boolean;
   now?: Date;
   depth?: ProjectDepth;
@@ -198,7 +197,7 @@ async function initGitRepository(
  *
  * Главные гарантии:
  * - чужие файлы никогда не удаляются и не перезаписываются;
- * - managed-файл, изменённый пользователем, сохраняется даже с --force;
+ * - managed-файл, изменённый пользователем, сохраняется при повторном запуске;
  * - повторный запуск на неизменённом проекте не меняет ни один байт.
  */
 export async function initProject(options: InitOptions): Promise<InitResult> {

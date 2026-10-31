@@ -217,6 +217,8 @@ describe('0.4.1: vibe-maestro pack', () => {
     expect(secret(`key = "eyJhbGciOiJIUzI1NiJ9.${payload}.c2lnbmF0dXJlLXNpZ25hdHVyZQ"`)).toBe(true);
     expect(secret(`key = "eyJhbGciOiJIUzI1NiJ9.${anon}.c2lnbmF0dXJlLXNpZ25hdHVyZQ"`)).toBe(false);
     expect(secret(`id = "ASIA${'Q'.repeat(16)}"`)).toBe(true);
+    expect(secret(`aws_secret_access_key = ${'wJalrXUtnFEMIK7MDENGbPxRfiCYzzzzzzzzzz12'}`)).toBe(true);
+    expect(secret('aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY')).toBe(false);
     expect(secret('-----BEGIN PGP PRIVATE KEY BLOCK-----')).toBe(true);
     expect(secret('{"private_key": "-----BEGIN PRIVATE KEY-----\\nMIIEvQ..."}')).toBe(true);
     expect(secret('const password = "Sup3rS3cretValue";')).toBe(true);
@@ -241,7 +243,9 @@ describe('0.4.1: vibe-maestro pack', () => {
     expect((await packProject({ root, tag: 'v1.0.0', out })).findings[0]?.code).toBe('pack-secret');
     const refused = await packProject({ root, tag: 'v1.0.0', out });
     expect(refused.findings.at(-1)?.message).toContain('--allow');
-    expect((await packProject({ root, tag: 'v1.0.0', out, allow: ['tests/fixture.js'] })).ok).toBe(true);
+    const allowed = await packProject({ root, tag: 'v1.0.0', out, allow: ['tests/fixture.js', 'нет/такого.txt'] });
+    expect(allowed.ok).toBe(true);
+    expect(allowed.notes).toContainEqual(expect.stringContaining('нет/такого.txt'));
   });
 
   it('файлы агентов глубже корня и ссылки за пределы проекта — отказ; .mcp.json в корне не входит', async () => {

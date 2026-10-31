@@ -202,6 +202,7 @@ const SECRET_CONTENT: readonly { label: string; test: (line: string) => boolean 
   // Ключ, а не код, который проверяет заголовок: за заголовком идёт перевод строки (в том числе `\n` в JSON) или сам ключ.
   { label: 'закрытый ключ', test: (line) => /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?:\\(?:r\\)?n|\s*$|[A-Za-z0-9+/])/.test(line) },
   { label: 'ключ AWS', test: (line) => [...line.matchAll(/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g)].some((match) => !match[0].endsWith('EXAMPLE')) },
+  { label: 'секретный ключ AWS', test: (line) => [...line.matchAll(/aws_secret_access_key["']?\s*[:=]\s*["']?([A-Za-z0-9/+]{40})(?![A-Za-z0-9/+])/gi)].some((match) => !(match[1] as string).includes('EXAMPLE')) },
   { label: 'токен GitHub', test: (line) => /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/.test(line) },
   { label: 'ключ Anthropic', test: (line) => /\bsk-ant-[A-Za-z0-9_-]{20,}/.test(line) },
   { label: 'ключ OpenAI', test: (line) => /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}/.test(line) },
@@ -360,6 +361,8 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
   }
   const handover = Buffer.from(handoverText({ projectName, tag, commit, passport }), 'utf8');
   findings.push(...findSecrets(HANDOVER_PATH, handover).map((item) => ({ ...item, message: `${item.message} Секрет в паспорте: в паспорт пишут только имена.` })));
+  const packed = new Set(kept.map((entry) => entry.path));
+  for (const path of allowed) if (!packed.has(path)) notes.push(`--allow ${path}: такого файла в теге нет, флаг ничего не меняет.`);
   if (findings.length > 0) {
     const allowHint = findings.some((item) => item.code === 'pack-secret' && item.path !== HANDOVER_PATH)
       ? ' Если человек посмотрел файл и это не секрет (например, тестовый пример), повторите с `--allow <путь>` — только после его «да».'

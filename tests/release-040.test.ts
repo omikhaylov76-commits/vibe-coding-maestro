@@ -95,15 +95,14 @@ describe('0.4.0: протокол «Завершение»', () => {
     expect(await template('.claude/rules/maestro.md')).toContain('`protocols/completion.md`');
   });
 
-  it('чек-лист сдачи, закрытие без сдачи и упаковка в 0.4.1', async () => {
+  it('чек-лист сдачи, закрытие без сдачи и упаковка командой pack', async () => {
     const completion = await template('protocols/completion.md');
     for (const item of ['Критерии «готово»', 'зелёные', 'Тег сдачи', '`wiki/passport.md`', 'Документы для заказчика', 'смените все пароли и ключи', 'Итоговая передача', '`status: completed`', '`active_plan: none`', 'Уроки']) {
       expect(completion, item).toContain(item);
     }
     expect(completion).toContain('### Закрытие внутреннего проекта без сдачи');
-    expect(completion).toContain('0.4.1');
+    expect(completion).toContain('vibe-maestro pack --path . --tag vX.Y.Z');
     expect(completion).toContain('<a id="VCM-COMPLETION"></a>');
-    expect(completion).not.toContain('{{');
   });
 });
 

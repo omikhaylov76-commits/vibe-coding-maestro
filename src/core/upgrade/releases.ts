@@ -321,6 +321,15 @@ const V040_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/completion.md': '7dba5ef6d31427c7cad88f6dd81218d48e978a1b88610f2a70c5eec736cdf302',
 };
 
+const v040OwnershipInventory = ownershipInventory(V040_TEMPLATE_FILES, V040_CONTENT_OWNED_FILES);
+
+/** Копии шаблонов 0.4.0, изменённых в 0.4.1. */
+const v040Copy = (path: string): BaselineTemplate => ({
+  path,
+  source: `registry/baseline/0.4.0/project/${path}`,
+  sha256: V040_MANAGED_SHA256[path] as string,
+});
+
 export const RELEASES: readonly Release[] = [
   {
     id: BASELINE_ID,
@@ -371,8 +380,21 @@ export const RELEASES: readonly Release[] = [
   {
     id: '0.4.0',
     versions: ['0.4.0'],
-    inventory: ownershipInventory(V040_TEMPLATE_FILES, V040_CONTENT_OWNED_FILES),
+    inventory: v040OwnershipInventory,
     managedSha256: V040_MANAGED_SHA256,
+    templates: ['.claude/rules/maestro.md', 'protocols/completion.md', 'protocols/handoff.md'].map(v040Copy),
+  },
+  {
+    // 0.4.1: тот же состав файлов; правила и протоколы зовут `context` и `pack`.
+    id: '0.4.1',
+    versions: ['0.4.1'],
+    inventory: v040OwnershipInventory,
+    managedSha256: {
+      ...V040_MANAGED_SHA256,
+      '.claude/rules/maestro.md': '490eed80098f853068d208ced54391d71c1de740e1fbd8199f54d98f9831216e',
+      'protocols/handoff.md': '10b1a9d21ce40eef441eaf545024cb246b6dda9ae84bfdd4226891aedb253044',
+      'protocols/completion.md': 'fe500e828bf1fc5e73745815cd019af455180f94aba06f13c2b02dfcad61cbfd',
+    },
     templates: [],
   },
 ];

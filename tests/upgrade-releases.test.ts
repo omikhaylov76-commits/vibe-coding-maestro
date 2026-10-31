@@ -63,6 +63,12 @@ const FIXTURES = ['0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-s
 /** Проекты опубликованных 0.3.0 и 0.3.1: после них состав файлов поменялся в 0.4.0. */
 const FIXTURES_03X = ['0.3.0-standard', '0.3.1-light', '0.3.1-standard', '0.3.1-advanced'];
 
+/** Проекты опубликованного 0.4.0: тот же состав файлов, что у текущей версии. */
+const FIXTURES_040 = ['0.4.0-light', '0.4.0-standard', '0.4.0-advanced'];
+
+/** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
+const UPDATED_FROM_040 = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'];
+
 /** Всё, что upgrade с 0.3.0 и 0.3.1 переписывает на нетронутом проекте. */
 const UPDATED_FROM_03X = ['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'];
 
@@ -160,7 +166,7 @@ describe('реестр опубликованных канонов', () => {
     }
   });
 
-  it.each([...FIXTURES, ...FIXTURES_03X])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
     const data = await fixture(id);
     const release = findRelease(data.version);
     expect(release).toBeDefined();
@@ -413,6 +419,34 @@ describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущ
     expect(await runMaestroCli(['upgrade', '--path', root], cli.io)).toBe(0);
     expect(cli.stdout()).toContain(`Предложение обновления 0.3.1 → ${VERSION}`);
     expect(cli.stdout()).toContain('.gitignore — допишет строки: .claude/worktrees/, .claude/settings.local.json');
+  });
+});
+
+describe('upgrade с опубликованного 0.4.0 на текущую версию', () => {
+  it.each(FIXTURES_040)('%s: dry-run меняет только закреплённую версию и тексты про context и pack', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.fromVersion).toBe('0.4.0');
+    expect(analysis.creates).toEqual([]);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_040);
+    expect(analysis.handedOver).toEqual([]);
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it.each(FIXTURES_040)('%s: apply, doctor --strict зелёный, протоколы зовут context и pack', async (id) => {
+    const { root } = await materialize(id);
+    const passport = await readUtf8(root, 'wiki/passport.md');
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.error).toBeUndefined();
+    expect(result.applied).toBe(true);
+    expect(await readUtf8(root, 'protocols/handoff.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro context --path .`);
+    expect(await readUtf8(root, '.claude/rules/maestro.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro context --path .`);
+    expect(await readUtf8(root, 'protocols/completion.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro pack --path . --tag`);
+    expect(await readUtf8(root, 'wiki/passport.md')).toBe(passport);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await analyzeUpgrade(root)).analysis.status).toBe('current');
   });
 });
 

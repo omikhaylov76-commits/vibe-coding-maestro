@@ -6,7 +6,7 @@
 
 - Начни с `wiki/hot.md`: что сейчас, что мешает, что дальше. Читай только то, на что он ссылается; карта остальной памяти — `wiki/index.md`.
 - План до кода — `protocols/plan.md` (`/plan`), работа — `protocols/build.md` (`/build`), передача — `protocols/handoff.md` (`/handoff`), сдача или закрытие проекта — `protocols/completion.md`.
-- Закрыл порцию — передача дел и предложение начать новую сессию: длинная сессия на каждом шаге заново пересылает всю историю. Вторую крупную порцию в той же сессии без согласия человека не начинай.
+- Закрыл порцию — передача дел, затем `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro context --path .`: по его выводу простыми словами скажи человеку, пора ли в новую сессию. Длинная сессия на каждом шаге заново пересылает всю историю. Вторую крупную порцию в той же сессии без согласия человека не начинай.
 - Где что живёт — хостинг, домен, базы, сервисы, имена переменных окружения — `wiki/passport.md`. Завёл ресурс — сразу запиши его туда.
 - Файлы Maestro обновляет `upgrade`, не ты: `protocols/`, `.maestro/`, этот файл, команды `build`, `status`, `wiki`, `handoff`, `plan` в `.claude/commands/`, агенты `code-reviewer` и `explorer` в `.claude/agents/`, runbook'и `cowork-*` в `maestro/runbooks/`, образцы в `maestro/templates/`, `maestro/inbox/README.md`, `wiki/plans/README.md` и `wiki/plans/TEMPLATE.md`. Полный список — пути с `ownership: managed` в `.maestro/manifest.json`. Свои команды, агентов и runbook'и проект добавляет рядом и правит свободно.
 - Проверка проекта: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor --path .`

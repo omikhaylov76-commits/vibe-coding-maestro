@@ -15,6 +15,8 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   sources             read-only инвентаризация существующих исходников для планирования
   upgrade             предложение обновления канонического проекта прошлой версии
   preflight           механическая проверка права начинать код по активному плану
+  pack                архив тега сдачи для заказчика: без папок Maestro, с HANDOVER.md
+  context             размер текущей сессии Claude Code: пора ли в новую сессию
 
 Общие опции команд:
   --path <путь>       корень проверяемого проекта (по умолчанию текущая папка)
@@ -32,6 +34,13 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 Опции upgrade:
   --apply             выполнить обновление; без флага это только dry-run
 
+Опции pack:
+  --tag <тег>         тег сдачи (обязательно)
+  --out <файл>        куда записать архив (по умолчанию — Рабочий стол)
+
+Опции context:
+  --window <токены>   сколько токенов считать полной сессией (по умолчанию 200000)
+
 Опции preflight:
   --scale <масштаб>   ${PLAN_SCALES.join(' | ')} (по умолчанию feature)
   --quick <критерии>  через запятую: ${QUICK_CRITERIA.join(', ')}
@@ -40,7 +49,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   --help, -h          эта справка
   --version, -v       версия`;
 
-const COMMANDS = ['doctor', 'skills', 'sources', 'upgrade', 'preflight'] as const;
+const COMMANDS = ['doctor', 'skills', 'sources', 'upgrade', 'preflight', 'pack', 'context'] as const;
 type Command = (typeof COMMANDS)[number];
 
 export interface CommandOptions {
@@ -54,6 +63,9 @@ export interface CommandOptions {
   write?: boolean;
   replace?: boolean;
   output?: string;
+  tag?: string;
+  out?: string;
+  window?: number;
 }
 
 type ParseResult =
@@ -147,6 +159,34 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         i += 1;
         break;
       }
+      case '--tag': {
+        const message = only(arg, 'pack');
+        if (message !== null) return { kind: 'error', message };
+        const tag = value();
+        if (tag === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        options.tag = tag;
+        i += 1;
+        break;
+      }
+      case '--out': {
+        const message = only(arg, 'pack');
+        if (message !== null) return { kind: 'error', message };
+        const out = value();
+        if (out === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
+        options.out = out;
+        i += 1;
+        break;
+      }
+      case '--window': {
+        const message = only(arg, 'context');
+        if (message !== null) return { kind: 'error', message };
+        const raw = value();
+        const window = raw === undefined ? Number.NaN : Number(raw);
+        if (!Number.isInteger(window) || window <= 0) return { kind: 'error', message: `Флаг ${arg} требует целое число токенов больше нуля.` };
+        options.window = window;
+        i += 1;
+        break;
+      }
       case '--path': {
         const path = value();
         if (path === undefined) return { kind: 'error', message: `Флаг ${arg} требует значение.` };
@@ -158,6 +198,9 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         if (arg.startsWith('-')) return { kind: 'error', message: `Неизвестный аргумент: ${arg}` };
         return { kind: 'error', message: `Лишний аргумент: ${arg}` };
     }
+  }
+  if (first === 'pack' && options.tag === undefined) {
+    return { kind: 'error', message: 'Команда pack требует --tag <тег сдачи>.' };
   }
   if (first === 'sources') {
     if ((options.sources ?? []).length === 0) {
@@ -190,6 +233,14 @@ export async function runMaestroCli(argv: readonly string[], io: CliIo = process
   if (parsed.kind === 'sources') {
     const { executeSourcesCommand } = await import('./sources-run.js');
     return executeSourcesCommand({ ...parsed.options, sources: parsed.options.sources ?? [] }, io);
+  }
+  if (parsed.kind === 'pack') {
+    const { executePackCommand } = await import('./pack-run.js');
+    return executePackCommand({ ...parsed.options, tag: parsed.options.tag as string }, io);
+  }
+  if (parsed.kind === 'context') {
+    const { executeContextCommand } = await import('./context-run.js');
+    return executeContextCommand(parsed.options, io);
   }
   if (parsed.kind === 'preflight') {
     const { executePreflightCommand } = await import('./preflight-run.js');

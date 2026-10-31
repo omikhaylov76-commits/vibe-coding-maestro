@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.4.0 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.4.1 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -177,7 +177,7 @@ From there, `protocols/build.md` routes the agent through the relevant rules, pl
 
 ## A normal working cycle
 
-The guided path above is the whole cycle: material in `maestro/inbox/` → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice. When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
+The guided path above is the whole cycle: material in `maestro/inbox/` → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
 
 Claude Code projects receive five thin commands:
 
@@ -204,6 +204,7 @@ Maestro is deliberately conservative around existing data and Git state:
 - `.claude/settings.json` ships default rules for Claude Code: its file tools are denied Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; this is not a sandbox, and the file belongs to the project, so a team can change the rules — see [how to tune protections for a project](docs/USER_GUIDE.md#как-подстроить-защиты-под-проект) (Russian);
 - API keys live only in `.env`, which `.gitignore` excludes and `doctor` reports if Git tracks it; the agent writes a key you paste into `.env` itself, or opens `.env` in an editor for you to paste it (a key typed into the chat stays in the session history);
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
+- `pack` builds the customer archive only from a delivery tag, leaves Maestro and agent folders out, adds `HANDOVER.md` with «change all passwords and keys», refuses on secrets or an incomplete passport, and gives the same bytes for the same tag;
 - `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
 - there is intentionally no `doctor --fix` that could overwrite useful work.

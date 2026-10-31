@@ -58,7 +58,7 @@ describe('safe Skill Inventory', () => {
     expect(report.results.some((r) => r.code === 'file-limit-reached')).toBe(true);
   });
 
-  it('CLI JSON стабилен, даёт 0-5 рекомендаций из metadata и явно ничего не устанавливает', async () => {
+  it('CLI JSON стабилен, не обещает рекомендаций и явно ничего не устанавливает', async () => {
     const root = await makeTempDir();
     await mkdir(join(root, '.maestro'), { recursive: true });
     await writeFile(join(root, '.maestro/manifest.json'), JSON.stringify({ schemaVersion: 1, product: { name: 'x', version: '1', createdBy: 'x' }, project: { name: 'Demo', startingPoint: 'code', createdAt: '2026-01-01T00:00:00.000Z' }, managed: [{ path: 'x', kind: 'managed' }] }));
@@ -67,20 +67,19 @@ describe('safe Skill Inventory', () => {
     expect(await runMaestroCli(['skills', '--path', root, '--json'], a.io)).toBe(0);
     expect(await runMaestroCli(['skills', '--path', root, '--json'], b.io)).toBe(0);
     expect(a.out.join('\n')).toBe(b.out.join('\n'));
-    const parsed = JSON.parse(a.out.join('\n')) as { installed: boolean; notice: string; recommendations: unknown[]; registryVersion: number };
+    const parsed = JSON.parse(a.out.join('\n')) as Record<string, unknown>;
     expect(parsed.installed).toBe(false);
     expect(parsed.notice).toContain('ничего не установлено');
-    expect(parsed.recommendations.length).toBeGreaterThanOrEqual(0);
-    expect(parsed.recommendations.length).toBeLessThanOrEqual(5);
-    expect(parsed.registryVersion).toBe(1);
+    expect(parsed).not.toHaveProperty('recommendations');
+    expect(parsed).not.toHaveProperty('registryVersion');
   });
 
-  it('trusted registry по умолчанию пуст и не содержит placeholder-источников', async () => {
+  it('отчёт не содержит рекомендаций и placeholder-источников', async () => {
     const root = await makeTempDir();
     await mkdir(join(root, '.maestro'), { recursive: true });
     await writeFile(join(root, '.maestro/manifest.json'), JSON.stringify({ schemaVersion: 1, product: { name: 'x', version: '1', createdBy: 'x' }, project: { name: 'Demo', startingPoint: 'code', createdAt: '2026-01-01T00:00:00.000Z' }, managed: [{ path: 'x', kind: 'managed' }] }));
     const report = await scanSkills(root);
-    expect(report.recommendations).toEqual([]);
+    expect(report).not.toHaveProperty('recommendations');
     expect(JSON.stringify(report)).not.toMatch(/example(?:\.com|\/)|placeholder/i);
   });
 

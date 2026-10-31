@@ -79,15 +79,20 @@ describe('этапы 8–10: contracts/workflows', () => {
     expect(manifest.managed).toContainEqual({ path, kind: 'generated' });
   });
 
-  it('AGENTS/CLAUDE являются тонкими дверями к canonical workflow', async () => {
+  it('AGENTS/CLAUDE — короткие двери проекта к управляемым правилам Maestro', async () => {
     const target = await fresh();
     for (const path of ['AGENTS.md', 'CLAUDE.md']) {
       const text = await readFile(join(target, path), 'utf8');
       expect(text).toContain('wiki/hot.md');
-      expect(text).toContain('protocols/build.md');
-      expect(text).toContain('protocols/wiki.md');
+      expect(text).toContain('.claude/rules/maestro.md');
+      expect(text).toContain('.claude/rules/project.md');
       expect(text.split('\n').length).toBeLessThanOrEqual(18);
     }
+    const rules = await readFile(join(target, '.claude/rules/maestro.md'), 'utf8');
+    for (const route of ['wiki/hot.md', 'protocols/plan.md', 'protocols/build.md', 'protocols/handoff.md']) expect(rules).toContain(route);
+    // Rules без paths Claude Code грузит в каждую сессию: файл обязан оставаться коротким.
+    expect(rules.split('\n').length).toBeLessThanOrEqual(40);
+    expect(rules).not.toMatch(/^paths:/m);
   });
 
   it('фиксирует ownership у canonical owners без дублирования в adapters', async () => {
@@ -97,7 +102,7 @@ describe('этапы 8–10: contracts/workflows', () => {
     expect(wiki).toContain('wiki/decisions');
     expect(wiki).toContain('wiki/log.md');
     expect(wiki).toContain('дополняется');
-    expect(wiki).toMatch(/wiki\/hot\.md[^\n]*только handoff/);
+    expect(wiki).toMatch(/wiki\/hot\.md` изменяет handoff/);
 
     const discovery = (await readFile(join(target, 'protocols/discovery.md'), 'utf8')).toLowerCase();
     expect(discovery).toContain('не пишет production code');

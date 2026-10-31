@@ -88,15 +88,19 @@ describe('этап 5: полный механический doctor', () => {
     const root = await makeTempDir();
     await init(root);
     await writeFile(join(root, 'wiki/log.md'), Buffer.from([0xff, 0xfe, 0x41]));
+    await mkdir(join(root, 'wiki/progress'), { recursive: true });
+    await writeFile(join(root, 'wiki/progress/без-шапки.md'), '# no frontmatter\n');
+    // Вне планов, аудитов и progress frontmatter необязателен.
     await writeFile(join(root, 'wiki/roadmap.md'), '# no frontmatter\n');
     const report = await doctorProject(root);
     expect(codes(report)).toEqual(expect.arrayContaining(['wiki-invalid-utf8', 'wiki-frontmatter-invalid']));
+    expect(report.findings.filter((f) => f.code === 'wiki-frontmatter-invalid').map((f) => f.path)).toEqual(['wiki/progress/без-шапки.md']);
   });
 
-  it('проверяет ссылки во всех wiki md и запрещает выход из wiki', async () => {
+  it('проверяет ссылки во всех wiki md: внутри проекта можно, наружу нельзя', async () => {
     const root = await makeTempDir();
     await init(root);
-    await writeFile(join(root, 'wiki/log.md'), '---\nproject: x\nupdated: 2026-08-02\n---\n[missing](concepts/no.md) [escape](../README.md)\n');
+    await writeFile(join(root, 'wiki/log.md'), '---\nproject: x\nupdated: 2026-08-02\n---\n[missing](concepts/no.md) [escape](../../outside.md) [protocol](../protocols/plan.md)\n');
     const report = await doctorProject(root);
     expect(report.findings.filter((f) => f.code === 'wiki-link-broken')).toHaveLength(1);
     expect(report.findings.filter((f) => f.code === 'wiki-link-outside')).toHaveLength(1);
@@ -118,14 +122,14 @@ describe('этап 5: полный механический doctor', () => {
   it('проверяет Git dirty только для managed docs', async () => {
     const root = await makeTempDir();
     await init(root, true);
-    // wiki/index.md — managed-документ: правка в рабочем дереве обязана быть видна.
-    await writeFile(join(root, 'wiki/index.md'), `${await readUtf8(root, 'wiki/index.md')}dirty\n`);
+    // wiki/plans/README.md — managed-документ: правка в рабочем дереве обязана быть видна.
+    await writeFile(join(root, 'wiki/plans/README.md'), `${await readUtf8(root, 'wiki/plans/README.md')}dirty\n`);
     // wiki/log.md принадлежит проекту по содержанию, поэтому его правка не dirty.
     await writeFile(join(root, 'wiki/log.md'), `${await readUtf8(root, 'wiki/log.md')}dirty\n`);
     const report = await doctorProject(root);
     expect(codes(report)).toContain('git-managed-dirty');
     const dirty = report.findings.filter((f) => f.code === 'git-managed-dirty').map((f) => f.path);
-    expect(dirty).toContain('wiki/index.md');
+    expect(dirty).toContain('wiki/plans/README.md');
     expect(dirty).not.toContain('wiki/log.md');
   });
 
@@ -236,10 +240,11 @@ describe('cross-platform и distribution contracts', () => {
     expect(isManifest(duplicatePath)).toBe(false);
   });
 
-  it('шаблоны содержат рабочую one-package doctor command с закреплённой версией', async () => {
+  it('правила Maestro содержат рабочую one-package doctor command с закреплённой версией, а двери ссылаются на них', async () => {
+    const rules = await readFile(resolve('templates/project', '.claude/rules/maestro.md'), 'utf8');
+    expect(rules).toContain('npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor');
     for (const name of ['AGENTS.md', 'CLAUDE.md']) {
-      const text = await readFile(resolve('templates/project', name), 'utf8');
-      expect(text).toContain('npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro doctor');
+      expect(await readFile(resolve('templates/project', name), 'utf8')).toContain('.claude/rules/maestro.md');
     }
   });
 });

@@ -19,13 +19,13 @@ import {
 import type { Manifest, ProjectDepth } from '../manifest.js';
 import { CREATE_COMMAND, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson, packageRoot, templatesDir } from '../paths.js';
-import { canonicalizeSystemTempPrefix, onDiskBasename } from '../platform-paths.js';
+import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
 import { renderTemplate } from '../template.js';
 import type { TemplateVars } from '../template.js';
 import { compareVersions } from '../version.js';
 import { findRelease, supportedVersions } from './releases.js';
 import type { Release } from './releases.js';
-import { recoverTemplateVars, templateUses } from './instance.js';
+import { recoverTemplateVars, templateUses } from '../template-recover.js';
 
 /** Каталог транзакции. Внутри `.maestro`, чтобы не появляться в дереве проекта. */
 export const STAGING_DIR = '.maestro/upgrade-staging';
@@ -55,6 +55,8 @@ export interface UpgradeAnalysis {
   updates: UpgradeChange[];
   unchanged: string[];
   preserves: string[];
+  /** Пути, которые переходят от Maestro к проекту: checksum снимается, дальше файл принадлежит проекту. */
+  handedOver: string[];
   metadata: string[];
   blockers: UpgradeBlocker[];
 }
@@ -82,6 +84,7 @@ function analysis(root: string, status: UpgradeStatus, fromVersion: string | nul
     updates: [],
     unchanged: [],
     preserves: [],
+    handedOver: [],
     metadata: [],
     blockers,
   };
@@ -205,13 +208,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   if (manifest.product.name !== readPackageJson().name || manifest.product.createdBy !== CREATE_COMMAND) {
     return blocked(root, fromVersion, blocker('upgrade-foreign-manifest', 'Manifest создан не этим продуктом.', MANIFEST_PATH));
   }
-  if (manifest.project.name !== onDiskBasename(root)) {
-    return blocked(root, fromVersion, blocker(
-      'upgrade-manifest-not-native',
-      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${onDiskBasename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
-      MANIFEST_PATH,
-    ));
-  }
+  // Личность проекта — project.id: клон или переименованная папка обновляются так же.
 
   const current = canonicalOwnershipInventory(depth);
 
@@ -262,7 +259,9 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   // Новый канон обязан быть надмножеством с тем же владением: ни удалять, ни передавать пути этот upgrade не умеет.
   for (const [path, ownership] of Object.entries(baseline)) {
     if (!(path in current)) blockers.push(blocker('upgrade-removal-unsupported', 'Путь предыдущего канона отсутствует в текущем; upgrade ничего не удаляет.', path));
-    else if (current[path] !== ownership) blockers.push(blocker('upgrade-ownership-change-unsupported', `Владение путём меняется (${ownership} → ${current[path]}); этот upgrade такого перехода не знает.`, path));
+    else if (current[path] !== ownership && !(ownership === 'managed' && current[path] === 'project-owned')) {
+      blockers.push(blocker('upgrade-ownership-change-unsupported', `Владение путём меняется (${ownership} → ${current[path]}); этот upgrade такого перехода не знает.`, path));
+    }
   }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
@@ -284,6 +283,8 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   const vars: { projectName?: string; date?: string } = {};
   const affected: { path: string; next: string; actual: string }[] = [];
   const optional: { path: string; source: string }[] = [];
+  /** Переход managed → project-owned: нетронутый файл получает новый стартовый текст, изменённый остаётся как есть. */
+  const handover: { path: string; next: string | null }[] = [];
   const startingPoint = manifest.project.startingPoint;
 
   const remember = (path: string, recovered: { projectName?: string; date?: string }): boolean => {
@@ -306,6 +307,18 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     const previous = await releaseSource(release, path);
     if ('blocker' in previous) { blockers.push(previous.blocker); continue; }
     const next = await currentSource(path);
+    if (current[path] === 'project-owned') {
+      if (await pathHasSymlink(root, path)) {
+        blockers.push(blocker('upgrade-path-symlink', 'Передаваемый проекту путь не должен содержать symbolic link.', path));
+        continue;
+      }
+      const actual = normalizeEol(await readFile(join(root, path), 'utf8'));
+      const recovered = recoverTemplateVars(previous.source, actual, startingPoint, fromVersion);
+      const pristine = recovered !== null && checksums.files[path] === contentChecksum(path, actual);
+      if (pristine && recovered !== null) remember(path, recovered);
+      handover.push({ path, next: pristine ? next : null });
+      continue;
+    }
     const pinsVersion = templateUses(previous.source).version || templateUses(next).version;
     if (previous.source === next && !pinsVersion) {
       // Этот upgrade путь не трогает: правки пользователя в нём — не его забота.
@@ -360,6 +373,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   const newPaths = Object.keys(current).filter((path) => !(path in baseline));
   const writes: UpgradePlan['writes'] = [];
   const creates: UpgradeChange[] = [];
+  const keptExisting: string[] = [];
 
   for (const path of newPaths.sort()) {
     const ownership = current[path] as CanonicalOwnership;
@@ -368,6 +382,11 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       continue;
     }
     if (await exists(join(root, path))) {
+      // Файл проекта, который проект завёл сам раньше Maestro, остаётся как есть.
+      if (ownership === 'project-owned' && await isRegularFile(join(root, path))) {
+        keptExisting.push(path);
+        continue;
+      }
       blockers.push(blocker('upgrade-path-collision', 'Добавляемый путь уже занят: upgrade не перезаписывает существующее содержимое.', path));
       continue;
     }
@@ -407,6 +426,15 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     updates.push({ path, ownership: current[path] as CanonicalOwnership });
     writes.push({ path, content, action: 'update' });
   }
+  for (const { path, next } of handover) {
+    if (next === null) continue; // изменённый файл передаётся как есть
+    const templateVars = renderVars(next);
+    if (templateVars === null) continue; // без подстановок новый текст не собрать — файл остаётся как есть
+    const content = renderTemplate(next, templateVars);
+    if (normalizeEol(content) === normalizeEol(await readFile(join(root, path), 'utf8'))) continue;
+    updates.push({ path, ownership: 'project-owned' });
+    writes.push({ path, content, action: 'update' });
+  }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
   // 4. Metadata. Manifest пересобирается по текущему канону; проектные поля переносятся как есть.
@@ -425,6 +453,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
 
   // Суммы существующих файлов сохраняются как есть: upgrade не переоценивает чужие файлы.
   const nextChecksums: Record<string, string> = { ...checksums.files };
+  for (const { path } of handover) delete nextChecksums[path];
   for (const write of writes) {
     if (current[write.path] === 'managed' || current[write.path] === 'immutable') {
       nextChecksums[write.path] = contentChecksum(write.path, write.content);
@@ -436,10 +465,11 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   result.updates = updates;
   result.unchanged = unchanged.sort();
   result.metadata = [MANIFEST_PATH, CHECKSUMS_PATH];
-  result.preserves = Object.entries(baseline)
-    .filter(([path, ownership]) => ownership === 'project-owned' && path in current)
-    .map(([path]) => path)
-    .sort();
+  result.preserves = [
+    ...Object.entries(baseline).filter(([path, ownership]) => ownership === 'project-owned' && path in current).map(([path]) => path),
+    ...keptExisting,
+  ].sort();
+  result.handedOver = handover.map(({ path }) => path).sort();
 
   return {
     analysis: result,

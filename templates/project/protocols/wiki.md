@@ -2,7 +2,7 @@
 
 <a id="VCM-WIKI"></a>
 ## Project memory ownership
-Факты и решения сохраняются в `wiki/`: `wiki/progress/` — ход работы, `wiki/decisions/` — ADR, `wiki/audits/` — находки, `wiki/attic/` — устаревшее. `wiki/log.md` только дополняется. `wiki/hot.md` изменяет только handoff. Не дублируй один факт в нескольких owner paths.
+Факты и решения сохраняются в `wiki/`: `wiki/progress/` — ход работы, `wiki/decisions/` — ADR, `wiki/audits/` — находки, `wiki/attic/` — устаревшее. Образцы передачи, ADR и записи хода работы лежат в `maestro/templates/`. `wiki/log.md` только дополняется. `wiki/hot.md` изменяет handoff; поля `active_plan` и `active_progress` выставляет и шаг, который объявляет план или запись хода работы. `wiki/index.md` принадлежит проекту: это каталог, одна строка на файл со ссылкой. Не дублируй один факт в нескольких owner paths — во втором месте ставь ссылку. Frontmatter обязателен для планов, аудитов, записей хода работы и `hot.md`; в остальных файлах wiki он необязателен.
 
 <a id="VCM-ICEBOX"></a>
 ## Icebox

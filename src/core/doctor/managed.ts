@@ -11,6 +11,8 @@ import type { DoctorFinding } from './types.js';
 /** Результат проверки managed-файлов: набор managed *.md нужен потом проверке Git. */
 export interface ManagedCheckResult {
   managedDocs: Set<string>;
+  /** Все существующие файлы из inventory, кроме metadata: им положено быть в Git. */
+  managedFiles: Set<string>;
 }
 
 export function checkInventory(manifest: Manifest, findings: DoctorFinding[]): void {
@@ -39,6 +41,7 @@ export async function checkManagedFiles(
   findings: DoctorFinding[],
 ): Promise<ManagedCheckResult> {
   const managedDocs = new Set<string>();
+  const managedFiles = new Set<string>();
   for (const entry of manifest.managed) {
     // Структурные инварианты (symlink, наличие файла) действуют и для
     // content-owned документов: проект владеет их содержимым, но не правом
@@ -51,8 +54,14 @@ export async function checkManagedFiles(
     }
     if (entry.kind === 'merged') continue;
     const absolute = join(root, entry.path);
-    if (!existsSync(absolute)) { findings.push(error('managed-missing', 'Управляемый файл отсутствует.', entry.path)); continue; }
+    if (!existsSync(absolute)) {
+      findings.push(error('managed-missing', entry.kind === 'managed'
+        ? 'Управляемый файл Maestro отсутствует.'
+        : 'Обязательный файл проекта отсутствует: его содержимое принадлежит проекту, но сам файл должен быть.', entry.path));
+      continue;
+    }
 
+    managedFiles.add(entry.path);
     // Дальше — проверка целостности по checksum, которая применима только к
     // файлам, чьим содержимым владеет Maestro.
     if (entry.kind !== 'managed') continue;
@@ -65,5 +74,5 @@ export async function checkManagedFiles(
       findings.push(error('text-unreadable', `Не удалось прочитать файл: ${cause instanceof Error ? cause.message : String(cause)}`, entry.path));
     }
   }
-  return { managedDocs };
+  return { managedDocs, managedFiles };
 }

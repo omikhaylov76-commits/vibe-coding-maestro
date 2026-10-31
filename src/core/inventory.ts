@@ -1,8 +1,6 @@
 /** Доверенный inventory обязательных системных путей, поставляемый с этой версией пакета. */
 export const TEMPLATE_FILES: readonly string[] = [
-  'CLAUDE.md',
-  'AGENTS.md',
-  'wiki/index.md',
+  '.claude/rules/maestro.md',
   'wiki/plans/README.md',
   'wiki/plans/TEMPLATE.md',
   'maestro/inbox/README.md',
@@ -15,6 +13,10 @@ export const TEMPLATE_FILES: readonly string[] = [
   '.claude/commands/handoff.md',
   '.claude/commands/plan.md',
   '.claude/agents/code-reviewer.md',
+  '.claude/agents/explorer.md',
+  'maestro/templates/handoff.md',
+  'maestro/templates/adr.md',
+  'maestro/templates/progress.md',
   '.gitattributes',
   'protocols/build.md',
   'protocols/status.md',
@@ -36,6 +38,11 @@ export const TEMPLATE_FILES: readonly string[] = [
 
 /** Стартовые содержательные документы: Maestro создаёт, затем ими владеет проект. */
 export const CONTENT_OWNED_FILES: readonly string[] = [
+  'CLAUDE.md',
+  'AGENTS.md',
+  '.claude/rules/project.md',
+  '.claude/settings.json',
+  'wiki/index.md',
   'wiki/hot.md',
   'wiki/log.md',
   'wiki/roadmap.md',

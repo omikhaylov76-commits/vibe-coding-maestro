@@ -5,7 +5,7 @@ import { initProject } from '../src/core/init.js';
 import { loadChecksums, loadManifest } from '../src/core/manifest.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir } from './helpers.js';
 
-const adapters = ['AGENTS.md', 'CLAUDE.md', '.claude/commands/build.md', '.claude/commands/status.md', '.claude/commands/wiki.md', '.claude/commands/handoff.md', '.claude/commands/plan.md'] as const;
+const adapters = ['.claude/commands/build.md', '.claude/commands/status.md', '.claude/commands/wiki.md', '.claude/commands/handoff.md', '.claude/commands/plan.md'] as const;
 
 async function fresh(depth: 'light' | 'standard' | 'advanced') {
   const target = await makeTempDir(`protocol-${depth}-`);
@@ -56,7 +56,10 @@ describe('Phase 3: protocol installation and adapter parity', () => {
   it('Claude reviewer adapter сохраняет discoverable frontmatter', async () => {
     const target = await fresh('standard');
     const text = await readFile(join(target, '.claude/agents/code-reviewer.md'), 'utf8');
-    expect(text).toMatch(/^---\nname: code-reviewer\ndescription: .+\n---\n/);
+    expect(text).toMatch(/^---\nname: code-reviewer\ndescription: .+\ntools: Read, Grep, Glob\n---\n/);
     expect(text).toContain('protocols/audit.md');
+    // Разведчик тоже только читает и работает на дешёвой модели.
+    const explorer = await readFile(join(target, '.claude/agents/explorer.md'), 'utf8');
+    expect(explorer).toMatch(/^---\nname: explorer\ndescription: .+\ntools: Read, Grep, Glob\nmodel: haiku\n---\n/);
   });
 });

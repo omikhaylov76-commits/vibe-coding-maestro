@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Edit(/protocols/**)",
+      "Edit(/maestro/templates/**)",
+      "Edit(/maestro/runbooks/**)",
+      "Edit(/.maestro/**)",
+      "Edit(/.claude/rules/maestro.md)",
+      "Edit(/.claude/commands/**)",
+      "Edit(/.claude/agents/**)",
+      "Edit(/wiki/plans/README.md)",
+      "Edit(/wiki/plans/TEMPLATE.md)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(npm publish *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(git reset --hard *)"
+    ]
+  }
+}

@@ -2,14 +2,20 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { markdownFiles, pathHasSymlink } from './fs-utils.js';
-import { decodeUtf8, frontmatter } from './text.js';
+import { decodeUtf8, frontmatter, hasFrontmatterBlock } from './text.js';
 import { critical, error } from './types.js';
 import type { DoctorFinding } from './types.js';
 
 /** Возвращает прочитанные wiki-документы, чтобы соседние проверки не читали дерево повторно. */
+/** Frontmatter обязателен там, где его читают проверки; в остальной wiki он по желанию. */
+function requiresFrontmatter(path: string): boolean {
+  return path === 'wiki/hot.md' || /^wiki\/(plans|audits|progress)\//.test(path);
+}
+
 export async function checkWiki(root: string, findings: DoctorFinding[]): Promise<Map<string, string>> {
   const wikiPath = 'wiki';
   const wiki = resolve(root, wikiPath);
+  const projectRoot = resolve(root);
   if (await pathHasSymlink(root, wikiPath)) {
     findings.push(critical('wiki-symlink', 'Wiki path не должен содержать symbolic link.', wikiPath));
     return new Map();
@@ -21,14 +27,19 @@ export async function checkWiki(root: string, findings: DoctorFinding[]): Promis
       const text = decodeUtf8(await readFile(absolute));
       if (text === null) { findings.push(error('wiki-invalid-utf8', 'Wiki Markdown должен быть корректным UTF-8.', path)); continue; }
       decoded.set(path, text);
-      if (frontmatter(text) === null) findings.push(error('wiki-frontmatter-invalid', 'Wiki Markdown должен начинаться простым YAML frontmatter key: value.', path));
+      if (frontmatter(text) === null && (requiresFrontmatter(path) || hasFrontmatterBlock(text))) {
+        findings.push(error('wiki-frontmatter-invalid', requiresFrontmatter(path)
+          ? 'Этот файл wiki должен начинаться frontmatter: строки key: value между ---.'
+          : 'Frontmatter не разобран: допустимы строки key: value, комментарии # и списки «- item» под ключом.', path));
+      }
       for (const match of text.matchAll(/\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+['"][^'"]*['"])?\)/g)) {
         const destination = (match[1] ?? match[2] ?? '').split('#')[0]?.trim();
         if (!destination || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(destination)) continue;
         let raw: string;
         try { raw = decodeURIComponent(destination); } catch { findings.push(error('wiki-link-broken', 'Ссылка содержит неверное URL-кодирование.', path)); continue; }
         const target = resolve(dirname(absolute), raw);
-        if (target !== wiki && !target.startsWith(`${wiki}${sep}`)) findings.push(error('wiki-link-outside', `Локальная wiki-ссылка выходит за пределы wiki: ${destination}`, path));
+        // Ссылка на код или протоколы проекта законна; наружу проекта — нет.
+        if (target !== projectRoot && !target.startsWith(`${projectRoot}${sep}`)) findings.push(error('wiki-link-outside', `Локальная wiki-ссылка выходит за пределы проекта: ${destination}`, path));
         else if (!existsSync(target)) findings.push(error('wiki-link-broken', `Битая локальная wiki-ссылка: ${destination}`, path));
       }
     } catch (cause) { findings.push(error('text-unreadable', `Не удалось прочитать Markdown: ${cause instanceof Error ? cause.message : String(cause)}`, path)); }
@@ -61,7 +72,10 @@ export async function checkWiki(root: string, findings: DoctorFinding[]): Promis
   if (hot !== undefined) {
     const declared = frontmatter(hot)?.active_progress;
     const expected = active.length === 0 ? 'none' : active.length === 1 ? active[0] : null;
-    if (expected === null || declared !== expected) findings.push(error('hot-active-progress-mismatch', 'Contract: hot.md active_progress должен быть none либо путём единственного progress с status: active.', 'wiki/hot.md'));
+    if (expected === null || declared !== expected) {
+      const hint = expected === null ? ` Сейчас status: active у нескольких записей: ${active.join(', ')}.` : ` Ожидается active_progress: ${expected} (путь от wiki/, без «wiki/»).`;
+      findings.push(error('hot-active-progress-mismatch', `Contract: hot.md active_progress должен быть none либо путём единственного progress с status: active.${hint}`, 'wiki/hot.md'));
+    }
   }
   return decoded;
 }

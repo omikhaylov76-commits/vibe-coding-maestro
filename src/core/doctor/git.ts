@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { critical, error } from './types.js';
+import { critical, error, warning } from './types.js';
 import type { DoctorFinding } from './types.js';
 
 const execFileAsync = promisify(execFile);
@@ -25,7 +25,7 @@ export function parsePorcelainV1Z(output: string): PorcelainEntry[] {
   return entries;
 }
 
-export async function checkGit(root: string, managedDocs: Set<string>, findings: DoctorFinding[]): Promise<void> {
+export async function checkGit(root: string, managedDocs: Set<string>, findings: DoctorFinding[], managedFiles: ReadonlySet<string> = new Set()): Promise<void> {
   if (!existsSync(join(root, '.git'))) return;
   try {
     const tracked = await execFileAsync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' });
@@ -35,8 +35,13 @@ export async function checkGit(root: string, managedDocs: Set<string>, findings:
     }
     const status = await execFileAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: root, encoding: 'utf8' });
     for (const entry of parsePorcelainV1Z(status.stdout)) {
-      if (entry.status === '??') continue;
       const path = entry.path;
+      if (entry.status === '??') {
+        // Файл Maestro, которого нет в Git, не попадёт в клон: проект там будет без него.
+        // Предупреждение, а не ошибка: create в уже существующий репозиторий законно оставляет файлы неиндексированными.
+        if (managedFiles.has(path)) findings.push(warning('git-managed-untracked', 'Файл Maestro не добавлен в Git: в клоне проекта его не будет. Добавьте его (git add) и закоммитьте.', path));
+        continue;
+      }
       if (managedDocs.has(path)) findings.push(error('git-managed-dirty', 'Управляемый документ имеет незакоммиченные изменения. Если это результат upgrade — просмотрите diff и закоммитьте; если правка ручная — верните файл.', path));
     }
   } catch (cause) { findings.push(error('git-check-failed', `Не удалось проверить Git: ${cause instanceof Error ? cause.message : String(cause)}`, '.git')); }

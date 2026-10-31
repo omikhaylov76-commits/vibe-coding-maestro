@@ -82,9 +82,9 @@ describe('doctor', () => {
 
   it('находит изменённый managed-файл', async () => {
     const target = await fresh();
-    await writeFile(join(target, 'wiki/index.md'), 'изменено', 'utf8');
+    await writeFile(join(target, 'wiki/plans/README.md'), 'изменено', 'utf8');
     const report = await doctorProject(target);
-    expect(report.findings.some((f) => f.code === 'managed-modified' && f.path === 'wiki/index.md')).toBe(true);
+    expect(report.findings.some((f) => f.code === 'managed-modified' && f.path === 'wiki/plans/README.md')).toBe(true);
   });
 
   it('сообщает о повреждённом manifest без stacktrace', async () => {

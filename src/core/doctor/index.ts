@@ -1,12 +1,13 @@
 import { existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { CHECKSUMS_PATH, isCanonicalManifest, loadChecksums, loadManifest, MANIFEST_PATH } from '../manifest.js';
+import { CHECKSUMS_PATH, CREATING_MARKER_PATH, isCanonicalManifest, loadChecksums, loadManifest, MANIFEST_PATH } from '../manifest.js';
 import type { Manifest } from '../manifest.js';
 import { CREATE_COMMAND, FIRST_NPM_VERSION, quotePathArg, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson } from '../paths.js';
 import { canonicalizeSystemTempPrefix, onDiskBasename } from '../platform-paths.js';
 import { compareVersions } from '../version.js';
 import { absolutePathHasSymlink, pathHasSymlink } from './fs-utils.js';
+import { checkProjectEntries } from './entries.js';
 import { checkGit } from './git.js';
 import { checkInbox } from './inbox.js';
 import { checkInventory, checkManagedFiles } from './managed.js';
@@ -71,6 +72,10 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   }
   if (findings.length > 0) return report(root, findings, options.strict);
 
+  if (existsSync(join(root, CREATING_MARKER_PATH))) {
+    findings.push(error('create-interrupted', `Создание проекта было прервано: осталась метка ${CREATING_MARKER_PATH}. Файлы могут быть неполными. Если папка новая — удалите её целиком и запустите create заново; если в ней есть ваши файлы — проверьте git status, прежде чем удалять что-либо.`, CREATING_MARKER_PATH));
+    return report(root, findings, options.strict);
+  }
   if (!existsSync(join(root, MANIFEST_PATH))) {
     findings.push(error('manifest-missing', `В папке нет ${MANIFEST_PATH}: это не проект Vibe Coding Maestro или указана не та папка. Новый проект создаётся командой npx ${CREATE_COMMAND}@latest.`, MANIFEST_PATH));
     return report(root, findings, options.strict);
@@ -93,8 +98,8 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
     findings.push(version);
     const checksums = await loadChecksums(root);
     if (checksums === null) findings.push(error('checksums-invalid', 'Контрольные суммы отсутствуют или повреждены.', CHECKSUMS_PATH));
-    const { managedDocs } = await checkManagedFiles(root, manifest, checksums, findings);
-    await checkGit(root, managedDocs, findings);
+    const { managedDocs, managedFiles } = await checkManagedFiles(root, manifest, checksums, findings);
+    await checkGit(root, managedDocs, findings, managedFiles);
     await checkInbox(root, findings);
     await checkSources(root, findings);
     return report(root, findings, options.strict);
@@ -103,10 +108,11 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
 
   if (!canonical) {
     findings.push(error('manifest-canonical-mismatch', `Manifest не совпадает с каноном Vibe Coding Maestro ${VERSION}.`, MANIFEST_PATH));
-  } else if (manifest.project.name !== onDiskBasename(root)) {
-    findings.push(error(
-      'manifest-canonical-mismatch',
-      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${onDiskBasename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
+  } else if (manifest.project.name.normalize('NFC') !== onDiskBasename(root).normalize('NFC')) {
+    // Личность проекта — project.id; имя папки при клонировании и переименовании законно меняется.
+    findings.push(info(
+      'project-folder-renamed',
+      `Папка называется «${onDiskBasename(root)}», а в manifest записано имя «${manifest.project.name}». Это нормально для клона или переименованной папки: проект опознаётся по project.id.`,
       MANIFEST_PATH,
     ));
   }
@@ -115,13 +121,14 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   if (checksums === null) findings.push(error('checksums-invalid', 'Контрольные суммы отсутствуют или повреждены.', CHECKSUMS_PATH));
 
   checkInventory(manifest, findings);
-  const { managedDocs } = await checkManagedFiles(root, manifest, checksums, findings);
+  const { managedDocs, managedFiles } = await checkManagedFiles(root, manifest, checksums, findings);
 
   await checkProtocols(root, findings);
   checkPlans(root, await checkWiki(root, findings), findings);
-  await checkGit(root, managedDocs, findings);
+  await checkGit(root, managedDocs, findings, managedFiles);
   await checkInbox(root, findings);
   await checkSources(root, findings);
+  await checkProjectEntries(root, manifest.product.version, findings);
 
   return report(root, findings, options.strict);
 }

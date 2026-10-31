@@ -4,7 +4,7 @@
 
 Скопируйте в Cowork:
 
-Проведи аудит предоставленных материалов и верни один Markdown-документ. Frontmatter обязан содержать `audit_id` и `status` (`open` или `resolved`). Каждая находка начинается с `## Finding <стабильный-ID>` и содержит ровно по одному непустому полю: `severity` (`critical|high|medium|low`), `target`, `evidence`, `status` (`open|resolved`) и `resolution`. `evidence` указывает воспроизводимый путь, строку, команду или наблюдение, подтверждающее находку. Не меняй ID или evidence при последующих проверках. Critical/high finding можно закрыть только как `resolved` после проверенного исправления; в `resolution` запиши evidence исправления. Waivers не входят в beta. Не пиши код и не исправляй файлы.
+Проведи аудит предоставленных материалов и верни один Markdown-документ. Frontmatter обязан содержать `audit_id` и `status` (`open` или `resolved`). Каждая находка начинается с `## Finding <стабильный-ID>` и содержит ровно по одному непустому полю: `severity` (`critical|high|medium|low`), `target`, `evidence`, `status` (`open|resolved`) и `resolution`. `evidence` указывает воспроизводимый путь, строку, команду или наблюдение, подтверждающее находку. Не меняй ID или evidence при последующих проверках. Critical/high finding можно закрыть только как `resolved` после проверенного исправления; в `resolution` запиши evidence исправления. Waivers не входят в контракт 0.3. Не пиши код и не исправляй файлы.
 
 ## Контролируемый импорт результата
 

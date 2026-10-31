@@ -86,7 +86,10 @@ describe('манифест: схема', () => {
     const ownership = new Map(manifest.inventory.map((entry) => [entry.path, entry.ownership]));
 
     expect(manifest.managed.length).toBeGreaterThan(0);
-    expect(ownership.get('wiki/index.md')).toBe('managed');
+    expect(ownership.get('wiki/plans/README.md')).toBe('managed');
+    expect(ownership.get('wiki/index.md')).toBe('project-owned');
+    expect(ownership.get('.claude/rules/maestro.md')).toBe('managed');
+    expect(ownership.get('.claude/settings.json')).toBe('project-owned');
     expect(ownership.get('wiki/hot.md')).toBe('project-owned');
     expect(ownership.get('.maestro/manifest.json')).toBe('generated');
     expect(ownership.get('maestro/sources/.gitkeep')).toBe('immutable');
@@ -174,7 +177,7 @@ describe('различение managed и пользовательских фа�
     await init(target);
     const manifest = await loadManifest(target);
 
-    expect(classifyFile(manifest, 'wiki/index.md')).toBe('managed');
+    expect(classifyFile(manifest, 'wiki/plans/README.md')).toBe('managed');
     expect(classifyFile(manifest, '.gitignore')).toBe('merged');
     expect(classifyFile(manifest, MANIFEST_PATH)).toBe('generated');
     // Стартовые содержательные документы отдаются проекту: schema v1 представляет
@@ -189,9 +192,9 @@ describe('различение managed и пользовательских фа�
     await init(target);
 
     const checksumsBefore = await readJson<{ files: Record<string, string> }>(target, CHECKSUMS_PATH);
-    const original = checksumsBefore.files['wiki/index.md'];
-    await writeFile(join(target, 'wiki/index.md'), 'изменено пользователем\n', 'utf8');
-    const actual = sha256(await readFile(join(target, 'wiki/index.md')));
+    const original = checksumsBefore.files['wiki/plans/README.md'];
+    await writeFile(join(target, 'wiki/plans/README.md'), 'изменено пользователем\n', 'utf8');
+    const actual = sha256(await readFile(join(target, 'wiki/plans/README.md')));
 
     expect(actual).not.toBe(original);
   });
@@ -201,10 +204,10 @@ describe('различение managed и пользовательских фа�
     await init(target);
     const before = await readJson<{ files: Record<string, string> }>(target, CHECKSUMS_PATH);
 
-    await writeFile(join(target, 'wiki/index.md'), 'мои правки\n', 'utf8');
+    await writeFile(join(target, 'wiki/plans/README.md'), 'мои правки\n', 'utf8');
     await init(target);
 
     const after = await readJson<{ files: Record<string, string> }>(target, CHECKSUMS_PATH);
-    expect(after.files['wiki/index.md']).toBe(before.files['wiki/index.md']);
+    expect(after.files['wiki/plans/README.md']).toBe(before.files['wiki/plans/README.md']);
   });
 });

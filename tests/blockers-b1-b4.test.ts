@@ -113,10 +113,10 @@ describe('B3/B4: строгая runtime-валидация metadata', () => {
   it('каждый managed entry обязан иметь checksum', async () => {
     const target = await fresh();
     const checksums = JSON.parse(await readFile(join(target, CHECKSUMS_PATH), 'utf8')) as { files: Record<string, string> };
-    delete checksums.files['wiki/index.md'];
+    delete checksums.files['wiki/plans/README.md'];
     await writeFile(join(target, CHECKSUMS_PATH), JSON.stringify(checksums), 'utf8');
     const report = await doctorProject(target);
-    expect(report.findings.some((f) => f.code === 'managed-checksum-missing' && f.path === 'wiki/index.md')).toBe(true);
+    expect(report.findings.some((f) => f.code === 'managed-checksum-missing' && f.path === 'wiki/plans/README.md')).toBe(true);
   });
 
   it('trusted package inventory обнаруживает удаление обязательного системного path из manifest', async () => {

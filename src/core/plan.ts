@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Канонический контракт plan-документа 0.3 (Planning Gate, Phase 0).
  *
@@ -37,6 +38,43 @@ export const PLAN_REQUIRED_KEYS = [
 
 /** Общие для wiki поля документа: допустимы, но контрактом плана не управляются. */
 export const PLAN_OPTIONAL_KEYS = ['type', 'title'] as const;
+
+/**
+ * Отпечаток утверждения: sha256 текста плана без frontmatter. Необязателен
+ * (планы до 0.3.0 его не имеют); если записан, расхождение закрывает гейт.
+ */
+export const PLAN_APPROVAL_DIGEST_KEY = 'approved_digest';
+
+/**
+ * Поля frontmatter, которые описывают, ЧТО утверждено: их смена — новая граница плана.
+ * Состояние работы (status, current_slice, active_phase, даты, поля гейта) сюда не входит:
+ * его меняет сама работа, и гейт не должен закрываться от каждого шага.
+ */
+export const PLAN_DIGEST_KEYS = ['id', 'kind', 'scale', 'mode', 'governance', 'risk', 'profiles', 'sources', 'supersedes'] as const;
+
+/** sha256 утверждённого: классификация из frontmatter плюс текст плана (LF, без хвостовых пробелов). */
+export function planBodyDigest(text: string): string {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  const meta = match ? frontmatterValues(match[1] ?? '') : {};
+  const classification = PLAN_DIGEST_KEYS.map((key) => `${key}: ${meta[key] ?? ''}`).join('\n');
+  const body = text.slice(match ? match[0].length : 0).replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  return createHash('sha256').update(`${classification}\n---\n${body}`).digest('hex');
+}
+
+/** Значения key: value для отпечатка; полный разбор с проверками живёт в doctor/text.ts. */
+function frontmatterValues(block: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  let listKey: string | null = null;
+  for (const line of block.split(/\r?\n/)) {
+    const listItem = /^\s+-\s+(.*?)\s*$/.exec(line);
+    if (listItem && listKey !== null) { values[listKey] = `${values[listKey] ?? ''}${values[listKey] ? ', ' : ''}${listItem[1] ?? ''}`; continue; }
+    const item = /^([a-z][a-z0-9_]*):\s*(.*?)\s*$/.exec(line);
+    if (!item || !item[1]) continue;
+    listKey = item[2] ? null : item[1];
+    values[item[1]] = (item[2] ?? '').replace(/\s+#.*$/, '').replace(/^(["'])(.*)\1$/, '$2').replace(/^\[(.*)\]$/, '$1').replace(/\s*,\s*/g, ', ');
+  }
+  return values;
+}
 
 /**
  * Машиночитаемые поля build gate.
@@ -81,6 +119,10 @@ export interface PlanDocument {
   /** Ровно одна разрешённая порция. null — не объявлена либо явное `null`. */
   currentSlice: string | null;
   currentPhaseApproved: boolean | null;
+  /** Отпечаток тела плана на момент утверждения; null — не записан. */
+  approvedDigest: string | null;
+  /** Поле current_slice есть во frontmatter (в том числе со значением null — порция закрыта). */
+  currentSliceDeclared: boolean;
 }
 
 /** Код совпадает с doctor finding code: диагностика одна и та же в обоих слоях. */
@@ -257,7 +299,7 @@ function dateField(meta: Readonly<Record<string, string>>, field: string, issues
  */
 export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>): PlanValidation {
   const issues: PlanIssue[] = [];
-  const allowed = new Set<string>([...PLAN_REQUIRED_KEYS, ...PLAN_OPTIONAL_KEYS, ...PLAN_GATE_KEYS]);
+  const allowed = new Set<string>([...PLAN_REQUIRED_KEYS, ...PLAN_OPTIONAL_KEYS, ...PLAN_GATE_KEYS, PLAN_APPROVAL_DIGEST_KEY]);
 
   for (const key of PLAN_REQUIRED_KEYS) {
     if (!(key in meta)) issues.push(issue('plan-schema-invalid', key, `Обязательное поле плана отсутствует: ${key}.`));
@@ -300,6 +342,7 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
   const specDelta = enumField(meta, 'spec_delta', PLAN_SPEC_DELTAS, issues);
   const currentSlice = nullableField(meta, 'current_slice', (value) => ACTIVE_PHASE_TOKEN.test(value), 'допустимо null или идентификатор порции', issues);
   const currentPhaseApproved = enumField(meta, 'current_phase_approved', PLAN_PHASE_APPROVALS, issues);
+  const approvedDigest = nullableField(meta, PLAN_APPROVAL_DIGEST_KEY, (value) => /^[0-9a-f]{64}$/.test(value), 'допустимо null или sha256 из строки «Отпечаток плана» вывода preflight', issues);
 
   if (status !== null && approvedBy !== null && approvedAt !== null) {
     const hasApproval = approvedBy.value !== null && approvedAt.value !== null;
@@ -345,6 +388,8 @@ export function validatePlanFrontmatter(meta: Readonly<Record<string, string>>):
       specDelta,
       currentSlice: currentSlice === null ? null : currentSlice.value,
       currentPhaseApproved: currentPhaseApproved === null ? null : currentPhaseApproved === 'yes',
+      approvedDigest: approvedDigest === null ? null : approvedDigest.value,
+      currentSliceDeclared: currentSlice !== null,
     },
     issues,
   };

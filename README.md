@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.3.0 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.3.1 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -79,7 +79,7 @@ Vibe Coding Maestro doctor: всё сходится.
 `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 

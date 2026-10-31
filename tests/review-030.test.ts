@@ -181,3 +181,51 @@ describe('ревью 0.3.0', () => {
     expect(await readUtf8(root, 'wiki/plans/README.md')).not.toContain('больше не\nпереписывает содержимое');
   });
 });
+
+describe('0.3.1', () => {
+  it('команда в сообщении doctor отделена от точки обратными кавычками', async () => {
+    const root = await fixtureProject('0.3.0-beta.4-standard');
+    const message = (await doctorProject(root)).findings.find((item) => item.code === 'project-outdated')?.message ?? '';
+    expect(message).toMatch(/`npx --package create-vibe-maestro@0\.3\.0-beta\.4 vibe-maestro doctor --path [^`]+`\./);
+    expect(message).toMatch(/`npx --package create-vibe-maestro@\S+ vibe-maestro upgrade --path [^`]+`/);
+    expect(message).not.toMatch(/--path [^`\s]+\.\s/);
+  });
+
+  it('повторный create предупреждает о явных --depth и --start, которые не применены', async () => {
+    const root = join(await makeTempDir('rerun-flags-'), 'проект');
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root, '--depth', 'light', '--start', 'idea'], collect().io, { isTty: false })).toBe(0);
+    const again = collect();
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root, '--depth', 'advanced', '--start', 'materials'], again.io, { isTty: false })).toBe(0);
+    expect(again.all()).toContain('--depth advanced не применён');
+    expect(again.all()).toContain('--start materials не применён');
+    // Без явных флагов предупреждений нет.
+    const quiet = collect();
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root], quiet.io, { isTty: false })).toBe(0);
+    expect(quiet.all()).not.toContain('не применён');
+  });
+
+  it('upgrade с 0.3.0 меняет только закреплённую версию', async () => {
+    const root = join(await makeTempDir('from-030-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    const { VERSION } = await import('../src/core/meta.js');
+    const { contentChecksum, loadChecksums, loadManifest, MANIFEST_PATH, CHECKSUMS_PATH } = await import('../src/core/manifest.js');
+    // Проект в том виде, в каком его записала 0.3.0: та же разметка, другая версия в командах.
+    const pinned = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/plan.md'];
+    const checksums = (await loadChecksums(root))?.files ?? {};
+    for (const path of pinned) {
+      const text = (await readUtf8(root, path)).split(`create-vibe-maestro@${VERSION}`).join('create-vibe-maestro@0.3.0');
+      await writeFile(join(root, path), text, 'utf8');
+      checksums[path] = contentChecksum(path, text);
+    }
+    await writeFile(join(root, CHECKSUMS_PATH), `${JSON.stringify({ files: Object.fromEntries(Object.keys(checksums).sort().map((key) => [key, checksums[key]])) }, null, 2)}\n`, 'utf8');
+    const manifest = await loadManifest(root);
+    manifest.product.version = '0.3.0';
+    await writeFile(join(root, MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const result = await maestro('upgrade', '--path', root, '--apply');
+    expect(result.code, result.text).toBe(0);
+    expect(result.text).toContain(`0.3.0 → ${VERSION}`);
+    for (const path of pinned) expect(await readUtf8(root, path), path).toContain(`create-vibe-maestro@${VERSION}`);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+  });
+});

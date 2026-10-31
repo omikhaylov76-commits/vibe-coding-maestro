@@ -4,6 +4,15 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
+## 0.3.1 — 2026-11-01
+
+Small fixes found in the 0.3.0 review. The set of project files is unchanged; `upgrade` from 0.3.0 only rewrites the pinned version.
+
+### Fixed
+
+- Commands inside `doctor`, `create` and `upgrade` messages are wrapped in backticks, so the period that ends a sentence no longer sticks to the path: `--path .` used to read as `--path ..`.
+- Re-running `create` on an existing project warns when an explicit `--depth` or `--start` differs from the project and is not applied, instead of reporting success silently.
+
 ## 0.3.0 — 2026-11-01
 
 The finished 0.3 product. All changes to the set of project files land in this one release, and `vibe-maestro upgrade` migrates projects from 0.3.0-beta.1 – beta.4 and 0.2.0-beta.1.

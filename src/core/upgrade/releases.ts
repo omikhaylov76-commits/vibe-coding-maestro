@@ -315,7 +315,8 @@ export const RELEASES: readonly Release[] = [
   },
   {
     id: '0.3.0',
-    versions: ['0.3.0'],
+    // 0.3.1 исправляет только код: шаблоны и состав файлов те же.
+    versions: ['0.3.0', '0.3.1'],
     inventory: v030OwnershipInventory,
     managedSha256: V030_MANAGED_SHA256,
     templates: [],

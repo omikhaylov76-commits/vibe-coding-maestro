@@ -216,7 +216,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   if (order !== null && order > 0) {
     return blocked(root, fromVersion, blocker(
       'upgrade-project-newer',
-      `Проект уже на более новой версии ${fromVersion}, а запущена ${VERSION}; откатывать версию upgrade не умеет. Используйте ${serviceInvocation(fromVersion)}.`,
+      `Проект уже на более новой версии ${fromVersion}, а запущена ${VERSION}; откатывать версию upgrade не умеет. Используйте \`${serviceInvocation(fromVersion)}\`.`,
       MANIFEST_PATH,
     ));
   }

@@ -36,18 +36,19 @@ function versionFinding(rootInput: string, manifest: Manifest, canonical: boolea
   // Путь в подсказке — как его набрал человек: команду можно скопировать из того же места.
   const path = quotePathArg(rootInput);
   const published = (compareVersions(projectVersion, FIRST_NPM_VERSION) ?? -1) >= 0;
+  // Команда в обратных кавычках: точка в конце предложения не приклеивается к пути (`--path .` ≠ `--path ..`).
   const checkSame = published
-    ? `${serviceInvocation(projectVersion)} doctor --path ${path}`
+    ? `\`${serviceInvocation(projectVersion)} doctor --path ${path}\``
     : `версия ${projectVersion} не публиковалась в npm, поэтому проверить проект его же версией нельзя`;
-  const upgrade = `${serviceInvocation(VERSION)} upgrade --path ${path}`;
+  const upgrade = `\`${serviceInvocation(VERSION)} upgrade --path ${path}\``;
   if (canonical) {
     return order < 0
       ? info('project-version-older', `Проект создан Vibe Coding Maestro ${projectVersion}; состав файлов совпадает с ${VERSION}. Перевести проект на ${VERSION}: ${upgrade} (без --apply только показывает изменения).`, MANIFEST_PATH)
-      : info('project-version-newer', `Проект обновлён более новой версией ${projectVersion}, а проверяет ${VERSION}. Точная проверка: ${checkSame}`, MANIFEST_PATH);
+      : info('project-version-newer', `Проект обновлён более новой версией ${projectVersion}, а проверяет ${VERSION}. Точная проверка: ${checkSame}.`, MANIFEST_PATH);
   }
   return order < 0
     ? error('project-outdated', `Проект создан Vibe Coding Maestro ${projectVersion}, а запущена ${VERSION}: у этих версий разный состав файлов. Проверить проект его версией: ${checkSame}. Обновить проект до ${VERSION}: ${upgrade} (без --apply только показывает изменения).`, MANIFEST_PATH)
-    : error('project-newer', `Проект создан более новой версией ${projectVersion}, а запущена ${VERSION}. Проверьте проект его версией: ${checkSame}`, MANIFEST_PATH);
+    : error('project-newer', `Проект создан более новой версией ${projectVersion}, а запущена ${VERSION}. Проверьте проект его версией: ${checkSame}.`, MANIFEST_PATH);
 }
 
 export async function doctorProject(rootInput: string, options: DoctorOptions = {}): Promise<DoctorReport> {

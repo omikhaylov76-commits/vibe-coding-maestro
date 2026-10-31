@@ -15,6 +15,8 @@ export interface CreateRunOptions {
   git: boolean;
   json: boolean;
   depth: ProjectDepth;
+  /** Флаги, переданные явно, а не взятые по умолчанию. */
+  explicit?: { depth?: boolean; startingPoint?: boolean };
 }
 
 export async function executeCreate(options: CreateRunOptions, io: CliIo, renderer?: CliRenderer): Promise<number> {
@@ -36,6 +38,10 @@ async function createAndCheck(options: CreateRunOptions, io: CliIo, renderer?: C
     startingPoint: options.startingPoint,
     git: options.git,
     depth: options.depth,
+    requested: {
+      ...(options.explicit?.depth === true ? { depth: options.depth } : {}),
+      ...(options.explicit?.startingPoint === true ? { startingPoint: options.startingPoint } : {}),
+    },
     ...(options.name === undefined ? {} : { name: options.name }),
   });
 

@@ -48,6 +48,8 @@ export interface InitOptions {
   git?: boolean;
   now?: Date;
   depth?: ProjectDepth;
+  /** Параметры, которые человек указал явно: для готового проекта о них стоит сказать, а не молчать. */
+  requested?: { depth?: ProjectDepth; startingPoint?: StartingPoint };
 }
 
 export interface InitResult {
@@ -328,8 +330,8 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
         target,
         options.name ?? basename(target),
         newer
-          ? `Это проект Vibe Coding Maestro более новой версии ${projectVersion}, а create — версии ${VERSION}. Create не меняет версию проекта; проверка: ${serviceInvocation(projectVersion)} doctor --path ${quotePathArg(target)}.`
-          : `Это проект Vibe Coding Maestro версии ${projectVersion}, а create — версии ${VERSION}. Create не обновляет проекты; используйте ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(target)} (без --apply только показывает изменения).`,
+          ? `Это проект Vibe Coding Maestro более новой версии ${projectVersion}, а create — версии ${VERSION}. Create не меняет версию проекта; проверка: \`${serviceInvocation(projectVersion)} doctor --path ${quotePathArg(target)}\`.`
+          : `Это проект Vibe Coding Maestro версии ${projectVersion}, а create — версии ${VERSION}. Create не обновляет проекты; используйте \`${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(target)}\` (без --apply только показывает изменения).`,
       );
     }
     // Личность проекта — project.id: клон или переименованная папка остаются тем же проектом.
@@ -375,6 +377,12 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   const preservedFiles: string[] = [];
   const mergedFiles: string[] = [];
   const warnings: string[] = [];
+  if (isExistingProject && options.requested?.depth !== undefined && options.requested.depth !== depth) {
+    warnings.push(`У проекта глубина ${depth}; --depth ${options.requested.depth} не применён: create не меняет параметры готового проекта.`);
+  }
+  if (isExistingProject && options.requested?.startingPoint !== undefined && options.requested.startingPoint !== startingPoint) {
+    warnings.push(`У проекта исходная точка ${startingPoint}; --start ${options.requested.startingPoint} не применён: create не меняет параметры готового проекта.`);
+  }
 
   const previousChecksums = (await loadChecksums(target))?.files ?? {};
   const nextChecksums: Record<string, string> = {};

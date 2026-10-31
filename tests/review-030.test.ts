@@ -181,3 +181,75 @@ describe('ревью 0.3.0', () => {
     expect(await readUtf8(root, 'wiki/plans/README.md')).not.toContain('больше не\nпереписывает содержимое');
   });
 });
+
+describe('0.3.1', () => {
+  it('команда в сообщении doctor отделена от точки обратными кавычками', async () => {
+    const root = await fixtureProject('0.3.0-beta.4-standard');
+    const message = (await doctorProject(root)).findings.find((item) => item.code === 'project-outdated')?.message ?? '';
+    expect(message).toMatch(/`npx --package create-vibe-maestro@0\.3\.0-beta\.4 vibe-maestro doctor --path [^`]+`\./);
+    expect(message).toMatch(/`npx --package create-vibe-maestro@\S+ vibe-maestro upgrade --path [^`]+`/);
+    expect(message).not.toMatch(/--path [^`\s]+\.\s/);
+  });
+
+  it('повторный create предупреждает о явных --depth и --start, которые не применены', async () => {
+    const root = join(await makeTempDir('rerun-flags-'), 'проект');
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root, '--depth', 'light', '--start', 'idea'], collect().io, { isTty: false })).toBe(0);
+    const again = collect();
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root, '--depth', 'advanced', '--start', 'materials'], again.io, { isTty: false })).toBe(0);
+    expect(again.all()).toContain('--depth advanced не применён');
+    expect(again.all()).toContain('--start materials не применён');
+    // Без явных флагов предупреждений нет.
+    const quiet = collect();
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root], quiet.io, { isTty: false })).toBe(0);
+    expect(quiet.all()).not.toContain('не применён');
+  });
+
+  it('upgrade с 0.3.0 меняет только закреплённую версию и правила Maestro', async () => {
+    const root = join(await makeTempDir('from-030-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    const { VERSION } = await import('../src/core/meta.js');
+    const { contentChecksum, loadChecksums, loadManifest, MANIFEST_PATH, CHECKSUMS_PATH } = await import('../src/core/manifest.js');
+    // Проект в том виде, в каком его записала 0.3.0: та же разметка, другая версия в командах.
+    const pinned = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/plan.md'];
+    const checksums = (await loadChecksums(root))?.files ?? {};
+    for (const path of pinned) {
+      // Правила Maestro в 0.3.1 изменились: для них берём замороженную копию 0.3.0 из пакета.
+      const source = path === '.claude/rules/maestro.md'
+        ? await readFile(join(process.cwd(), 'registry/baseline/0.3.0/project/.claude/rules/maestro.md'), 'utf8')
+        : await readUtf8(root, path);
+      const text = source.split(`create-vibe-maestro@${VERSION}`).join('create-vibe-maestro@0.3.0').split('create-vibe-maestro@{{MAESTRO_VERSION}}').join('create-vibe-maestro@0.3.0');
+      await writeFile(join(root, path), text, 'utf8');
+      checksums[path] = contentChecksum(path, text);
+    }
+    await writeFile(join(root, CHECKSUMS_PATH), `${JSON.stringify({ files: Object.fromEntries(Object.keys(checksums).sort().map((key) => [key, checksums[key]])) }, null, 2)}\n`, 'utf8');
+    const manifest = await loadManifest(root);
+    manifest.product.version = '0.3.0';
+    await writeFile(join(root, MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const result = await maestro('upgrade', '--path', root, '--apply');
+    expect(result.code, result.text).toBe(0);
+    expect(result.text).toContain(`0.3.0 → ${VERSION}`);
+    for (const path of pinned) expect(await readUtf8(root, path), path).toContain(`create-vibe-maestro@${VERSION}`);
+    expect(await readUtf8(root, '.claude/rules/maestro.md')).toContain('Свои команды, агентов и runbook');
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+  });
+
+  it('собственная команда проекта не попадает под запреты settings.json, управляемые — попадают', async () => {
+    const root = join(await makeTempDir('own-command-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    const deny = (JSON.parse(await readUtf8(root, '.claude/settings.json')) as { permissions: { deny: string[] } }).permissions.deny;
+    // Папку целиком закрывают только каталоги, где всё принадлежит Maestro.
+    const folders = deny.filter((rule) => rule.endsWith('/**)')).map((rule) => rule.slice('Edit('.length, -1));
+    expect(folders.sort()).toEqual(['/.maestro/**', '/protocols/**']);
+    const covers = (path: string): boolean => deny.some((rule) => {
+      const pattern = rule.replace(/^Edit\((.*)\)$/, '$1');
+      return pattern.endsWith('/**') ? `/${path}`.startsWith(pattern.slice(0, -2)) : pattern === `/${path}`;
+    });
+    for (const own of ['.claude/commands/itogi.md', '.claude/agents/analyst.md', 'maestro/runbooks/release.md', 'maestro/templates/brief.md']) expect(covers(own), own).toBe(false);
+    const { canonicalOwnershipInventory } = await import('../src/core/inventory.js');
+    const managed = Object.entries(canonicalOwnershipInventory('advanced'))
+      .filter(([path, ownership]) => ownership === 'managed' && !path.endsWith('/.gitkeep') && path !== '.gitattributes')
+      .map(([path]) => path);
+    for (const path of managed) expect(covers(path), path).toBe(true);
+  });
+});

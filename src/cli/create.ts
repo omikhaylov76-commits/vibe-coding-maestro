@@ -12,6 +12,7 @@ interface CreateOptions {
   git: boolean;
   json: boolean;
   depth: ProjectDepth;
+  explicit: { depth?: boolean; startingPoint?: boolean };
 }
 
 export interface CreateCliRuntime {
@@ -51,6 +52,7 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
     git: true,
     json: false,
     depth: 'standard',
+    explicit: {},
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -90,11 +92,13 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
             };
           }
           options.startingPoint = value;
+          options.explicit.startingPoint = true;
         } else {
           if (!DEPTHS.includes(value as ProjectDepth)) {
             return { kind: 'error', message: `Неизвестное значение --depth: ${value}. Допустимо: ${DEPTHS.join(', ')}.` };
           }
           options.depth = value as ProjectDepth;
+          options.explicit.depth = true;
         }
         break;
       }

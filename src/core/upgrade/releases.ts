@@ -318,6 +318,18 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.3.0'],
     inventory: v030OwnershipInventory,
     managedSha256: V030_MANAGED_SHA256,
+    templates: [{
+      path: '.claude/rules/maestro.md',
+      source: 'registry/baseline/0.3.0/project/.claude/rules/maestro.md',
+      sha256: V030_MANAGED_SHA256['.claude/rules/maestro.md'] as string,
+    }],
+  },
+  {
+    // 0.3.1: тот же состав файлов; в правилах Maestro управляемые команды названы поимённо.
+    id: '0.3.1',
+    versions: ['0.3.1'],
+    inventory: v030OwnershipInventory,
+    managedSha256: { ...V030_MANAGED_SHA256, '.claude/rules/maestro.md': '340131be8c15a06fb7905452f000fa7dac775093c85370163c0af68c14198cae' },
     templates: [],
   },
 ];

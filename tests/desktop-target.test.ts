@@ -18,20 +18,20 @@ describe('Guided First Run: имя или путь', () => {
 
   it('простое имя на macOS создаёт target на Desktop без изменения имени', async () => {
     const result = await resolveProjectInput('Новый проект Маестро', {
-      mode: 'create', platform: 'darwin', home: '/Users/DaddyCool', cwd: '/tmp/repo',
+      mode: 'create', platform: 'darwin', home: '/Users/me', cwd: '/tmp/repo',
     });
     expect(result).toEqual({
-      target: '/Users/DaddyCool/Desktop/Новый проект Маестро',
+      target: '/Users/me/Desktop/Новый проект Маестро',
       name: 'Новый проект Маестро',
       usedDesktopDefault: true,
     });
   });
 
   it('явный macOS путь не получает Desktop prefix', async () => {
-    const result = await resolveProjectInput('/Users/DaddyCool/Projects/App', {
-      mode: 'create', platform: 'darwin', home: '/Users/DaddyCool', cwd: '/tmp/repo',
+    const result = await resolveProjectInput('/Users/me/Projects/App', {
+      mode: 'create', platform: 'darwin', home: '/Users/me', cwd: '/tmp/repo',
     });
-    expect(result.target).toBe('/Users/DaddyCool/Projects/App');
+    expect(result.target).toBe('/Users/me/Projects/App');
     expect(result.name).toBe('App');
     expect(result.usedDesktopDefault).toBe(false);
   });

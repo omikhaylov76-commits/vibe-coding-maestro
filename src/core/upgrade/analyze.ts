@@ -70,8 +70,11 @@ export interface UpgradeAnalysis {
 export interface UpgradePlan {
   analysis: UpgradeAnalysis;
   root: string;
-  /** Путь → итоговое содержимое. Порядок фиксирован для детерминированной транзакции. */
-  writes: { path: string; content: string; action: 'create' | 'update' }[];
+  /**
+   * Путь → итоговое содержимое. Порядок фиксирован для детерминированной транзакции.
+   * `latin1` — байты файла проекта как есть: так `.gitignore` в любой кодировке дописывается, не меняя ни байта своих строк.
+   */
+  writes: { path: string; content: string; action: 'create' | 'update'; encoding?: 'latin1' }[];
 }
 
 const blocker = (code: string, message: string, path?: string): UpgradeBlocker =>
@@ -442,10 +445,12 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   }
   // .gitignore принадлежит проекту: upgrade только дописывает недостающие строки Maestro,
   // строки проекта не меняет. Что это обычный файл, доказано проверкой полного дерева выше.
-  const gitignore = mergeGitignore(await readFile(join(root, GITIGNORE_PATH), 'utf8'));
+  // Строки Maestro — ASCII, поэтому сравнение и дописывание идут по байтам (latin1): свои
+  // строки проекта в любой кодировке остаются байт в байт.
+  const gitignore = mergeGitignore((await readFile(join(root, GITIGNORE_PATH))).toString('latin1'));
   if (gitignore.addedEntries.length > 0) {
     updates.push({ path: GITIGNORE_PATH, ownership: 'project-owned', appends: gitignore.addedEntries });
-    writes.push({ path: GITIGNORE_PATH, content: gitignore.content, action: 'update' });
+    writes.push({ path: GITIGNORE_PATH, content: gitignore.content, action: 'update', encoding: 'latin1' });
   }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 

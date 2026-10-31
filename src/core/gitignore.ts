@@ -79,6 +79,15 @@ export function mergeGitignore(
     return { content: base, created, changed: created && base !== source, addedEntries };
   }
 
+  // Файл кончается блоком Maestro — недостающие строки продолжают его, второго заголовка нет.
+  const lines = source.split(/\r?\n/);
+  const header = lines.lastIndexOf(BLOCK_HEADER);
+  const required = new Set(requiredEntries.map(normalizeEntry));
+  const endsWithBlock = header >= 0 && lines.slice(header + 1).every((line) => !isMeaningful(line) || required.has(normalizeEntry(line)));
+  if (endsWithBlock) {
+    return { content: base + addedEntries.join(eol) + eol, created, changed: true, addedEntries };
+  }
+
   const block: string[] = [];
   if (base !== '') block.push('');
   block.push(BLOCK_HEADER, ...addedEntries);

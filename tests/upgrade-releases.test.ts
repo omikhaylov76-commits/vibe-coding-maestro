@@ -64,7 +64,7 @@ const FIXTURES = ['0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-s
 const FIXTURES_03X = ['0.3.0-standard', '0.3.1-light', '0.3.1-standard', '0.3.1-advanced'];
 
 /** Всё, что upgrade с 0.3.0 и 0.3.1 переписывает на нетронутом проекте. */
-const UPDATED_FROM_03X = ['.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'];
+const UPDATED_FROM_03X = ['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'];
 
 async function fixture(id: string): Promise<PublishedFixture> {
   return JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/published', `${id}.json`), 'utf8')) as PublishedFixture;
@@ -363,6 +363,23 @@ describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущ
     expect(next.startsWith(own)).toBe(true);
     expect(next.match(/\.claude\/worktrees\//g)).toHaveLength(1);
     expect(next.endsWith('.claude/settings.local.json\r\n')).toBe(true);
+  });
+
+  it('.gitignore не в UTF-8: свои строки остаются байт в байт, откат тоже точный (ревью 0.4.0)', async () => {
+    const { root } = await materialize('0.3.1-standard');
+    // «# Проект» в cp1251 — не UTF-8.
+    const own = Buffer.concat([Buffer.from('# '), Buffer.from([0xcf, 0xf0, 0xee, 0xe5, 0xea, 0xf2]), Buffer.from('\nsecrets/\n')]);
+    await writeFile(join(root, '.gitignore'), own);
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    const next = await readFile(join(root, '.gitignore'));
+    expect(next.subarray(0, own.length).equals(own)).toBe(true);
+    expect(next.subarray(own.length).toString('utf8')).toContain('.claude/settings.local.json');
+
+    const { root: other } = await materialize('0.3.1-standard');
+    await writeFile(join(other, '.gitignore'), own);
+    const failed = await upgradeProject(other, { apply: true, hooks: { beforeCommit: async (path) => { if (path === '.maestro/checksums.json') throw new Error('сбой'); } } });
+    expect(failed.rolledBack).toBe(true);
+    expect((await readFile(join(other, '.gitignore'))).equals(own)).toBe(true);
   });
 
   it('.gitignore, где всё уже есть, upgrade не трогает', async () => {

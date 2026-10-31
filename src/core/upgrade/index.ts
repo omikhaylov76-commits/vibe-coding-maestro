@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { analyzeUpgrade, STAGING_DIR } from './analyze.js';
 import type { UpgradeAnalysis, UpgradePlan } from './analyze.js';
@@ -55,10 +55,11 @@ function missingDirs(root: string, relativePath: string): string[] {
   return created;
 }
 
-/** Содержимое Maestro пишется с LF; файл проекта и копия в backup — байт в байт. */
-async function writeStaged(absolute: string, content: string, exact = false): Promise<void> {
+/** Содержимое Maestro пишется с LF; дописанный файл проекта (`latin1`) — байт в байт. */
+async function writeStaged(absolute: string, content: string, encoding?: 'latin1'): Promise<void> {
   await mkdir(dirname(absolute), { recursive: true });
-  await writeFile(absolute, exact ? content : content.replace(/\r\n/g, '\n'), 'utf8');
+  if (encoding === 'latin1') await writeFile(absolute, Buffer.from(content, 'latin1'));
+  else await writeFile(absolute, content.replace(/\r\n/g, '\n'), 'utf8');
 }
 
 /**
@@ -89,9 +90,11 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
   try {
     await mkdir(staging, { recursive: false });
     for (const write of writes) {
-      await writeStaged(join(newDir, write.path), write.content, write.path === '.gitignore');
+      await writeStaged(join(newDir, write.path), write.content, write.encoding);
       if (write.action === 'update') {
-        await writeStaged(join(backupDir, write.path), await readFile(join(root, write.path), 'utf8'), true);
+        // Backup — точная копия байтов: откат возвращает файл таким, каким он был.
+        await mkdir(dirname(join(backupDir, write.path)), { recursive: true });
+        await copyFile(join(root, write.path), join(backupDir, write.path));
       }
     }
   } catch (cause) {

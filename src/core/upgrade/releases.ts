@@ -303,8 +303,8 @@ const v031Copy = (path: string): BaselineTemplate => ({
   sha256: V031_MANAGED_SHA256[path] as string,
 });
 
-/** Протоколы, которые 0.4.0 изменил: в 0.3.0 и 0.3.1 они одинаковы. */
-const CHANGED_IN_040_SAME_SINCE_030: readonly string[] = ['protocols/build.md', 'protocols/handoff.md'];
+/** Файлы, которые 0.4.0 изменил: в 0.3.0 и 0.3.1 они одинаковы. */
+const CHANGED_IN_040_SAME_SINCE_030: readonly string[] = ['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', 'protocols/build.md', 'protocols/handoff.md'];
 
 /** Канон 0.4.0: протокол «Завершение» (Maestro) и паспорт проекта (проект). */
 const V040_TEMPLATE_FILES: readonly string[] = [...V030_TEMPLATE_FILES, 'protocols/completion.md'];
@@ -313,10 +313,12 @@ const V040_CONTENT_OWNED_FILES: readonly string[] = [...V030_CONTENT_OWNED_FILES
 /** Слепок `templates/project` 0.4.0. */
 const V040_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...V030_MANAGED_SHA256,
-  '.claude/rules/maestro.md': 'dacbd95bb4d36258a6fd1c2a0982bcad4e32492f031c82133c0165397860e078',
+  '.claude/rules/maestro.md': '6c230aa2dbd3105f8afd242d7dfa6749499cca8e1b6d974ff496ba6e7928a930',
+  '.claude/agents/code-reviewer.md': 'ce515ba41d042f6cd26475f693e1cb1a24a007d0d515d3876c467759e7a81f86',
+  '.claude/agents/explorer.md': '27b8239748816977c5ee628782b43330a1b803df19899dd081a1962d71a42d13',
   'protocols/build.md': 'e7c1df3dc5b44ed6b03c4d83e28afcdc7e048b48fb20168f622238d6b7d502a9',
   'protocols/handoff.md': '4f01fb23b248d4acd1d5b917fc08971d763eeccf893286d58decc4b3345d1ce2',
-  'protocols/completion.md': '5dcb2c9180f3abfabb4988b57163966d1a04fe16abc783108a47d4034785172e',
+  'protocols/completion.md': '7dba5ef6d31427c7cad88f6dd81218d48e978a1b88610f2a70c5eec736cdf302',
 };
 
 export const RELEASES: readonly Release[] = [

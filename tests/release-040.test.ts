@@ -8,7 +8,8 @@ import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8 } from './helpers.js'
 
 afterEach(cleanupTempDirs);
 
-const template = (path: string): Promise<string> => readFile(join(process.cwd(), 'templates/project', path), 'utf8');
+/** Шаблон пакета с LF: в checkout на Windows он может прийти с CRLF, а init пишет LF. */
+const template = async (path: string): Promise<string> => (await readFile(join(process.cwd(), 'templates/project', path), 'utf8')).replace(/\r\n/g, '\n');
 
 async function newProject(): Promise<string> {
   const root = join(await makeTempDir('release-040-'), 'проект');
@@ -32,8 +33,17 @@ describe('0.4.0: ключи API без поиска файлов', () => {
     expect(rules).toContain('в ответах не повторяй');
     expect(rules).toContain('`touch .env && open -e .env`');
     expect(rules).toContain('остаётся в истории');
+    // Окно для ключа: сначала имя переменной, чтобы человек вставил значение после `=`.
+    expect(rules).toContain('после `=`');
+    expect(rules).toContain('`cut -d= -f1 .env`');
     // Старый запрет снимается только по «да» человека.
     expect(rules).toMatch(/Read.*\.env[\s\S]*«да»/);
+  });
+});
+
+describe('0.4.0: субагенты и секреты', () => {
+  it.each(['.claude/agents/explorer.md', '.claude/agents/code-reviewer.md'])('%s не открывает .env', async (path) => {
+    expect(await template(path)).toContain('`.env`');
   });
 });
 
@@ -70,6 +80,7 @@ describe('0.4.0: паспорт проекта', () => {
     ]) expect(passport, heading).toContain(heading);
     expect(passport).toContain('Тег сдачи');
     expect(passport).toContain('«не применимо»');
+    expect(passport).toContain('«Пока нет» значит «ещё не заполнено»');
     expect(passport).toContain('значения — никогда');
     expect(passport).toContain('без кода');
     // Подстановок нет: upgrade создаёт паспорт и в проекте, где имя проекта не восстановить.

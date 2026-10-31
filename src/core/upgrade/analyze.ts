@@ -1,5 +1,5 @@
 import { lstat, readFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { absolutePathHasSymlink, pathHasSymlink } from '../doctor/fs-utils.js';
 import { GITATTRIBUTES_CONTENT } from '../init.js';
 import { canonicalManagedKind, canonicalOwnershipInventory, CONTENT_OWNED_FILES, TEMPLATE_FILES } from '../inventory.js';
@@ -19,7 +19,7 @@ import {
 import type { Manifest, ProjectDepth } from '../manifest.js';
 import { CREATE_COMMAND, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson, packageRoot, templatesDir } from '../paths.js';
-import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
+import { canonicalizeSystemTempPrefix, onDiskBasename } from '../platform-paths.js';
 import { renderTemplate } from '../template.js';
 import type { TemplateVars } from '../template.js';
 import { compareVersions } from '../version.js';
@@ -205,10 +205,10 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   if (manifest.product.name !== readPackageJson().name || manifest.product.createdBy !== CREATE_COMMAND) {
     return blocked(root, fromVersion, blocker('upgrade-foreign-manifest', 'Manifest создан не этим продуктом.', MANIFEST_PATH));
   }
-  if (manifest.project.name !== basename(root)) {
+  if (manifest.project.name !== onDiskBasename(root)) {
     return blocked(root, fromVersion, blocker(
       'upgrade-manifest-not-native',
-      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${basename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
+      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${onDiskBasename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
       MANIFEST_PATH,
     ));
   }
@@ -269,7 +269,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   if (await exists(join(root, STAGING_DIR))) {
     return blockedAt(root, release, fromVersion, [blocker(
       'upgrade-staging-present',
-      'Каталог транзакции уже существует: возможно, прошлый запуск был прерван. Проверьте и удалите его вручную.',
+      'Каталог транзакции уже существует: прошлый запуск был прерван. В его подпапке backup/ лежат прежние версии файлов. Сверьте проект (git status, git diff), верните нужное из backup/ и только потом удалите каталог.',
       STAGING_DIR,
     )]);
   }
@@ -336,16 +336,19 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
-  // Недостающие подстановки берутся из незатронутых файлов, если те не изменены.
+  // Недостающие подстановки можно взять из файлов, которые upgrade не трогает. Это
+  // только подсказка: правка в таком файле не имеет права остановить обновление,
+  // поэтому расхождение здесь не блокирует, а уже известное значение не меняется.
   for (const { path, source } of optional) {
     if (vars.projectName !== undefined && vars.date !== undefined) break;
     const uses = templateUses(source);
     if (!uses.projectName && !uses.date) continue;
     if (await pathHasSymlink(root, path)) continue;
     const recovered = recoverTemplateVars(source, await readFile(join(root, path), 'utf8'), startingPoint, fromVersion);
-    if (recovered !== null) remember(path, recovered);
+    if (recovered === null) continue;
+    vars.projectName ??= recovered.projectName;
+    vars.date ??= recovered.date;
   }
-  if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
   const renderVars = (source: string): TemplateVars | null => {
     const uses = templateUses(source);

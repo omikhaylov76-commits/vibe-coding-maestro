@@ -104,7 +104,9 @@ describe('0.3 Phase 3: воспроизведение дефекта на про
     expect(report.findings.map((finding) => finding.code)).toEqual(['project-outdated']);
     const message = report.findings[0]?.message ?? '';
     expect(message).toContain('0.2.0-beta.1');
-    expect(message).toContain(`npx --package create-vibe-maestro@0.2.0-beta.1 vibe-maestro doctor --path ${quotePathArg(legacy.root)}`);
+    // 0.2 в npm не публиковалась: команду, которая не сработает, doctor не предлагает.
+    expect(message).toContain('не публиковалась в npm');
+    expect(message).not.toContain('create-vibe-maestro@0.2.0-beta.1');
     expect(message).toContain(`npx --package create-vibe-maestro@${VERSION} vibe-maestro upgrade --path ${quotePathArg(legacy.root)}`);
   });
 

@@ -1,4 +1,5 @@
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
@@ -10,11 +11,11 @@ import type { ProjectDepth } from '../src/core/manifest.js';
 import { quotePathArg, VERSION } from '../src/core/meta.js';
 import { packageRoot } from '../src/core/paths.js';
 import { renderTemplate } from '../src/core/template.js';
-import { analyzeUpgrade, upgradeProject } from '../src/core/upgrade/index.js';
+import { analyzeUpgrade, STAGING_DIR, upgradeProject } from '../src/core/upgrade/index.js';
 import { findRelease, RELEASES, supportedVersions } from '../src/core/upgrade/releases.js';
 import { compareVersions } from '../src/core/version.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8, sha256, snapshotTree } from './helpers.js';
-import { canonicalManagedSource } from './legacy-0.2.js';
+import { canonicalManagedSource, makeLegacy02Project } from './legacy-0.2.js';
 
 afterEach(cleanupTempDirs);
 
@@ -337,5 +338,73 @@ describe('doctor и версия проекта', () => {
     const finding = report.findings.find((item) => item.code === 'manifest-canonical-mismatch');
     expect(finding?.message).toContain('«maestro-fixture»');
     expect(finding?.message).toContain('«другое-имя»');
+  });
+});
+
+describe('находки независимого ревью beta.4', () => {
+  it('create не меняет версию проекта беты: ни файлы, ни manifest', async () => {
+    const { root } = await materialize('0.3.0-beta.3-standard');
+    const before = await snapshotTree(root);
+    const result = await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Create не обновляет проекты');
+    expect(result.error).toContain('vibe-maestro upgrade --path');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it('правка с подстановкой в файле, который upgrade не трогает, не блокирует обновление', async () => {
+    const { root } = await materialize('0.3.0-beta.3-standard');
+    const index = await readUtf8(root, 'wiki/index.md');
+    expect(index).toContain('Проект фикстуры');
+    const edited = index.split('Проект фикстуры').join('Другое имя');
+    await writeFile(join(root, 'wiki/index.md'), edited, 'utf8');
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.analysis.blockers).toEqual([]);
+    expect(result.applied).toBe(true);
+    expect(await readUtf8(root, 'wiki/index.md')).toBe(edited);
+    // Подстановка для обновлённых файлов берётся из них самих, а не из правки.
+    expect(await readUtf8(root, 'CLAUDE.md')).toContain('# Проект фикстуры');
+  });
+
+  it('неудавшийся откат честно назван неудавшимся, и backup остаётся на диске', async () => {
+    const { root } = await materialize('0.3.0-beta.3-standard');
+    let calls = 0;
+    const result = await upgradeProject(root, {
+      apply: true,
+      hooks: {
+        beforeCommit: async (path) => {
+          calls += 1;
+          if (calls === 3) {
+            // Имитация того, что backup первого пути потерян (на Windows — блокировка файла).
+            await rm(join(root, STAGING_DIR, 'backup', 'CLAUDE.md'), { force: true });
+            throw new Error(`сбой на ${path}`);
+          }
+        },
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.rolledBack).toBe(false);
+    expect(result.error).toContain('откатить удалось не всё');
+    expect(result.error).toContain('CLAUDE.md');
+    expect(existsSync(join(root, STAGING_DIR, 'backup'))).toBe(true);
+  });
+
+  it('doctor на проекте прошлого канона всё равно видит подмену файлов и проблемы Git', async () => {
+    const legacy = await makeLegacy02Project();
+    await writeFile(join(legacy.root, 'protocols/seams.md'), 'подмена\n', 'utf8');
+    const report = await doctorProject(legacy.root);
+    const codes = report.findings.map((item) => item.code);
+    expect(codes).toContain('project-outdated');
+    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'managed-modified', path: 'protocols/seams.md' }));
+  });
+
+  it('путь в другом регистре на файловой системе без учёта регистра не считается чужой папкой', async () => {
+    const { root } = await materialize('0.3.0-beta.3-standard');
+    const shouted = join(dirname(root), 'MAESTRO-FIXTURE');
+    if (!existsSync(shouted)) return; // файловая система различает регистр — случая нет
+    const report = await doctorProject(shouted);
+    expect(report.findings.map((item) => item.code)).not.toContain('manifest-canonical-mismatch');
+    const { analysis } = await analyzeUpgrade(shouted);
+    expect(analysis.blockers.map((item) => item.code)).not.toContain('upgrade-manifest-not-native');
   });
 });

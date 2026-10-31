@@ -1,10 +1,10 @@
 import { existsSync, statSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { CHECKSUMS_PATH, isCanonicalManifest, loadChecksums, loadManifest, MANIFEST_PATH } from '../manifest.js';
 import type { Manifest } from '../manifest.js';
-import { CREATE_COMMAND, quotePathArg, serviceInvocation, VERSION } from '../meta.js';
+import { CREATE_COMMAND, FIRST_NPM_VERSION, quotePathArg, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson } from '../paths.js';
-import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
+import { canonicalizeSystemTempPrefix, onDiskBasename } from '../platform-paths.js';
 import { compareVersions } from '../version.js';
 import { absolutePathHasSymlink, pathHasSymlink } from './fs-utils.js';
 import { checkGit } from './git.js';
@@ -34,7 +34,10 @@ function versionFinding(rootInput: string, manifest: Manifest, canonical: boolea
   if (order === null || order === 0) return null;
   // Путь в подсказке — как его набрал человек: команду можно скопировать из того же места.
   const path = quotePathArg(rootInput);
-  const checkSame = `${serviceInvocation(projectVersion)} doctor --path ${path}`;
+  const published = (compareVersions(projectVersion, FIRST_NPM_VERSION) ?? -1) >= 0;
+  const checkSame = published
+    ? `${serviceInvocation(projectVersion)} doctor --path ${path}`
+    : `версия ${projectVersion} не публиковалась в npm, поэтому проверить проект его же версией нельзя`;
   const upgrade = `${serviceInvocation(VERSION)} upgrade --path ${path}`;
   if (canonical) {
     return order < 0
@@ -85,18 +88,25 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   const canonical = isCanonicalManifest(manifest);
   const version = ours ? versionFinding(rootInput, manifest, canonical) : null;
   if (version !== null && version.level === 'error') {
-    // Канон другой версии этой версией не проверить: остальные находки были бы шумом.
+    // Канон другой версии этой версией не сверить: inventory, протоколы и wiki дали бы шум.
+    // Проверки, которые опираются только на данные самого проекта, остаются в силе.
     findings.push(version);
+    const checksums = await loadChecksums(root);
+    if (checksums === null) findings.push(error('checksums-invalid', 'Контрольные суммы отсутствуют или повреждены.', CHECKSUMS_PATH));
+    const { managedDocs } = await checkManagedFiles(root, manifest, checksums, findings);
+    await checkGit(root, managedDocs, findings);
+    await checkInbox(root, findings);
+    await checkSources(root, findings);
     return report(root, findings, options.strict);
   }
   if (version !== null) findings.push(version);
 
   if (!canonical) {
     findings.push(error('manifest-canonical-mismatch', `Manifest не совпадает с каноном Vibe Coding Maestro ${VERSION}.`, MANIFEST_PATH));
-  } else if (manifest.project.name !== basename(root)) {
+  } else if (manifest.project.name !== onDiskBasename(root)) {
     findings.push(error(
       'manifest-canonical-mismatch',
-      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${basename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
+      `Manifest принадлежит другой папке: проект называется «${manifest.project.name}», а папка — «${onDiskBasename(root)}». Если папку переименовали или склонировали под другим именем, верните ей имя «${manifest.project.name}».`,
       MANIFEST_PATH,
     ));
   }

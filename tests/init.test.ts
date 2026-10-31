@@ -203,20 +203,21 @@ describe('initProject: непустая чужая папка', () => {
 });
 
 describe('initProject: повторный запуск', () => {
-  it('принимает canonical manifest старой product.version и обновляет его текущей версией', async () => {
-    const target = await makeTempDir();
-    await init(target);
-    const manifest = await readJson<any>(target, '.maestro/manifest.json');
-    manifest.product.version = '0.1.0-old';
-    await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  it('не меняет версию проекта другой версии ни вверх, ни вниз — это работа upgrade', async () => {
+    for (const [version, phrase] of [['0.1.0-old', 'upgrade --path'], ['9.0.0', 'более новой версии 9.0.0']] as const) {
+      const target = await makeTempDir();
+      await init(target);
+      const manifest = await readJson<any>(target, '.maestro/manifest.json');
+      manifest.product.version = version;
+      await writeFile(join(target, '.maestro/manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+      const before = await snapshotTree(target);
 
-    const result = await init(target);
+      const result = await init(target);
 
-    expect(result.ok).toBe(true);
-    const updated = await readJson<any>(target, '.maestro/manifest.json');
-    expect(updated.product.version).not.toBe('0.1.0-old');
-    expect(updated.project.id).toBe(manifest.project.id);
-    expect(updated.project.depth).toBe(manifest.project.depth);
+      expect(result.ok, version).toBe(false);
+      expect(result.error, version).toContain(phrase);
+      expect(await snapshotTree(target), version).toEqual(before);
+    }
   });
 
   it('идемпотентен на неизменённом проекте', async () => {

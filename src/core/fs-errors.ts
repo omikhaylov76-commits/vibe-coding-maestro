@@ -27,6 +27,6 @@ export function describeFsError(cause: unknown, fallbackPath: string): string {
     case 'ENFILE':
       return `Система не даёт открыть столько файлов сразу. Закройте лишние программы и повторите (${code}).`;
     default:
-      return `Не удалось записать файлы: ${cause instanceof Error ? cause.message : String(cause)}`;
+      return `Не удалось подготовить проект: ${cause instanceof Error ? cause.message : String(cause)}`;
   }
 }

@@ -21,6 +21,9 @@ export function quotePathArg(path: string): string {
 }
 export const MANIFEST_SCHEMA_VERSION = 2;
 
+/** Первая версия, опубликованная в npm: более ранних в реестре нет. */
+export const FIRST_NPM_VERSION = '0.3.0-beta.2';
+
 export const VERSION: string = readPackageJson().version;
 
 /** Допустимые исходные состояния идеи (третий вопрос интерактивного меню). */

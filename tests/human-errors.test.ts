@@ -73,6 +73,18 @@ describe.skipIf(!canLockFolders)('create в папке без прав на за
     expect(result.error).toContain('можно удалить целиком');
   });
 
+  it('папка с одним .git не считается пустой: совет не предлагает удалить репозиторий', async () => {
+    const target = await makeTempDir('git-only-');
+    await mkdir(join(target, '.git'));
+    await chmod(target, 0o555);
+    locked.push(target);
+    const result = await initProject({ target, startingPoint: 'idea', git: false, now: FIXED_NOW });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Нет прав на запись');
+    expect(result.error).not.toContain('можно удалить целиком');
+    expect(result.error).toContain('git status');
+  });
+
   it('CLI печатает причину без stack trace и возвращает 1', async () => {
     const parent = await readOnlyFolder();
     const cli = collect();

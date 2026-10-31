@@ -26,6 +26,12 @@ Foundation release: the set of files in a generated project is unchanged, so upd
 - `create-vibe-maestro` no longer prints a Node.js stack trace when it cannot write: missing permissions, a full or read-only disk, or a wrong path produce one sentence with the reason and what to do; an interrupted create in a previously empty folder says the folder can be deleted and the command repeated. Running `create` on a project of an older version with a different file set points to `upgrade`.
 - `doctor` on a missing folder says «Папка не найдена» (`project-path-missing`) and on a folder without Maestro says so (`manifest-missing`) instead of a raw `ENOENT`; `preflight` reports `preflight-path-missing` / `preflight-not-project` instead of sending the user to `protocols/plan.md`.
 - A path dragged into the terminal on macOS or Linux (`My\ Project`) is unescaped in the guided setup.
+- `create` no longer changes the version of an existing project, up or down: a project of another version is refused with the matching `upgrade` or `doctor` command. Before, it silently rewrote files of a project with the same file set.
+- A failed rollback in `upgrade --apply` is reported as failed, names the files it could not restore, and keeps `.maestro/upgrade-staging/backup/`; it no longer deletes the only copy of the previous files and reports success. The leftover-staging message tells you to compare with `backup/` before deleting it.
+- On a project of another canon, `doctor` still checks managed checksums, tracked secrets, sources and inbox instead of reporting only the version; it does not suggest checking with a version that was never on npm (0.2.0-beta.1, 0.3.0-beta.1).
+- On case-insensitive file systems (macOS, Windows) a path typed in a different case is no longer treated as a renamed folder.
+- An edit in a managed file that `upgrade` does not touch never blocks it, even when the file contains the project name.
+- A failed `create` in a folder that holds only `.git` no longer advises deleting the folder.
 - Documentation no longer claims that an AI agent cannot record a plan approval: the protocol forbids it, but Maestro cannot tell mechanically who filled in `approved_by` and `approved_at`. The 0.3.0-beta.1 entry below overstated this.
 
 ## 0.3.0-beta.3 — 2026-10-31

@@ -305,7 +305,9 @@ const assistant = (id: string, input: number, cacheRead: number, output: number,
 
 describe('0.4.1: vibe-maestro context', () => {
   it('папка журнала называется так же, как у Claude Code', () => {
-    expect(projectLogDirName('/Users/me/projects/my-app/.claude/worktrees/x_1')).toBe('-Users-me-projects-my-app--claude-worktrees-x-1');
+    // Всё, кроме латиницы и цифр, становится `-`; на Windows путь начинается с буквы диска.
+    if (process.platform === 'win32') expect(projectLogDirName('C:\\Users\\me\\my-app\\.claude\\x_1')).toBe('C--Users-me-my-app--claude-x-1');
+    else expect(projectLogDirName('/Users/me/projects/my-app/.claude/worktrees/x_1')).toBe('-Users-me-projects-my-app--claude-worktrees-x-1');
   });
 
   it('берёт контекст последнего ответа, считает вход за всю сессию и не учитывает субагентов', async () => {

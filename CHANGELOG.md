@@ -6,10 +6,11 @@ The project follows Semantic Versioning while prerelease interfaces may still ch
 
 ## 0.3.1 — 2026-11-01
 
-Small fixes found in the 0.3.0 review. The set of project files is unchanged; `upgrade` from 0.3.0 only rewrites the pinned version.
+Small fixes found in the 0.3.0 review and on a live project. The set of project files is unchanged; `upgrade` from 0.3.0 rewrites the pinned version and `.claude/rules/maestro.md`.
 
 ### Fixed
 
+- The default `.claude/settings.json` denied editing the whole `.claude/commands/`, `.claude/agents/`, `maestro/runbooks/` and `maestro/templates/` folders, so the agent could not create or edit the project's own commands. Now only Maestro's managed files are denied, by name; whole folders are denied only for `protocols/` and `.maestro/`. `.claude/rules/maestro.md` names the managed commands and agents and says the project adds its own next to them. **Projects created with 0.3.0** keep their `settings.json` (it belongs to the project): replace the folder rules `Edit(/.claude/commands/**)`, `Edit(/.claude/agents/**)`, `Edit(/maestro/runbooks/**)`, `Edit(/maestro/templates/**)` with the per-file list from the new template, or simply delete them.
 - Commands inside `doctor`, `create` and `upgrade` messages are wrapped in backticks, so the period that ends a sentence no longer sticks to the path: `--path .` used to read as `--path ..`.
 - Re-running `create` on an existing project warns when an explicit `--depth` or `--start` differs from the project and is not applied, instead of reporting success silently.
 

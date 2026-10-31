@@ -90,5 +90,7 @@ describe('mergeGitignore', () => {
     // Свои строки проекта после блока — новый блок с заголовком, чтобы не смешивать.
     const mixed = mergeGitignore(`${first.content}мои/\n`, ['node_modules/', '.env', '.claude/worktrees/']);
     expect(mixed.content.split('\n').filter((line) => line.startsWith('# ---'))).toHaveLength(2);
+    const commented = mergeGitignore(`${first.content}# мои правила\n`, ['node_modules/', '.env', '.claude/worktrees/']);
+    expect(commented.content.split('\n').filter((line) => line.startsWith('# ---'))).toHaveLength(2);
   });
 });

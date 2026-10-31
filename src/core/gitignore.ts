@@ -83,7 +83,8 @@ export function mergeGitignore(
   const lines = source.split(/\r?\n/);
   const header = lines.lastIndexOf(BLOCK_HEADER);
   const required = new Set(requiredEntries.map(normalizeEntry));
-  const endsWithBlock = header >= 0 && lines.slice(header + 1).every((line) => !isMeaningful(line) || required.has(normalizeEntry(line)));
+  // Свой комментарий проекта после блока — уже не блок Maestro: тогда новый заголовок.
+  const endsWithBlock = header >= 0 && lines.slice(header + 1).every((line) => line.trim() === '' || required.has(normalizeEntry(line)));
   if (endsWithBlock) {
     return { content: base + addedEntries.join(eol) + eol, created, changed: true, addedEntries };
   }

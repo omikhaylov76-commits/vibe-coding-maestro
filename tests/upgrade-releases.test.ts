@@ -382,6 +382,20 @@ describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущ
     expect((await readFile(join(other, '.gitignore'))).equals(own)).toBe(true);
   });
 
+  it('.gitignore с меткой UTF-8 (BOM): первая строка узнаётся, метка остаётся', async () => {
+    const { root } = await materialize('0.3.1-standard');
+    const own = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('.claude/worktrees/\n.claude/settings.local.json\nnode_modules/\n/dist/\n/build/\n/coverage/\n.env\n.env.*\n!.env.example\n*.log\n.DS_Store\n')]);
+    await writeFile(join(root, '.gitignore'), own);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.updates.map((item) => item.path)).not.toContain('.gitignore');
+    await writeFile(join(root, '.gitignore'), own.subarray(0, own.length - '.DS_Store\n'.length));
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    const next = await readFile(join(root, '.gitignore'));
+    expect(next.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))).toBe(true);
+    expect(next.toString('utf8').match(/\.claude\/worktrees\//g)).toHaveLength(1);
+    expect(next.toString('utf8').endsWith('.DS_Store\n')).toBe(true);
+  });
+
   it('.gitignore, где всё уже есть, upgrade не трогает', async () => {
     const { root, data } = await materialize('0.3.1-standard');
     const full = `${data.files['.gitignore'] as string}.claude/worktrees/\n.claude/settings.local.json\n`;

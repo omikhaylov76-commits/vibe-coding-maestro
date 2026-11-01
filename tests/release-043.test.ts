@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, posix } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { doctorProject } from '../src/core/doctor.js';
@@ -556,5 +556,174 @@ describe('0.4.3: галочки не сбивают отпечаток утве�
     const template = await packageText('templates/project/wiki/plans/TEMPLATE.md');
     expect(template.slice(template.indexOf('## Как проверим'), template.indexOf('## Где правим'))).toMatch(/\n- \[ \] /);
     expect(await packageText('templates/project/wiki/plans/README.md')).toContain('Отметки `[x]` в пунктах списка тоже не входят');
+  });
+});
+
+describe('0.4.3: pack — папка, состав до упаковки, подсветка, пароли по паспорту', () => {
+  const execGit = async (cwd: string, ...args: string[]): Promise<string> => {
+    const { execFileSync } = await import('node:child_process');
+    return execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', '-c', 'tag.gpgSign=false', '-c', 'commit.gpgSign=false', ...args], { cwd, encoding: 'utf8' });
+  };
+
+  /** Паспорт со всеми разделами; `access` — содержимое разделов о доступах. */
+  const passport = (access: Record<string, string> = {}): string => [
+    '# Паспорт проекта', '',
+    '## Репозиторий', '', '- Адрес: github.com/example/site (закрытый)', '- Основная ветка: main', '- Тег сдачи: v1.0.0', '',
+    '## Где работает', '', access['Где работает'] ?? '- Хостинг, проект, сервис, регион: не применимо\n- Адрес в интернете: не применимо', '',
+    '## Домен и DNS', '', access['Домен и DNS'] ?? '- Не применимо', '',
+    '## Данные, базы, резервные копии', '', access['Данные'] ?? '- не применимо', '',
+    '## Внешние сервисы и чей аккаунт', '', access['Сервисы'] ?? '- не применимо', '',
+    '## Переменные окружения', '', 'Только имена и где задаются (`.env`, панель хостинга), значения — никогда.', '', access['Переменные'] ?? '- не применимо', '',
+    '## Расписания и фоновые задачи', '', '- не применимо', '',
+    '## Как запустить, обновить, откатить', '', '- Запустить: открыть index.html', '- Обновить: заменить файлы', '- Откатить: прежний архив', '',
+  ].join('\n');
+
+  async function delivered(files: Record<string, string>, passportText = passport()): Promise<string> {
+    const { initProject } = await import('../src/core/init.js');
+    const { FIXED_NOW, makeTempDir } = await import('./helpers.js');
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const { dirname } = await import('node:path');
+    const root = join(await makeTempDir('release-043-pack-'), 'Сайт');
+    expect((await initProject({ target: root, name: 'Сайт', startingPoint: 'idea', git: true, now: FIXED_NOW })).ok).toBe(true);
+    for (const [path, content] of Object.entries({ 'wiki/passport.md': passportText, ...files })) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), content, 'utf8');
+    }
+    await execGit(root, 'add', '-A');
+    for (const path of Object.keys(files)) await execGit(root, 'add', '-f', path);
+    await execGit(root, 'commit', '-qm', 'сдача');
+    await execGit(root, 'tag', '-a', 'v1.0.0', '-m', 'Сдача');
+    return root;
+  }
+
+  it('--out с / или \\ на конце — папка: создаётся, архив в ней под именем по умолчанию', async () => {
+    const root = await delivered({ 'index.html': '<h1>Сайт</h1>\n' });
+    const { makeTempDir } = await import('./helpers.js');
+    for (const ending of ['/', '\\']) {
+      const dir = join(await makeTempDir('out-dir-'), 'dist');
+      const cli = collectIo();
+      expect(await runMaestroCli(['pack', '--path', root, '--tag', 'v1.0.0', '--out', `${dir}${ending}`], cli.io), cli.stderr()).toBe(0);
+      expect(existsSync(join(dir, 'Сайт-v1.0.0.zip')), ending).toBe(true);
+      expect(cli.stdout()).toContain(join(dir, 'Сайт-v1.0.0.zip'));
+    }
+  });
+
+  it('--dry-run не пишет ни байта и показывает тот же состав, что потом в архиве; повтор тега — тот же sha256', async () => {
+    const root = await delivered({ 'index.html': '<h1>Сайт</h1>\n', 'docs/для-заказчика.md': '# Как пользоваться\n' });
+    const { makeTempDir } = await import('./helpers.js');
+    const { readdir } = await import('node:fs/promises');
+    const parent = await makeTempDir('dry-');
+    const before = await snapshotTree(root);
+    const cli = collectIo();
+    expect(await runMaestroCli(['pack', '--path', root, '--tag', 'v1.0.0', '--out', join(parent, 'a.zip'), '--dry-run'], cli.io), cli.stderr()).toBe(0);
+    expect(await snapshotTree(root)).toEqual(before);
+    expect(await readdir(parent)).toEqual([]);
+    expect(cli.stdout()).toContain('ничего не записано');
+    expect(cli.stdout()).toContain('только после «да» человека');
+
+    const { packProject } = await import('../src/core/pack.js');
+    const { readZip } = await import('../src/core/zip.js');
+    const dry = await packProject({ root, tag: 'v1.0.0', out: join(parent, 'a.zip'), dryRun: true });
+    const real = await packProject({ root, tag: 'v1.0.0', out: join(parent, 'a.zip') });
+    expect(real.ok).toBe(true);
+    expect(readZip(await readFile(join(parent, 'a.zip'))).map((entry) => entry.path)).toEqual(dry.entries);
+    expect(dry.files).toBe(real.files);
+    expect(dry.highlights).toEqual(real.highlights);
+    const again = await packProject({ root, tag: 'v1.0.0', out: join(parent, 'b.zip') });
+    expect(again.sha256).toBe(real.sha256);
+  });
+
+  it('подсветка ловит каждую группу и не трогает чистый файл; упаковка не запрещается', async () => {
+    const files = {
+      'src/home.js': 'const cache = "/Users/someone/cache";\n',
+      'src/win.js': 'const cache = "C:\\\\Users\\\\someone\\\\cache";\n'.replace(/\\\\/g, '\\'),
+      'src/tmp.js': 'const t = "/tmp/build";\nconst v = "/private/var/folders/x";\n',
+      'docs/about.md': 'Сделано с Vibe Coding Maestro.\n',
+      'docs/cmd.md': 'Запуск: npx vibe-maestro doctor\n',
+      'docs/internal.md': 'Подробности — в wiki/plans и protocols/build.md.\n',
+      'docs/agent.md': 'Настройки лежат в .claude/settings.json.\n',
+      'docs/plan.md': 'Это сделано по план 0002.\n',
+      'src/plan-id.js': '// PLAN-0002\n',
+      '.vscode/settings.json': '{}\n',
+      '.idea/workspace.xml': '<project/>\n',
+      '.github/workflows/ci.yml': 'name: ci\n',
+      'debug.log': 'ok\n',
+      'src/clean.js': 'export const answer = 42; // vibe, maestro, wiki — просто слова\n',
+    };
+    const root = await delivered(files);
+    const { packProject } = await import('../src/core/pack.js');
+    const result = await packProject({ root, tag: 'v1.0.0', out: join(root, '..', 'x.zip'), dryRun: true, home: '/Users/someone' });
+    expect(result.ok).toBe(true);
+    const reasons = (path: string): string[] => (result.highlights ?? []).filter((item) => item.path === path).map((item) => item.reason);
+    expect(reasons('src/home.js')).toEqual(['путь домашней папки']);
+    expect(reasons('src/win.js')).toEqual(['путь домашней папки']);
+    expect(reasons('src/tmp.js')).toEqual(['временная папка']);
+    expect(reasons('docs/about.md')).toEqual(['имя Maestro']);
+    expect(reasons('docs/cmd.md')).toEqual(['имя Maestro']);
+    expect(reasons('docs/internal.md')).toEqual(['внутренняя папка']);
+    expect(reasons('docs/agent.md')).toEqual(['внутренняя папка']);
+    expect(reasons('docs/plan.md')).toEqual(['номер плана']);
+    expect(reasons('src/plan-id.js')).toEqual(['номер плана']);
+    for (const path of ['.vscode/settings.json', '.idea/workspace.xml', '.github/workflows/ci.yml', 'debug.log']) {
+      expect(reasons(path), path).toEqual(['служебный файл']);
+    }
+    // Файлы, которые кладёт сам Maestro, тоже служебные (в .gitignore ещё и строки про .claude/).
+    for (const path of ['.gitignore', '.gitattributes']) expect(reasons(path), path).toContain('служебный файл');
+    expect(reasons('src/clean.js')).toEqual([]);
+    expect(reasons('index.html')).toEqual([]);
+    // Строка, где найдено, названа.
+    expect(result.highlights).toContainEqual({ path: 'src/tmp.js', reason: 'временная папка', line: 1 });
+
+    // Путь самого проекта называется точнее, чем «домашняя папка».
+    const own = await delivered({ 'src/where.js': '' });
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(own, 'src/where.js'), `const here = ${JSON.stringify(own)};\n`, 'utf8');
+    await execGit(own, 'commit', '-qam', 'путь');
+    await execGit(own, 'tag', '-a', 'v1.0.1', '-m', 'x');
+    const where = await packProject({ root: own, tag: 'v1.0.1', out: join(own, '..', 'y.zip'), dryRun: true, home: dirname(dirname(own)) });
+    expect((where.highlights ?? []).filter((item) => item.path === 'src/where.js').map((item) => item.reason)).toEqual(['путь папки проекта']);
+
+    // Обычный pack печатает подсвеченное и пакует с прежним кодом выхода.
+    const cli = collectIo();
+    expect(await runMaestroCli(['pack', '--path', root, '--tag', 'v1.0.0', '--out', join(root, '..', 'z.zip')], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('Подсвечено — проверьте перед отправкой');
+    expect(cli.stdout()).toContain('docs/about.md — имя Maestro (строка 1)');
+  });
+
+  it('HANDOVER.md: все разделы о доступах «не применимо» — «доступов не было»; хоть одна запись — прежний текст', async () => {
+    const { handoverText, passportHasNoAccess } = await import('../src/core/pack.js');
+    const none = handoverText({ projectName: 'Сайт', tag: 'v1', commit: 'abc', passport: passport() });
+    expect(passportHasNoAccess(passport())).toBe(true);
+    expect(none).toContain('Доступов не было, менять нечего');
+    expect(none).not.toContain('смените все пароли и ключи');
+    for (const [section, text] of [
+      ['Где работает', '- Хостинг: Netlify, проект site'],
+      ['Домен и DNS', '- site.example.com у регистратора'],
+      ['Данные', '- Таблица в Google Sheets заказчика'],
+      ['Сервисы', '- Форма Formspree — аккаунт заказчика'],
+      ['Переменные', '- FORM_ID — панель Netlify'],
+      ['Переменные', 'Ключей нет, кроме одного в панели'],
+    ] as const) {
+      const text2 = passport({ [section]: text });
+      expect(passportHasNoAccess(text2), `${section}: ${text}`).toBe(false);
+      expect(handoverText({ projectName: 'Сайт', tag: 'v1', commit: 'abc', passport: text2 }), section).toContain('## Первым делом: смените все пароли и ключи');
+    }
+
+    const root = await delivered({ 'index.html': '<h1>Сайт</h1>\n' });
+    const cli = collectIo();
+    expect(await runMaestroCli(['pack', '--path', root, '--tag', 'v1.0.0', '--out', join(root, '..', 'h.zip')], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('HANDOVER.md: доступов не было, менять заказчику нечего');
+    const { readZip } = await import('../src/core/zip.js');
+    const handover = readZip(await readFile(join(root, '..', 'h.zip'))).find((entry) => entry.path === 'HANDOVER.md')?.data.toString('utf8') ?? '';
+    expect(handover).toContain('## Доступы');
+  });
+
+  it('протокол завершения: сначала --dry-run, состав проверяет агент, человеку — итог; упаковка и отправка — по «да»', async () => {
+    const completion = await packageText('templates/project/protocols/completion.md');
+    expect(completion).toContain('vibe-maestro pack --path . --tag vX.Y.Z --dry-run');
+    expect(completion).toContain('человеку — итог: сколько файлов, что убрано, что осталось под вопросом');
+    expect(completion.indexOf('--dry-run')).toBeLessThan(completion.indexOf('Архив для заказчика — после «да» человека'));
+    expect(completion).toContain('отправка заказчику — отдельное «да»');
+    expect(completion).toContain('«доступов не было»');
   });
 });

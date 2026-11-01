@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join, posix, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { MANIFEST_PATH } from './manifest.js';
@@ -21,6 +22,15 @@ export const HANDOVER_PATH = 'HANDOVER.md';
 
 /** Внутренние места Maestro и агентов в корне: заказчику они не нужны и в архив не попадают. */
 export const INTERNAL_PATHS: readonly string[] = ['wiki/', 'maestro/', '.claude/', 'protocols/', '.maestro/', 'CLAUDE.md', 'AGENTS.md', '.mcp.json'];
+
+/** Разделы паспорта о доступах: если все они «не применимо», менять заказчику нечего. */
+export const ACCESS_SECTIONS: readonly string[] = [
+  'Где работает',
+  'Домен и DNS',
+  'Данные, базы, резервные копии',
+  'Внешние сервисы и чей аккаунт',
+  'Переменные окружения',
+];
 
 /** Разделы паспорта, без которых сдавать нельзя. */
 export const PASSPORT_SECTIONS: readonly string[] = [
@@ -47,6 +57,18 @@ export interface PackOptions {
   out: string;
   /** Файлы, которые человек посмотрел и признал не секретом: их содержимое не проверяется. */
   allow?: readonly string[];
+  /** Только состав и подсветка: архив не собирается и не пишется. */
+  dryRun?: boolean;
+  /** Домашняя папка для подсветки путей; по умолчанию — текущего пользователя. */
+  home?: string;
+}
+
+/** Подсвеченное в составе: проверить перед отправкой. Предупреждение, а не отказ. */
+export interface PackHighlight {
+  path: string;
+  reason: string;
+  /** Строка, где найдено, если подсвечено содержимое. */
+  line?: number;
 }
 
 export interface PackResult {
@@ -62,6 +84,14 @@ export interface PackResult {
   reused?: boolean;
   /** Что не вошло или не проверено, но не мешает упаковке: подмодули, слишком большие файлы. */
   notes?: string[];
+  /** Подсвеченное в составе; поля нет, если подсвечивать нечего. */
+  highlights?: PackHighlight[];
+  /** Показ состава без записи (`--dry-run`). */
+  dryRun?: true;
+  /** Пути архива по порядку — только при показе состава. */
+  entries?: string[];
+  /** В паспорте все разделы о доступах — «не применимо»: `HANDOVER.md` пишет «доступов не было». */
+  noAccess?: true;
 }
 
 const finding = (code: string, message: string, path?: string): PackFinding =>
@@ -81,8 +111,13 @@ async function gitBuffer(root: string, args: string[]): Promise<Buffer> {
 /** Строка-заготовка шаблона: «- Пока нет» или «- Адрес: пока нет». Обычный текст со словами «пока нет» — запись. */
 const PLACEHOLDER_LINE = /^\s*[-*]\s*(?:[^:\n]*:\s*)?пока нет\.?\s*$/i;
 
-/** Разделы паспорта, которые не заполнены: нет раздела, нет записи или осталась заготовка «пока нет». */
-export function passportGaps(text: string): string[] {
+/** Запись «не применимо»: «- Не применимо» или «- Адрес: не применимо». */
+const NOT_APPLICABLE_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]*:\s*)?не применимо\.?\s*$/i;
+
+/** Пояснение шаблона в разделе «Переменные окружения»: это не запись. */
+const ENV_SECTION_HINT = 'Только имена и где задаются (`.env`, панель хостинга), значения — никогда.';
+
+function passportSections(text: string): Map<string, string> {
   const sections = new Map<string, string>();
   const parts = text.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '').split(/^## +/m).slice(1);
   for (const part of parts) {
@@ -90,6 +125,24 @@ export function passportGaps(text: string): string[] {
     const title = (newline < 0 ? part : part.slice(0, newline)).trim();
     sections.set(title, newline < 0 ? '' : part.slice(newline + 1));
   }
+  return sections;
+}
+
+/**
+ * Доступов не было: каждый раздел о доступах есть и в нём только «не применимо».
+ * Любая другая запись — сомнение, и `HANDOVER.md` просит сменить пароли и ключи.
+ */
+export function passportHasNoAccess(text: string): boolean {
+  const sections = passportSections(text);
+  return ACCESS_SECTIONS.every((title) => {
+    const lines = (sections.get(title) ?? '').split('\n').map((line) => line.trim()).filter((line) => line !== '' && line !== ENV_SECTION_HINT);
+    return lines.length > 0 && lines.every((line) => NOT_APPLICABLE_LINE.test(line));
+  });
+}
+
+/** Разделы паспорта, которые не заполнены: нет раздела, нет записи или осталась заготовка «пока нет». */
+export function passportGaps(text: string): string[] {
+  const sections = passportSections(text);
   return PASSPORT_SECTIONS.filter((title) => {
     const body = sections.get(title);
     if (body === undefined) return true;
@@ -252,25 +305,73 @@ export function findSecrets(path: string, data: Buffer): PackFinding[] {
   return found;
 }
 
+/** Служебные файлы разработки: заказчику обычно не нужны. */
+const SERVICE_FILE = /(^|\/)(?:\.gitignore|\.gitattributes|\.DS_Store)$|(^|\/)(?:\.vscode|\.idea|\.github)\/|\.log$/;
+
+/** Подсветка содержимого по строкам: первое совпадение каждого вида на файл. */
+function contentHighlights(text: string, home: string, root: string): { reason: string; line: number }[] {
+  const variants = (path: string): string[] => (path === '' ? [] : [...new Set([path, path.split('/').join('\\')])]);
+  const roots = variants(root.replace(/\\/g, '/').replace(/\/+$/, ''));
+  const homes = variants(home.replace(/\\/g, '/').replace(/\/+$/, ''));
+  const rules: { reason: string; test: (line: string) => boolean }[] = [
+    { reason: 'путь папки проекта', test: (line) => roots.some((path) => line.includes(path)) },
+    {
+      reason: 'путь домашней папки',
+      test: (line) => homes.some((path) => line.includes(path)) || /(?:^|[^\w.-])(?:\/Users\/[^/\s]+\/|\/home\/[^/\s]+\/|[A-Za-z]:\\Users\\[^\\\s]+\\)/.test(line),
+    },
+    { reason: 'временная папка', test: (line) => /(?:^|[^\w.-])(?:\/tmp\/|\/private\/var\/)/.test(line) },
+    { reason: 'имя Maestro', test: (line) => /Vibe Coding Maestro|vibe-maestro/i.test(line) },
+    { reason: 'внутренняя папка', test: (line) => /(?<![\w.-])(?:wiki|maestro|protocols)\/|(?<![\w-])\.claude\//.test(line) },
+    { reason: 'номер плана', test: (line) => /\bPLAN-\d{4}\b|(?<!\p{L})план\s+\d{4}(?!\d)/iu.test(line) },
+  ];
+  const found = new Map<string, number>();
+  text.split('\n').forEach((line, index) => {
+    for (const rule of rules) {
+      if (!found.has(rule.reason) && rule.test(line)) found.set(rule.reason, index + 1);
+    }
+  });
+  // Путь проекта лежит внутри домашней папки: одну и ту же строку называем точнее.
+  if (found.get('путь домашней папки') === found.get('путь папки проекта')) found.delete('путь домашней папки');
+  return rules.flatMap((rule) => (found.has(rule.reason) ? [{ reason: rule.reason, line: found.get(rule.reason) as number }] : []));
+}
+
+/**
+ * Что подсветить в файле архива: служебный файл, личные и временные пути, имена Maestro,
+ * внутренние папки, номера планов. Это повод посмотреть, а не отказ: упаковка не запрещается.
+ */
+export function packHighlights(path: string, data: Buffer, context: { home: string; root: string }): PackHighlight[] {
+  const highlights: PackHighlight[] = [];
+  if (SERVICE_FILE.test(path)) highlights.push({ path, reason: 'служебный файл' });
+  if (data.length > MAX_SCAN_BYTES) return highlights;
+  const text = scanText(data);
+  if (text === null) return highlights;
+  for (const item of contentHighlights(text, context.home, context.root)) highlights.push({ path, ...item });
+  return highlights;
+}
+
 /** Ссылка, ведущая за пределы проекта или по абсолютному пути: в архиве она указала бы на чужое. */
 function symlinkEscapes(path: string, target: string): boolean {
   if (target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target)) return true;
   return posix.normalize(posix.join(posix.dirname(path), target)).startsWith('../');
 }
 
-/** Текст `HANDOVER.md`: обязательный шаг «смените все пароли и ключи» и паспорт из тега. */
+/**
+ * Текст `HANDOVER.md`: паспорт из тега и шаг «смените все пароли и ключи». Шаг заменяется
+ * на «доступов не было», только если в паспорте все разделы о доступах — «не применимо».
+ */
 export function handoverText(input: { projectName: string; tag: string; commit: string; passport: string }): string {
   const passport = input.passport.replace(/\r\n/g, '\n');
   const firstSection = passport.search(/^## /m);
   const body = (firstSection < 0 ? passport : passport.slice(firstSection)).replace(/^## /gm, '### ').trimEnd();
+  const access = passportHasNoAccess(passport)
+    ? ['## Доступы', '', 'Доступов не было, менять нечего: в паспорте все разделы о хостинге, домене, данных, внешних сервисах и переменных окружения — «не применимо».']
+    : ['## Первым делом: смените все пароли и ключи', '', 'Пока проект делали, пароли и ключи знали исполнители. Сразу после передачи смените их все: ключи API, пароли от хостинга, баз данных, домена, почты и внешних сервисов. Новые значения задайте там, где они задаются (раздел «Переменные окружения» ниже), и проверьте, что проект работает.'];
   return [
     `# Передача проекта ${input.projectName}`,
     '',
     `Версия: тег \`${input.tag}\`, коммит \`${input.commit}\`.`,
     '',
-    '## Первым делом: смените все пароли и ключи',
-    '',
-    'Пока проект делали, пароли и ключи знали исполнители. Сразу после передачи смените их все: ключи API, пароли от хостинга, баз данных, домена, почты и внешних сервисов. Новые значения задайте там, где они задаются (раздел «Переменные окружения» ниже), и проверьте, что проект работает.',
+    ...access,
     '',
     '## Паспорт проекта',
     '',
@@ -376,6 +477,22 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
     { path: HANDOVER_PATH, data: handover, mode: 0o100644 },
   ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
+  const context = { home: options.home ?? homedir(), root };
+  const highlights = [
+    ...kept.flatMap((entry) => (entry.symlink ? (SERVICE_FILE.test(entry.path) ? [{ path: entry.path, reason: 'служебный файл' }] : []) : packHighlights(entry.path, entry.data, context))),
+    ...packHighlights(HANDOVER_PATH, handover, context),
+  ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const extra = {
+    ...(highlights.length > 0 ? { highlights } : {}),
+    ...(passportHasNoAccess(passport) ? { noAccess: true as const } : {}),
+  };
+  if (options.dryRun === true) {
+    return {
+      ok: true, findings: [], tag, commit, dryRun: true, files: zipEntries.length,
+      entries: zipEntries.map((entry) => entry.path), ...(notes.length > 0 ? { notes } : {}), ...extra,
+    };
+  }
+
   let zip: Buffer;
   try {
     zip = buildZip(zipEntries, time);
@@ -388,7 +505,7 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
   const failWrite = (cause: unknown): PackResult => ({ ok: false, findings: [finding('pack-write-failed', `Не удалось записать архив: ${cause instanceof Error ? cause.message : String(cause)}`, out)], tag, commit });
   try {
     if (existsSync(out) && (await stat(out)).isDirectory()) out = join(out, defaultArchiveName(root, tag));
-    const summary = { tag, commit, archive: out, sha256, files: zipEntries.length, bytes: zip.length, ...(notes.length > 0 ? { notes } : {}) };
+    const summary = { tag, commit, archive: out, sha256, files: zipEntries.length, bytes: zip.length, ...(notes.length > 0 ? { notes } : {}), ...extra };
     if (existsSync(out)) {
       if ((await stat(out)).isFile() && (await readFile(out)).equals(zip)) return { ok: true, findings: [], reused: true, ...summary };
       return { ok: false, findings: [finding('pack-out-exists', `По этому пути уже есть другой файл: ${out}. Удалите его или укажите другой --out.`, out)], tag, commit };

@@ -438,7 +438,7 @@ const V043_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'maestro/templates/handoff.md': '993f3ca2317caefe208593e099c1d572dcefeb99a463f9672d6cb136ef536c4c',
   'protocols/audit.md': '8b2b7bfcd4816f4ae53a9d022fa9ed963e5b19998c5014402253f132d1bf9135',
   'protocols/build.md': '80e8d1271749330bd44033adcf07c7a9a8dd4986cf8139de26065fe80d4cd20d',
-  'protocols/completion.md': '7f746a80f20fad3e30e99e05d667d2fd5066aa8e406a74ed8e44774dc3894e4c',
+  'protocols/completion.md': '69b27286a31bd1c9923cde64556dbea4c33632cd1526cde910d31550ec566578',
   'protocols/handoff.md': '279b6bddfa6ecd226522815ddc92c39d376013057348a69ee54a2e82b6a2f493',
   'protocols/plan.md': '7acbfbf24bcf5e63419448038a6a27d60e24912827dfbbde93bd5f0199b48597',
   'protocols/wiki.md': '980eb9c5e1013fc3d7c45fd5a30a1c5075f5e575d35b1b17d4bbdd7c50013194',

@@ -14,6 +14,34 @@ import { join, resolve } from 'node:path';
 /** Окно модели по умолчанию. Сессия больше него была бы невозможна — тогда окно 1 000 000. */
 export const DEFAULT_BUDGET = 200_000;
 export const LARGE_WINDOW = 1_000_000;
+
+/** Откуда взято окно: задано `--window`, по названию модели или (модель незнакома) по размеру сессии. */
+export type WindowSource = 'option' | 'model' | 'unknown-model';
+
+/**
+ * Окно модели по её названию в журнале (`message.model`); null — название незнакомо.
+ *
+ * Окно 200 000 — закрытый список прошлого: Claude 3.x, Opus 4 / 4.1 / 4.5, Sonnet 4 / 4.5,
+ * Haiku 4.5 (справочник моделей Anthropic на 06.10.2026). Модели Claude новее — Opus и Sonnet
+ * с 4.6, всё семейство 5 и новее, Fable и Mythos — 1 000 000 (HYPOTHESIS для будущих версий).
+ * Префикс площадки (`anthropic.`, `us.anthropic.`), дата выпуска и `@дата` Vertex отбрасываются.
+ */
+export function windowForModel(model: string): number | null {
+  // `[1m]` — так Claude Code называет модель с явно включённым окном 1 000 000.
+  if (/\[1m\]$/i.test(model.trim())) return LARGE_WINDOW;
+  const name = model.trim().toLowerCase()
+    .replace(/^(?:[a-z]+\.)?anthropic\./, '')
+    .replace(/@\d{8}$/, '')
+    .replace(/-\d{8}(?:-v\d+:\d+)?$/, '');
+  if (/^claude-3(?:-\d)?-(?:opus|sonnet|haiku)$/.test(name)) return DEFAULT_BUDGET;
+  const match = /^claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d))?$/.exec(name);
+  if (match === null) return null;
+  const major = Number(match[2]);
+  const minor = Number(match[3] ?? '0');
+  if (major < 4) return DEFAULT_BUDGET;
+  if (major === 4 && minor <= 5) return DEFAULT_BUDGET;
+  return LARGE_WINDOW;
+}
 /** HYPOTHESIS: пороги подобраны на глаз и уточняются повторным замером. */
 export const FINISH_SLICE_SHARE = 0.4;
 export const NEW_SESSION_SHARE = 0.7;
@@ -29,6 +57,9 @@ export interface ContextReport {
   /** Контекст последнего ответа модели: вход (с кешем) плюс выход. */
   contextTokens?: number;
   budget: number;
+  /** Модель последнего ответа, как она названа в журнале. */
+  model?: string;
+  windowSource?: WindowSource;
   percent?: number;
   level?: ContextLevel;
   /** Сколько токенов модель получила на входе за всю сессию. */
@@ -146,12 +177,15 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
 
   const seen = new Set<string>();
   let last: Usage | null = null;
+  let lastModel: string | undefined;
+  /** Самый большой контекст у каждой модели: после смены модели окно судится по ней одной. */
+  const largestByModel = new Map<string, number>();
   let totalInput = 0;
   let largest = 0;
   let recordedSession: string | undefined;
   for (const line of (await readFile(transcript, 'utf8')).split('\n')) {
     if (line.trim() === '') continue;
-    let entry: { type?: unknown; isSidechain?: unknown; sessionId?: unknown; message?: { id?: unknown; usage?: Usage } };
+    let entry: { type?: unknown; isSidechain?: unknown; sessionId?: unknown; message?: { id?: unknown; model?: unknown; usage?: Usage } };
     try {
       entry = JSON.parse(line) as typeof entry;
     } catch {
@@ -166,7 +200,9 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     // Служебные записи без расхода (`<synthetic>`) не говорят о размере контекста.
     if (size === 0) continue;
     last = usage;
+    lastModel = typeof entry.message?.model === 'string' ? entry.message.model : undefined;
     largest = Math.max(largest, size);
+    largestByModel.set(lastModel ?? '', Math.max(largestByModel.get(lastModel ?? '') ?? 0, size));
     if (seen.has(id)) continue;
     seen.add(id);
     totalInput += count(usage.input_tokens) + count(usage.cache_read_input_tokens) + count(usage.cache_creation_input_tokens);
@@ -175,7 +211,16 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     return { reportVersion: 1, ok: false, budget, transcript, message: 'В журнале сессии пока нет ни одного ответа модели.' };
   }
   const contextTokens = count(last.input_tokens) + count(last.cache_read_input_tokens) + count(last.cache_creation_input_tokens) + count(last.output_tokens);
-  if (options.budget === undefined && largest > DEFAULT_BUDGET) budget = LARGE_WINDOW;
+  // `--window` главнее; иначе окно по модели; незнакомая модель — как раньше, по размеру сессии.
+  const byModel = lastModel === undefined ? null : windowForModel(lastModel);
+  let windowSource: WindowSource = 'option';
+  if (options.budget === undefined) {
+    windowSource = byModel === null ? 'unknown-model' : 'model';
+    budget = byModel ?? DEFAULT_BUDGET;
+    // Сессия больше 200 000 у модели «на 200 000» значит, что у неё включено окно 1 000 000.
+    // Смотрится только эта модель: прежняя модель с большим окном не раздувает окно новой.
+    if ((byModel === null ? largest : largestByModel.get(lastModel ?? '') ?? 0) > budget) budget = LARGE_WINDOW;
+  }
   const share = contextTokens / budget;
   return {
     reportVersion: 1,
@@ -184,6 +229,8 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     ...(recordedSession === undefined ? {} : { sessionId: recordedSession }),
     contextTokens,
     budget,
+    ...(lastModel === undefined ? {} : { model: lastModel }),
+    windowSource,
     percent: Math.round(share * 100),
     level: levelFor(share),
     totalInputTokens: totalInput,

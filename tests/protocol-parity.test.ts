@@ -24,7 +24,8 @@ describe('Phase 3: protocol installation and adapter parity', () => {
       const checksums = await loadChecksums(target);
       expect(manifest.managed).toContainEqual({ path: 'protocols/build.md', kind: 'managed' });
       expect(checksums?.files['protocols/build.md']).toMatch(/^[0-9a-f]{64}$/);
-      expect(manifest.inventory).toContainEqual({ path: 'protocols/lessons.md', ownership: 'managed' });
+      expect(manifest.inventory).toContainEqual({ path: 'protocols/audit.md', ownership: 'managed' });
+      expect(manifest.inventory.map((entry) => entry.path).filter((path) => path.startsWith('protocols/build/'))).toEqual([]);
     }
   });
 

@@ -135,7 +135,7 @@ describe('Phase 2: canonical planning protocol', () => {
   it('протокол честно называет self-review не независимым review и держит один risk-based audit', async () => {
     const text = await template(PROTOCOL);
     expect(text.toLowerCase()).toMatch(/self-review[^.]*не[^.]*независим/);
-    expect(text).toContain('audit-plan.md');
+    expect(text).toContain('(audit.md#VCM-PLAN-AUDIT)');
     expect(text.toLowerCase()).toMatch(/без нового риска|нового риска нет|не запускай[^\n]*повторн/);
   });
 
@@ -158,11 +158,11 @@ describe('Phase 2: canonical planning protocol', () => {
     expect(text).toContain('context incomplete');
   });
 
-  it('build router ведёт к planning gate: неизвестные идут через discovery, активный план даёт slice', async () => {
+  it('build router ведёт к planning gate: неизвестные идут через старт, активный план даёт slice', async () => {
     const router = await template('protocols/build.md');
-    // Точная ссылка, а не подстрока: `audit-plan.md` тоже заканчивается на plan.md.
+    // Точная ссылка, а не подстрока.
     expect(router).toContain('(plan.md)');
-    expect(router.indexOf('(discovery.md)')).toBeLessThan(router.indexOf('(plan.md)'));
+    expect(router.indexOf('(start.md)')).toBeLessThan(router.indexOf('(plan.md)'));
     expect(router.toLowerCase()).toMatch(/slice|порци/);
   });
 });
@@ -187,7 +187,7 @@ describe('Phase 2: тонкие адаптеры Planning Gate', () => {
     expect(text.split('\n').filter((line) => line.trim() !== '').length).toBeLessThanOrEqual(6);
     expect(text).toContain('wiki/hot.md');
     expect(text).toContain('CODE_ALLOWED: NO');
-    for (const duplicated of ['GREENFIELD', 'PROGRAM_APPROVED', 'SPEC DELTA', 'HYPOTHESIS', 'audit-plan.md']) {
+    for (const duplicated of ['GREENFIELD', 'PROGRAM_APPROVED', 'SPEC DELTA', 'HYPOTHESIS', 'VCM-PLAN-AUDIT']) {
       expect(text, duplicated).not.toContain(duplicated);
     }
   });

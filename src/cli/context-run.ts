@@ -1,5 +1,5 @@
 import { FINISH_SLICE_SHARE, measureContext, NEW_SESSION_SHARE } from '../core/context.js';
-import type { ContextLevel } from '../core/context.js';
+import type { ContextLevel, WindowSource } from '../core/context.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
 
@@ -28,6 +28,14 @@ const ADVICE: Readonly<Record<ContextLevel, string>> = {
   'new-session': 'Пора в новую сессию: сделайте передачу дел (/handoff) сейчас и продолжайте в новой.',
 };
 
+/** Откуда взято окно — одной строкой. */
+function windowLine(source: WindowSource | undefined, model: string | undefined, budget: number): string {
+  if (source === 'option') return `Окно задано вручную (--window): ${formatTokens(budget)} ${tokensWord(budget)}.`;
+  if (source === 'model' && model !== undefined) return `Модель ${model} — окно ${formatTokens(budget)} ${tokensWord(budget)}.`;
+  const name = model === undefined ? 'в журнале не названа' : `«${model}» мне незнакома`;
+  return `Модель ${name}: окно взято ${formatTokens(budget)} ${tokensWord(budget)} по размеру сессии. Знаете окно этой модели — задайте его: --window <токены>.`;
+}
+
 export async function executeContextCommand(options: ContextRunOptions, io: CliIo): Promise<number> {
   const report = await measureContext({ root: options.path, ...(options.window === undefined ? {} : { budget: options.window }) });
   if (options.json) {
@@ -40,6 +48,7 @@ export async function executeContextCommand(options: ContextRunOptions, io: CliI
   }
   const tokens = report.contextTokens ?? 0;
   io.out(`Размер сессии: ${formatTokens(tokens)} ${tokensWord(tokens)} (${report.percent}% окна модели в ${formatTokens(report.budget)}).`);
+  io.out(windowLine(report.windowSource, report.model, report.budget));
   io.out(ADVICE[report.level]);
   const total = report.totalInputTokens ?? 0;
   io.out(`За сессию модель получила на вход ${formatTokens(total)} ${tokensWord(total)} (шагов модели: ${report.requests}): каждый шаг заново пересылает всю историю.`);

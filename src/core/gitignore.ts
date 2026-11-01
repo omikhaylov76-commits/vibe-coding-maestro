@@ -18,7 +18,9 @@ export const REQUIRED_GITIGNORE_ENTRIES: readonly string[] = [
   '.claude/settings.local.json',
 ];
 
-const BLOCK_HEADER = `# --- ${PRODUCT_NAME} ---`;
+/** Заголовок блока Maestro в `.gitignore` проекта. */
+export const GITIGNORE_BLOCK_HEADER = `# --- ${PRODUCT_NAME} ---`;
+const BLOCK_HEADER = GITIGNORE_BLOCK_HEADER;
 
 export interface GitignoreMergeResult {
   content: string;

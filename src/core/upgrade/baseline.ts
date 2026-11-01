@@ -189,4 +189,14 @@ export const BASELINE_TEMPLATES: readonly BaselineTemplate[] = [
   { path: 'maestro/inbox/README.md', source: 'registry/baseline/0.4.1/project/maestro/inbox/README.md', sha256: '5c3107b469d1c65d5a9d84132f2b0cfb85804b813ad5b9b65248dc434d6981a3' },
   { path: 'maestro/runbooks/cowork-discovery.md', source: 'registry/baseline/0.4.1/project/maestro/runbooks/cowork-discovery.md', sha256: '1a32c070375783cfa54a3fad5c9644810f6eda37b7cd1a272f811278360b35c4' },
   { path: 'protocols/discovery.md', source: 'registry/baseline/0.4.1/project/protocols/discovery.md', sha256: '20ef8084561a1c93a16003d3dac0426b43bb97b715f445f06ef79dd738e1430a' },
+  // Изменены или убраны в 0.4.3; с 0.2 по 0.4.2 побайтово одинаковы — копия общая.
+  { path: 'protocols/audit.md', source: 'registry/baseline/0.4.2/project/protocols/audit.md', sha256: 'c49f38b83db21af01f0f01552c7e8dc9743cd01c3ad12f3f31940f9cf83f76c6' },
+  { path: 'protocols/seams.md', source: 'registry/baseline/0.4.2/project/protocols/seams.md', sha256: 'c7669b55b5d298cbfea97cd3c2284c9cb33aceacc9504e6e3ae3851e669ff5bd' },
+  { path: 'protocols/lessons.md', source: 'registry/baseline/0.4.2/project/protocols/lessons.md', sha256: '04c94dbed682da746d46271fc2563d1e9ee79f3cd10a60d2d06762e3c1421d0e' },
+  { path: 'protocols/build/step-1-rules.md', source: 'registry/baseline/0.4.2/project/protocols/build/step-1-rules.md', sha256: '4a989545399e0492a9cffe1a88cbbe5ebd972f055f4a2871c33cbad224e46fac' },
+  { path: 'protocols/build/step-2-spec.md', source: 'registry/baseline/0.4.2/project/protocols/build/step-2-spec.md', sha256: '110f58dae0758974f6d15f186249fa1c4c3dd3967210287d28ce86654152e0e8' },
+  { path: 'protocols/build/step-3-architecture.md', source: 'registry/baseline/0.4.2/project/protocols/build/step-3-architecture.md', sha256: 'ea2b0916a8289c0248318a348f992be91a57c8fdc69227029e4f822530dbada1' },
+  { path: 'protocols/build/step-5-feature-loop.md', source: 'registry/baseline/0.4.2/project/protocols/build/step-5-feature-loop.md', sha256: '27856936f0217e02fbd0de8ba9172197fcccb3032037e8555695e156362bc9b0' },
+  { path: 'protocols/build/audit-plan.md', source: 'registry/baseline/0.4.2/project/protocols/build/audit-plan.md', sha256: '1a6cd6e69044a1985822ed28809123d2980a223fb78e39aa63d4f5618bb66a64' },
+  { path: 'protocols/build/audit-phase.md', source: 'registry/baseline/0.4.2/project/protocols/build/audit-phase.md', sha256: 'ac0c1919380516e3c0da09697b2a021a96866016816fb76d7aef2866c8c08f81' },
 ];

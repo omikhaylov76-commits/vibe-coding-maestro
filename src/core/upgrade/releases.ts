@@ -9,7 +9,9 @@
  * Как выпускать новую версию:
  * - шаблоны и inventory не менялись — допишите версию в `versions` последней записи;
  * - изменились — заведите новую запись для новой версии, а в прошлой положите
- *   в `templates` копии изменённых исходников (`registry/baseline/<id>/project/…`).
+ *   в `templates` копии изменённых исходников (`registry/baseline/<id>/project/…`);
+ * - файл Maestro ушёл из состава — внесите его в `REMOVED_PATHS`, а копию его
+ *   исходника положите в `templates` каждой прошлой записи.
  * Тест `tests/upgrade-releases.test.ts` не даст забыть ни то, ни другое.
  */
 
@@ -374,6 +376,87 @@ const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/start.md': '567024859e702424348fb5e4e72c1d09895e34f2d7e25ee2ccf7139369cdb022',
 };
 
+/** Мелкие протоколы, которые 0.4.3 убрал из состава: их текст перенесён в `build.md`, `audit.md` и `wiki.md`. */
+const REMOVED_IN_043: readonly string[] = [
+  'protocols/discovery.md',
+  'protocols/context-budget.md',
+  'protocols/seams.md',
+  'protocols/lessons.md',
+  'protocols/build/step-1-rules.md',
+  'protocols/build/step-2-spec.md',
+  'protocols/build/step-3-architecture.md',
+  'protocols/build/step-5-feature-loop.md',
+  'protocols/build/audit-plan.md',
+  'protocols/build/audit-phase.md',
+];
+
+/** Файлы Maestro, которые 0.4.3 изменил. */
+const CHANGED_IN_043: readonly string[] = [
+  '.claude/agents/code-reviewer.md',
+  '.claude/rules/maestro.md',
+  'maestro/runbooks/cowork-audit.md',
+  'maestro/templates/handoff.md',
+  'protocols/audit.md',
+  'protocols/build.md',
+  'protocols/completion.md',
+  'protocols/handoff.md',
+  'protocols/plan.md',
+  'protocols/start.md',
+  'protocols/wiki.md',
+  'wiki/plans/README.md',
+  'wiki/plans/TEMPLATE.md',
+];
+
+/** Копии шаблонов 0.4.2, изменённых или убранных в 0.4.3. */
+const v042Copy = (path: string): BaselineTemplate => ({
+  path,
+  source: `registry/baseline/0.4.2/project/${path}`,
+  sha256: V042_MANAGED_SHA256[path] as string,
+});
+
+/**
+ * Копии к изменениям 0.4.3 для прошлой версии. Где её исходник совпадает с 0.4.2,
+ * служит общая копия 0.4.2; другой исходник уже лежит своей копией с прошлых
+ * выпусков. Что не пропущен ни один путь, сверяет тест реестра.
+ */
+function copiesFor043(managedSha256: Readonly<Record<string, string>>): BaselineTemplate[] {
+  return [...REMOVED_IN_043, ...CHANGED_IN_043]
+    .filter((path) => managedSha256[path] !== undefined && managedSha256[path] === V042_MANAGED_SHA256[path])
+    .map(v042Copy);
+}
+
+/** Канон 0.4.3: мелкие протоколы вошли в соседние; образец отчёта проверки (Maestro); Icebox (проект). */
+const V043_TEMPLATE_FILES: readonly string[] = [...V042_TEMPLATE_FILES.filter((path) => !REMOVED_IN_043.includes(path)), 'maestro/templates/audit.md'];
+const V043_CONTENT_OWNED_FILES: readonly string[] = [...V042_CONTENT_OWNED_FILES, 'wiki/icebox.md'];
+
+/** Слепок `templates/project` 0.4.3. */
+const V043_MANAGED_SHA256: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(Object.entries(V042_MANAGED_SHA256).filter(([path]) => !REMOVED_IN_043.includes(path))),
+  '.claude/agents/code-reviewer.md': 'b32a19e4e45b1d798e516353c919c07fd278151673cc9e271023946a76bbeb83',
+  '.claude/rules/maestro.md': '60cc809abeaa7163db2b5f9ac146724ee7f3958e26e94a9f9005c1969bf4560b',
+  'maestro/runbooks/cowork-audit.md': 'f1db1fe45606d549700867d62af36f833ca293c6a37823940848c40bca5e65c2',
+  'maestro/templates/audit.md': 'e4a8fece1223ae50ed3b0dea3b133da775bb76a5ad8f5816d79a9f2768e0e382',
+  'maestro/templates/handoff.md': 'df811887e65559cd3caf6305d848294f530a55a7c6f57e0c2bf60e775b1eb60d',
+  'protocols/audit.md': '7176de8ad241d523570037549894fe4b14b1a0657ce5078fee8bef6d853b540d',
+  'protocols/build.md': 'e52fd820ade68099b58ddf984603e2ad522efb74044e08d37dfb0c6658ca1e3b',
+  'protocols/completion.md': '48f29feced0684635ed3a9790c614a5ee1e1999ac8ac1a21c8d74b3814a0b906',
+  'protocols/handoff.md': '279b6bddfa6ecd226522815ddc92c39d376013057348a69ee54a2e82b6a2f493',
+  'protocols/plan.md': 'd748ccac9320d2c57ccf89d818bd9169ddf3ddad3b92df5bfda458a2bcab93a6',
+  'protocols/start.md': '637c52e8657f3b6e8555f83454e3cd0ce64edd0e9043cfc081e9e344d76de405',
+  'protocols/wiki.md': '980eb9c5e1013fc3d7c45fd5a30a1c5075f5e575d35b1b17d4bbdd7c50013194',
+  'wiki/plans/README.md': '669220641c7017fcc861d545d857298fb66cae547a0cf5e2393af3278436d84e',
+  'wiki/plans/TEMPLATE.md': '0bf6d7a70945871cb074d3f6df110a4f1b4cc455ebcceee4a5fcfc93e433b19f',
+};
+
+/**
+ * Файлы Maestro, которые ушли из состава: путь → версия, в которой ушёл.
+ *
+ * Upgrade удаляет такой файл, только если он не тронут: исходник прошлой версии
+ * (копия в её `templates`) и контрольная сумма совпали. Путь, которого здесь нет,
+ * по-прежнему останавливает upgrade: незнакомое удаление не выполняется.
+ */
+export const REMOVED_PATHS: Readonly<Record<string, string>> = Object.fromEntries(REMOVED_IN_043.map((path) => [path, '0.4.3']));
+
 export const RELEASES: readonly Release[] = [
   {
     id: BASELINE_ID,
@@ -392,6 +475,7 @@ export const RELEASES: readonly Release[] = [
       ...['CLAUDE.md', 'AGENTS.md', '.claude/commands/build.md', 'protocols/build.md', 'protocols/plan.md'].map(v03BetaCopy),
       ...CHANGED_IN_030_SAME_SINCE_BETA1.map(v03Beta4Copy),
       ...CHANGED_IN_042_SAME_SINCE_BETA1.map(v041Copy),
+      ...copiesFor043(V03_BETA_MANAGED_SHA256),
     ],
   },
   {
@@ -402,6 +486,7 @@ export const RELEASES: readonly Release[] = [
     templates: [
       ...['CLAUDE.md', 'AGENTS.md', 'protocols/build.md', 'protocols/plan.md', ...CHANGED_IN_030_SAME_SINCE_BETA1].map(v03Beta4Copy),
       ...CHANGED_IN_042_SAME_SINCE_BETA1.map(v041Copy),
+      ...copiesFor043(V03_BETA4_MANAGED_SHA256),
     ],
   },
   {
@@ -417,6 +502,7 @@ export const RELEASES: readonly Release[] = [
       },
       ...CHANGED_IN_040_SAME_SINCE_030.map(v031Copy),
       ...[...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+      ...copiesFor043(V030_MANAGED_SHA256),
     ],
   },
   {
@@ -427,6 +513,7 @@ export const RELEASES: readonly Release[] = [
     templates: [
       ...['.claude/rules/maestro.md', ...CHANGED_IN_040_SAME_SINCE_030].map(v031Copy),
       ...[...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+      ...copiesFor043(V031_MANAGED_SHA256),
     ],
   },
   {
@@ -437,6 +524,7 @@ export const RELEASES: readonly Release[] = [
     templates: [
       ...['.claude/rules/maestro.md', 'protocols/completion.md', 'protocols/handoff.md'].map(v040Copy),
       ...[...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+      ...copiesFor043(V040_MANAGED_SHA256),
     ],
   },
   {
@@ -444,13 +532,23 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.4.1'],
     inventory: v040OwnershipInventory,
     managedSha256: V041_MANAGED_SHA256,
-    templates: ['.claude/rules/maestro.md', ...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+    templates: [
+      ...['.claude/rules/maestro.md', ...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+      ...copiesFor043(V041_MANAGED_SHA256),
+    ],
   },
   {
     id: '0.4.2',
     versions: ['0.4.2'],
     inventory: ownershipInventory(V042_TEMPLATE_FILES, V042_CONTENT_OWNED_FILES),
     managedSha256: V042_MANAGED_SHA256,
+    templates: copiesFor043(V042_MANAGED_SHA256),
+  },
+  {
+    id: '0.4.3',
+    versions: ['0.4.3'],
+    inventory: ownershipInventory(V043_TEMPLATE_FILES, V043_CONTENT_OWNED_FILES),
+    managedSha256: V043_MANAGED_SHA256,
     templates: [],
   },
 ];

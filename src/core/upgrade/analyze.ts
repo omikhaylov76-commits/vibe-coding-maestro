@@ -25,7 +25,7 @@ import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
 import { renderTemplate } from '../template.js';
 import type { TemplateVars } from '../template.js';
 import { compareVersions } from '../version.js';
-import { findRelease, supportedVersions } from './releases.js';
+import { findRelease, REMOVED_PATHS, supportedVersions } from './releases.js';
 import type { Release } from './releases.js';
 import { recoverTemplateVars, templateUses } from '../template-recover.js';
 
@@ -34,6 +34,10 @@ const GITIGNORE_PATH = '.gitignore';
 /** Папка материалов человека и правило «байт в байт» для неё (0.4.2). */
 const INBOX_DIR = 'maestro/inbox';
 const INBOX_GITATTRIBUTES_PATH = `${INBOX_DIR}/.gitattributes`;
+
+/** Страница отложенных идей (0.4.3) и каталог памяти, в котором о ней стоит строка. */
+const ICEBOX_PATH = 'wiki/icebox.md';
+const WIKI_INDEX_PATH = 'wiki/index.md';
 
 /** Версия, с которой README проекта кладут create и upgrade; с неё и дальше удалённый README не возвращается. */
 const README_SINCE = '0.4.2';
@@ -66,6 +70,8 @@ export interface UpgradeAnalysis {
   toVersion: string;
   creates: UpgradeChange[];
   updates: UpgradeChange[];
+  /** Нетронутые файлы Maestro, которых больше нет в составе: upgrade их удалит. */
+  removes: string[];
   unchanged: string[];
   preserves: string[];
   /** Пути, которые переходят от Maestro к проекту: checksum снимается, дальше файл принадлежит проекту. */
@@ -84,7 +90,7 @@ export interface UpgradePlan {
    * Путь → итоговое содержимое. Порядок фиксирован для детерминированной транзакции.
    * `latin1` — байты файла проекта как есть: так `.gitignore` в любой кодировке дописывается, не меняя ни байта своих строк.
    */
-  writes: { path: string; content: string; action: 'create' | 'update'; encoding?: 'latin1' }[];
+  writes: { path: string; content: string; action: 'create' | 'update' | 'remove'; encoding?: 'latin1' }[];
 }
 
 const blocker = (code: string, message: string, path?: string): UpgradeBlocker =>
@@ -100,6 +106,7 @@ function analysis(root: string, status: UpgradeStatus, fromVersion: string | nul
     toVersion: VERSION,
     creates: [],
     updates: [],
+    removes: [],
     unchanged: [],
     preserves: [],
     handedOver: [],
@@ -165,6 +172,13 @@ async function releaseSource(release: Release, relativePath: string): Promise<{ 
       return { blocker: blocker('upgrade-baseline-corrupt', 'Baseline-шаблон пакета не совпадает со своей контрольной суммой и не может быть авторитетом.', copy.source) };
     }
     return { source };
+  }
+  if (!TEMPLATE_FILES.includes(relativePath) && CODE_MANAGED_SOURCES[relativePath] === undefined) {
+    return { blocker: blocker(
+      'upgrade-baseline-drift',
+      `В пакете нет копии этого файла в версии ${release.versions.join(', ')}: без неё upgrade не может доказать, что файл не изменён. Это дефект пакета — сообщите о нём.`,
+      relativePath,
+    ) };
   }
   const source = await currentSource(relativePath);
   if (release.managedSha256[relativePath] !== sha256(source)) {
@@ -271,15 +285,22 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   const blockers: UpgradeBlocker[] = [];
 
   // Полное дерево предшественника: manifest не имеет права выдавать неполную папку за проект.
+  // Ушедший из состава файл исключение: если его уже нет, удалять нечего.
   for (const path of Object.keys(baseline)) {
+    if (!(path in current)) continue;
     if (!await isRegularFile(join(root, path))) {
       blockers.push(blocker('upgrade-incomplete-tree', 'Обязательный путь предыдущего канона отсутствует или не является обычным файлом.', path));
     }
   }
-  // Новый канон обязан быть надмножеством с тем же владением: ни удалять, ни передавать пути этот upgrade не умеет.
+  // Новый канон — надмножество с тем же владением; исключение — файлы Maestro из явного списка
+  // удаляемых. Незнакомое удаление и незнакомая смена владения останавливают upgrade.
+  /** Файлы Maestro, ушедшие из состава: удаляются, только если не тронуты. */
+  const retired: string[] = [];
   for (const [path, ownership] of Object.entries(baseline)) {
-    if (!(path in current)) blockers.push(blocker('upgrade-removal-unsupported', 'Путь предыдущего канона отсутствует в текущем; upgrade ничего не удаляет.', path));
-    else if (current[path] !== ownership && !(ownership === 'managed' && current[path] === 'project-owned')) {
+    if (!(path in current)) {
+      if (ownership === 'managed' && REMOVED_PATHS[path] !== undefined) retired.push(path);
+      else blockers.push(blocker('upgrade-removal-unsupported', 'Путь предыдущего канона отсутствует в текущем, а в списке удаляемых файлов Maestro его нет; незнакомое удаление upgrade не выполняет.', path));
+    } else if (current[path] !== ownership && !(ownership === 'managed' && current[path] === 'project-owned')) {
       blockers.push(blocker('upgrade-ownership-change-unsupported', `Владение путём меняется (${ownership} → ${current[path]}); этот upgrade такого перехода не знает.`, path));
     }
   }
@@ -324,6 +345,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     if (ownership !== 'managed' && ownership !== 'immutable') continue;
     // Пустой маркер каталога: во всех канонах это ноль байт, обновлять нечего.
     if (path.endsWith('/.gitkeep')) continue;
+    if (!(path in current)) continue; // ушедший файл разбирается ниже
     const previous = await releaseSource(release, path);
     if ('blocker' in previous) { blockers.push(previous.blocker); continue; }
     const next = await currentSource(path);
@@ -366,6 +388,39 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       continue;
     }
     affected.push({ path, next, actual });
+  }
+
+  // 1а. Ушедшие файлы Maestro: удаляется только неизменённый рендер прошлой версии;
+  // изменённый — остановка, отсутствующий — пропуск.
+  const removes: string[] = [];
+  for (const path of retired.sort()) {
+    if (await pathHasSymlink(root, path)) {
+      blockers.push(blocker('upgrade-path-symlink', 'Удаляемый путь не должен содержать symbolic link.', path));
+      continue;
+    }
+    if (!await exists(join(root, path))) continue;
+    if (!await isRegularFile(join(root, path))) {
+      blockers.push(blocker('upgrade-removal-not-file', 'На месте удаляемого файла Maestro лежит не обычный файл: upgrade его не трогает.', path));
+      continue;
+    }
+    const previous = await releaseSource(release, path);
+    if ('blocker' in previous) { blockers.push(previous.blocker); continue; }
+    const actual = normalizeEol(await readFile(join(root, path), 'utf8'));
+    const recovered = recoverTemplateVars(previous.source, actual, startingPoint, fromVersion);
+    if (recovered === null) {
+      blockers.push(blocker(
+        'upgrade-removed-modified',
+        `В версии ${REMOVED_PATHS[path]} этот файл Maestro убран из состава, и upgrade удалил бы его, но файл изменён вручную относительно версии ${fromVersion}. Перенесите свои правки в собственный файл проекта и удалите этот (или верните его исходный вид — ${await exists(join(root, '.git')) ? `прежний текст покажет \`git log -p -- ${path}\`` : `исходник лежит в пакете create-vibe-maestro@${fromVersion}`}), затем повторите.`,
+        path,
+      ));
+      continue;
+    }
+    if (!remember(path, recovered)) continue;
+    if (checksums.files[path] !== contentChecksum(path, actual)) {
+      blockers.push(blocker('upgrade-checksum-mismatch', 'Записанная контрольная сумма не совпадает с файлом: metadata проекта противоречива.', path));
+      continue;
+    }
+    removes.push(path);
   }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
 
@@ -426,6 +481,15 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
         blockers.push(blocker(
           'upgrade-command-collision',
           `У проекта уже есть своя команда /${name}, а эта версия Maestro добавляет команду с тем же именем. Upgrade её не перезаписывает: переименуйте свою (например, в .claude/commands/my-${name}.md) и повторите.`,
+          path,
+        ));
+        continue;
+      }
+      if (path.startsWith('maestro/templates/')) {
+        const name = path.slice('maestro/templates/'.length);
+        blockers.push(blocker(
+          'upgrade-template-collision',
+          `У проекта уже есть свой образец maestro/templates/${name}, а эта версия Maestro добавляет образец с тем же именем. Upgrade его не перезаписывает: переименуйте свой (например, в maestro/templates/my-${name}) и повторите.`,
           path,
         ));
         continue;
@@ -505,6 +569,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     writes.push({ path: GITIGNORE_PATH, content: raw.subarray(0, bom).toString('latin1') + gitignore.content, action: 'update', encoding: 'latin1' });
   }
   if (blockers.length > 0) return blockedAt(root, release, fromVersion, blockers);
+  for (const path of removes) writes.push({ path, content: '', action: 'remove' });
 
   // 4. Metadata. Manifest пересобирается по текущему канону; проектные поля переносятся как есть.
   const nextManifest = buildManifest({
@@ -523,6 +588,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   // Суммы существующих файлов сохраняются как есть: upgrade не переоценивает чужие файлы.
   const nextChecksums: Record<string, string> = { ...checksums.files };
   for (const { path } of handover) delete nextChecksums[path];
+  for (const path of retired) delete nextChecksums[path];
   for (const write of writes) {
     if (current[write.path] === 'managed' || current[write.path] === 'immutable') {
       nextChecksums[write.path] = contentChecksum(write.path, write.content);
@@ -533,11 +599,16 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   const result = analysis(root, 'upgradable', fromVersion, [], release.id);
   result.creates = creates;
   result.updates = updates;
+  result.removes = removes;
   result.unchanged = [...unchanged, ...adopted].sort();
   if (creates.some((item) => item.path === INBOX_GITATTRIBUTES_PATH) && await hasMaterials(root)) {
     // Опыт (git 2.54): файл, который git уже видел, после нового правила изменённым не показывается —
     // git не перечитывает его, пока файл не тронут. Переписать его в git байт в байт можно только явно.
     result.notes.push('Материалы, которые уже лежат в maestro/inbox/, git сам не перепишет. Чтобы он хранил их байт в байт, после обновления выполните `git add --renormalize maestro/inbox` и закоммитьте вместе с обновлением. Если файл уже был нормализован (например, взят из свежего клона на другом компьютере), исходные байты есть только в его источнике.');
+  }
+  // Каталог памяти принадлежит проекту: upgrade его не правит, но о новой странице напоминает.
+  if (creates.some((item) => item.path === ICEBOX_PATH) && !(await readFile(join(root, WIKI_INDEX_PATH), 'utf8').catch(() => '')).includes('icebox.md')) {
+    result.notes.push('Появилась страница отложенных идей wiki/icebox.md. Каталог wiki/index.md принадлежит проекту, и upgrade его не правит: допишите в него строку со ссылкой на icebox.md.');
   }
   result.metadata = [MANIFEST_PATH, CHECKSUMS_PATH];
   result.preserves = [

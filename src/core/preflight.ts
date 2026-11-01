@@ -25,6 +25,7 @@ import {
   APPROVAL_REQUIRED_STATUSES,
   isWikiRelativePlanRef,
   planBodyDigest,
+  planDigestMatches,
   validatePlanFrontmatter,
   PLAN_SCALES,
 } from './plan.js';
@@ -160,10 +161,11 @@ export function decideBuildPreflight(state: PreflightState, request: PreflightRe
     });
   }
 
-  return decideForPlan(validation.plan, state.planPath, planBodyDigest(state.planText));
+  return decideForPlan(validation.plan, state.planPath, planBodyDigest(state.planText), planDigestMatches(validation.plan.approvedDigest ?? '', state.planText));
 }
 
-function decideForPlan(plan: PlanDocument, planPath: string, digest: string): PreflightDecision {
+/** `digest` — отпечаток для записи; `digestMatches` — совпал ли записанный (новым способом или прежним). */
+function decideForPlan(plan: PlanDocument, planPath: string, digest: string, digestMatches: boolean): PreflightDecision {
   const findings: PreflightFinding[] = [];
   const at = (code: string, message: string): void => { findings.push(finding('block', code, message, planPath)); };
   let route: PreflightRoute = 'plan';
@@ -177,8 +179,8 @@ function decideForPlan(plan: PlanDocument, planPath: string, digest: string): Pr
     at('preflight-approval-missing', 'У утверждённого плана нет следа человеческого решения.');
     return decision({ plan: planPath, route, planDigest: digest, findings });
   }
-  if (plan.approvedDigest !== null && plan.approvedDigest !== digest) {
-    at('preflight-plan-changed', 'Текст плана изменился после утверждения: покажите изменения человеку; после повторного «план утверждаю» запишите в approved_digest новый отпечаток.');
+  if (plan.approvedDigest !== null && !digestMatches) {
+    at('preflight-plan-changed', 'Текст плана изменился после утверждения: покажите изменения человеку; после его «да» — повторного «план утверждаю» или «да» на правку посреди плана (protocols/plan.md) — запишите в approved_digest новый отпечаток.');
     return decision({ plan: planPath, route: 'human', planDigest: digest, findings });
   }
 

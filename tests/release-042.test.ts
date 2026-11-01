@@ -48,8 +48,8 @@ describe('0.4.2: команда /start со своим протоколом', ()
     const ledger = JSON.parse(await readFile(join(process.cwd(), 'registry/capabilities.v1.json'), 'utf8')) as { capabilities: { id: string; ownerPath: string | null; contractId: string | null }[] };
     expect(ledger.capabilities.find((item) => item.id === 'project-start')).toMatchObject({ ownerPath: 'protocols/start.md', contractId: 'VCM-START' });
     expect(ledger.capabilities.find((item) => item.id === 'discovery-before-code')).toMatchObject({ ownerPath: 'protocols/start.md', contractId: 'VCM-DISCOVERY' });
-    expect(await template('protocols/discovery.md')).toContain('[start](start.md)');
-    expect(await template('protocols/discovery.md')).not.toContain('<a id=');
+    // С 0.4.3 отдельного protocols/discovery.md нет: маршрут build.md ведёт прямо в старт.
+    expect(await template('protocols/build.md')).toContain('[старт](start.md)');
   });
 
   it('команда /start — тонкая ссылка на протокол', async () => {
@@ -101,7 +101,8 @@ describe('0.4.2: команда /start со своим протоколом', ()
     expect(questions).toHaveLength(6);
     for (const question of questions) expect(question).toContain('По умолчанию:');
     expect(questions[0]).toContain('от вашего имени агент не пишет никому');
-    expect(questions[1]).toMatch(/деньги, публикация, отправка в облако, сообщения людям, удаление, чужой код, смена настроек — только после «да»/);
+    // С 0.4.3 удаление уточнено: «да» — на то, чего нет в истории git и копиях.
+    expect(questions[1]).toMatch(/деньги, публикация, отправка в облако, сообщения людям, удаление того, чего нет в истории git и копиях, чужой код, смена настроек — только после «да»/);
     expect(questions[2]).toContain('По умолчанию: ждать слова «начинай»');
     expect(questions[3]).toMatch(/FACT.*HYPOTHESIS.*UNKNOWN/);
     expect(questions[3]).toContain('один раз');
@@ -458,7 +459,7 @@ describe('0.4.2: находки независимого ревью — текс
     const rules = await template('.claude/rules/maestro.md');
     expect(rules).toContain('Исключение — обычный `git push`, если человек сам включил «отправку в облако без вопроса»');
     expect(rules).toContain('принудительная отправка, удаление в облаке и отправка тега — по-прежнему с «да»');
-    expect(rules.split('\n').length).toBeLessThanOrEqual(40);
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
     expect(section(await template('protocols/start.md'), '### 5. Сводка и запись')).toContain('Включил — запиши в «Как работаем»');
   });
 

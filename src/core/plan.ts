@@ -52,12 +52,35 @@ export const PLAN_APPROVAL_DIGEST_KEY = 'approved_digest';
  */
 export const PLAN_DIGEST_KEYS = ['id', 'kind', 'scale', 'mode', 'governance', 'risk', 'profiles', 'sources', 'supersedes'] as const;
 
-/** sha256 утверждённого: классификация из frontmatter плюс текст плана (LF, без хвостовых пробелов). */
+/** Отметка пункта списка `[x]` или `[X]`: в отпечатке она считается `[ ]`, а текст пункта — нет. */
+const CHECKED_ITEM_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm;
+
+/**
+ * sha256 утверждённого: классификация из frontmatter плюс текст плана (LF, без хвостовых
+ * пробелов). Отметки выполненных пунктов не входят: отметить пункт — не изменить план.
+ */
 export function planBodyDigest(text: string): string {
+  return digest(text, (body) => body.replace(CHECKED_ITEM_RE, '$1[ ]'));
+}
+
+/**
+ * Отпечаток 0.3.0–0.4.2, где отметки пунктов ещё входили в текст. Принимается, чтобы
+ * план, утверждённый раньше с отмеченными пунктами, без правок оставался зелёным.
+ */
+export function legacyPlanBodyDigest(text: string): string {
+  return digest(text, (body) => body);
+}
+
+/** Записанный отпечаток совпадает с планом — новым способом или прежним. */
+export function planDigestMatches(approvedDigest: string, text: string): boolean {
+  return approvedDigest === planBodyDigest(text) || approvedDigest === legacyPlanBodyDigest(text);
+}
+
+function digest(text: string, normalizeBody: (body: string) => string): string {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   const meta = match ? frontmatterValues(match[1] ?? '') : {};
   const classification = PLAN_DIGEST_KEYS.map((key) => `${key}: ${meta[key] ?? ''}`).join('\n');
-  const body = text.slice(match ? match[0].length : 0).replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  const body = normalizeBody(text.slice(match ? match[0].length : 0).replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim());
   return createHash('sha256').update(`${classification}\n---\n${body}`).digest('hex');
 }
 

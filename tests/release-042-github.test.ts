@@ -384,7 +384,7 @@ describe('0.4.2: doctor — копия в облаке по локальным �
 
   it('число проблем в выводе doctor не считает пометки info (ревью L3)', async () => {
     const root = await project();
-    await writeFile(join(root, 'protocols/seams.md'), 'правка\n', 'utf8');
+    await writeFile(join(root, 'protocols/status.md'), 'правка\n', 'utf8');
     const { runMaestroCli } = await import('../src/cli/maestro.js');
     const cli = collect();
     expect(await runMaestroCli(['doctor', '--path', root], cli.io)).toBe(1);

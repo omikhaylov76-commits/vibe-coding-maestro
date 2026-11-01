@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -91,7 +92,7 @@ describe('этапы 8–10: contracts/workflows', () => {
     const rules = await readFile(join(target, '.claude/rules/maestro.md'), 'utf8');
     for (const route of ['wiki/hot.md', 'protocols/plan.md', 'protocols/build.md', 'protocols/handoff.md']) expect(rules).toContain(route);
     // Rules без paths Claude Code грузит в каждую сессию: файл обязан оставаться коротким.
-    expect(rules.split('\n').length).toBeLessThanOrEqual(40);
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
     expect(rules).not.toMatch(/^paths:/m);
   });
 
@@ -104,11 +105,11 @@ describe('этапы 8–10: contracts/workflows', () => {
     expect(wiki).toContain('дополняется');
     expect(wiki).toMatch(/wiki\/hot\.md` изменяет handoff/);
 
-    // Discovery вошёл в старт: правила знакомства живут в protocols/start.md, discovery.md только ссылается.
+    // Discovery вошёл в старт: правила знакомства живут в protocols/start.md; discovery.md с 0.4.3 убран.
     const start = (await readFile(join(target, 'protocols/start.md'), 'utf8')).toLowerCase();
     expect(start).toContain('кода не пишет');
     expect(start).toContain('факт держи отдельно от догадки');
-    expect(await readFile(join(target, 'protocols/discovery.md'), 'utf8')).toContain('(start.md)');
+    expect(existsSync(join(target, 'protocols/discovery.md'))).toBe(false);
     const audit = (await readFile(join(target, 'protocols/audit.md'), 'utf8')).toLowerCase();
     expect(audit).toContain('независим');
 

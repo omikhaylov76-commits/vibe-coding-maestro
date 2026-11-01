@@ -47,7 +47,7 @@ function versionFinding(rootInput: string, manifest: Manifest, canonical: boolea
       : info('project-version-newer', `Проект обновлён более новой версией ${projectVersion}, а проверяет ${VERSION}. Точная проверка: ${checkSame}.`, MANIFEST_PATH);
   }
   return order < 0
-    ? error('project-outdated', `Проект создан Vibe Coding Maestro ${projectVersion}, а запущена ${VERSION}: у этих версий разный состав файлов. Проверить проект его версией: ${checkSame}. Обновить проект до ${VERSION}: ${upgrade} (без --apply только показывает изменения).`, MANIFEST_PATH)
+    ? error('project-outdated', `Проект создан Vibe Coding Maestro ${projectVersion}, а запущена ${VERSION}: у этих версий разный состав файлов. Проверить проект его версией: ${checkSame}. Обновить проект до ${VERSION}: ${upgrade} (без --apply только показывает изменения, с --diff — сами правки построчно).`, MANIFEST_PATH)
     : error('project-newer', `Проект создан более новой версией ${projectVersion}, а запущена ${VERSION}. Проверьте проект его версией: ${checkSame}.`, MANIFEST_PATH);
 }
 

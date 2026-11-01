@@ -34,6 +34,7 @@ const NEW_PATHS = [
   '.claude/rules/maestro.md',
   '.claude/rules/project.md',
   '.claude/settings.json',
+  'maestro/inbox/.gitattributes',
   'maestro/runbooks/cowork-plan.md',
   'maestro/templates/adr.md',
   'maestro/templates/handoff.md',
@@ -52,7 +53,7 @@ const NEW_PATHS = [
 const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/plans/0001-starter.md', 'wiki/restore.md'];
 
 /** Managed-файлы, которые остаются за Maestro и обновляются. */
-const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/runbooks/cowork-audit.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/build.md', 'protocols/context-budget.md', 'protocols/discovery.md', 'protocols/handoff.md', 'protocols/wiki.md'];
+const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-audit.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/build.md', 'protocols/context-budget.md', 'protocols/discovery.md', 'protocols/handoff.md', 'protocols/wiki.md'];
 
 /** Бывшие managed-файлы, которые 0.3.0 передаёт проекту: нетронутые получают новый стартовый текст. */
 const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];

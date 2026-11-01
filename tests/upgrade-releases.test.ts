@@ -28,10 +28,10 @@ const PINNED_PATHS = ['.claude/commands/build.md', '.claude/rules/maestro.md', '
 const NEW_IN_040 = ['protocols/completion.md', 'wiki/passport.md'];
 
 /** Новые пути канона 0.4.2: старт проекта и страница восстановления. */
-const NEW_IN_042 = ['.claude/commands/start.md', 'protocols/start.md', 'wiki/restore.md'];
+const NEW_IN_042 = ['.claude/commands/start.md', 'maestro/inbox/.gitattributes', 'protocols/start.md', 'wiki/restore.md'];
 
 /** Файлы Maestro, которые 0.4.2 переписывает на нетронутом проекте любой прошлой версии 0.3 и новее. */
-const UPDATED_IN_042 = ['.claude/commands/plan.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/discovery.md', 'protocols/plan.md'];
+const UPDATED_IN_042 = ['.claude/commands/plan.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/discovery.md', 'protocols/plan.md'];
 
 const union = (...lists: readonly string[][]): string[] => [...new Set(lists.flat())].sort();
 

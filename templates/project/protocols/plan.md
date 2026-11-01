@@ -11,7 +11,7 @@
 - `not_started`, `in_progress` или поля нет — старт не пройден: один раз предложи «старт не пройден — пройдём сейчас?» (`/start`). Согласие — пройди его и вернись сюда. Отказ — запиши `start: skipped` в ту же шапку и спрашивай только то, без чего план не составить.
 - `skipped` — человек уже отказался: старт не предлагай.
 
-Собери вход: текущий разговор, `maestro/inbox/`, `maestro/sources/`, существующий код и тесты только на чтение, `wiki/hot.md`, `wiki/index.md`, `wiki/roadmap.md`, `wiki/concepts/`, `wiki/decisions/`, `wiki/progress/`, а также ограничения, non-goals и ожидаемый результат.
+Собери вход: текущий разговор, материалы человека в `maestro/inbox/`, снимки команды `sources` в `maestro/sources/`, существующий код и тесты только на чтение, `wiki/hot.md`, `wiki/index.md`, `wiki/roadmap.md`, `wiki/concepts/`, `wiki/decisions/`, `wiki/progress/`, а также ограничения, non-goals и ожидаемый результат.
 
 Каждое утверждение получает ровно одну метку:
 

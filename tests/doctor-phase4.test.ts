@@ -37,15 +37,16 @@ describe('Phase 4: versioned deterministic doctor policy', () => {
     const report = await doctorProject(root);
     expect(report).toMatchObject({ reportVersion: 1, ok: true, findings: [] });
 
-    await writeFile(join(root, 'maestro/inbox/note.txt'), 'todo', 'utf8');
+    // С 0.4.2 файлы в maestro/inbox/ — не замечание; пример предупреждения — неразборчивый settings.json.
+    await writeFile(join(root, '.claude/settings.json'), '{ broken', 'utf8');
     await writeFile(join(root, '.env'), 'SECRET=value\n', 'utf8');
     const withFindings = await doctorProject(root);
-    expect(withFindings.findings.find((item) => item.code === 'inbox-not-empty')?.level).toBe('warning');
+    expect(withFindings.findings.find((item) => item.code === 'settings-json-invalid')?.level).toBe('warning');
   });
 
   it('default пропускает warning, strict блокирует тот же неизменный отчёт', async () => {
     const root = await fresh();
-    await writeFile(join(root, 'maestro/inbox/note.txt'), 'todo', 'utf8');
+    await writeFile(join(root, '.claude/settings.json'), '{ broken', 'utf8');
     const normal = await doctorProject(root);
     const strict = await doctorProject(root, { strict: true });
     expect(normal.ok).toBe(true);
@@ -57,7 +58,7 @@ describe('Phase 4: versioned deterministic doctor policy', () => {
     const root = await fresh();
     await mkdir(join(root, 'wiki/audits'), { recursive: true });
     await writeFile(join(root, 'wiki/audits/z.md'), '# malformed\n', 'utf8');
-    await writeFile(join(root, 'maestro/inbox/z.txt'), 'todo', 'utf8');
+    await writeFile(join(root, '.claude/settings.json'), '{ broken', 'utf8');
     await writeFile(join(root, 'wiki/index.md'), 'modified', 'utf8');
     const first = await doctorProject(root);
     const second = await doctorProject(root);
@@ -108,7 +109,7 @@ describe('Phase 4: versioned deterministic doctor policy', () => {
 
   it('doctor --strict блокирует warning, а skills --strict отклоняется парсером', async () => {
     const root = await fresh();
-    await writeFile(join(root, 'maestro/inbox/note.txt'), 'todo', 'utf8');
+    await writeFile(join(root, '.claude/settings.json'), '{ broken', 'utf8');
     const normal = collect();
     const strict = collect();
     expect(await runMaestroCli(['doctor', '--path', root], normal.io)).toBe(0);

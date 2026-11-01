@@ -1,15 +1,20 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
 import { canonicalOwnershipInventory } from '../src/core/inventory.js';
-import { loadManifest } from '../src/core/manifest.js';
+import { loadChecksums, loadManifest } from '../src/core/manifest.js';
 import { isReadmeName } from '../src/core/readme.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8, snapshotTree } from './helpers.js';
 
 afterEach(cleanupTempDirs);
+
+const execFileAsync = promisify(execFile);
+const git = async (cwd: string, ...args: string[]): Promise<string> => (await execFileAsync('git', args, { cwd, encoding: 'utf8' })).stdout;
 
 /** Шаблон пакета с LF: в checkout на Windows он может прийти с CRLF, а init пишет LF. */
 const template = async (path: string): Promise<string> => (await readFile(join(process.cwd(), 'templates/project', path), 'utf8')).replace(/\r\n/g, '\n');
@@ -289,5 +294,81 @@ describe('0.4.2: один первый шаг везде — создание �
     expect(guide).toContain('### `/start`');
     expect(guide).toContain('`not_started` → `in_progress` → `done`');
     expect(guide).toContain('### `wiki/restore.md`');
+  });
+});
+
+describe('0.4.2: материалы без красной проверки', () => {
+  it('файлы в maestro/inbox/ — даже двоичные и в подпапках — не делают doctor --strict красным', async () => {
+    const root = await newProject();
+    await writeFile(join(root, 'maestro/inbox/бриф заказчика.txt'), 'Сделать лендинг\r\n', 'utf8');
+    await writeFile(join(root, 'maestro/inbox/logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]));
+    await mkdir(join(root, 'maestro/inbox/переписка'), { recursive: true });
+    await writeFile(join(root, 'maestro/inbox/переписка/письмо.eml'), 'From: x\n', 'utf8');
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+  });
+
+  it('maestro/sources/ — только для снимков: свой файл там по-прежнему критичен, а сообщение ведёт в inbox', async () => {
+    const root = await newProject();
+    await writeFile(join(root, 'maestro/sources/материал.txt'), 'x\n', 'utf8');
+    const finding = (await doctorProject(root)).findings.find((item) => item.code === 'source-hashes-missing');
+    expect(finding?.level).toBe('critical');
+    expect(finding?.message).toContain('vibe-maestro sources --write');
+    expect(finding?.message).toContain('maestro/inbox/');
+  });
+
+  it('экран создания, inbox README и протокол плана говорят одно и то же', async () => {
+    const readme = await template('maestro/inbox/README.md');
+    expect(readme).toContain('Одно место для ваших материалов');
+    expect(readme).toContain('агент их не правит и не удаляет');
+    expect(readme).toContain('`wiki/concepts/discovery.md` со ссылкой на файл');
+    expect(readme).toContain('`maestro/sources/` — не для материалов: там только снимки команды `sources`');
+    expect(readme).not.toContain('буфер');
+    const plan = section(await template('protocols/plan.md'), '## Stage A — Intake');
+    expect(plan).toContain('материалы человека в `maestro/inbox/`, снимки команды `sources` в `maestro/sources/`');
+    const lines: string[] = [];
+    const { createRenderer } = await import('../src/cli/renderer.js');
+    createRenderer((text) => lines.push(text), { isTty: false, columns: 200, env: { NO_COLOR: '1' }, unicode: false })
+      .success({ action: 'create', target: '/tmp/проект', doctorOk: true });
+    expect(lines.join('')).toContain('Материалы, если есть, положите в maestro/inbox/');
+  });
+});
+
+describe('0.4.2: чужие файлы — байт в байт', () => {
+  it('maestro/inbox/.gitattributes — файл Maestro с правилом -text; его правку запрещает settings.json', async () => {
+    const root = await newProject();
+    expect(await readUtf8(root, 'maestro/inbox/.gitattributes')).toBe('* -text\n');
+    expect(canonicalOwnershipInventory('light')['maestro/inbox/.gitattributes']).toBe('managed');
+    expect((await loadChecksums(root))?.files['maestro/inbox/.gitattributes']).toMatch(/^[0-9a-f]{64}$/);
+    const settings = JSON.parse(await readUtf8(root, '.claude/settings.json')) as { permissions: { deny: string[] } };
+    expect(settings.permissions.deny).toContain('Edit(/maestro/inbox/.gitattributes)');
+    expect(await template('.claude/rules/maestro.md')).toContain('`maestro/inbox/.gitattributes`');
+  });
+
+  it.each(['false', 'true', 'input'])('настоящий git, core.autocrlf=%s: свежий клон отдаёт материалы байт в байт, соседняя папка без правила — нет', async (autocrlf) => {
+    const parent = await makeTempDir('release-042-git-');
+    const root = join(parent, 'проект');
+    expect((await initProject({ target: root, startingPoint: 'materials', git: true, now: FIXED_NOW })).ok).toBe(true);
+    const files: Record<string, Buffer> = {
+      'crlf.txt': Buffer.from('строка один\r\nстрока два\r\n', 'utf8'),
+      'no-newline.csv': Buffer.from('a;b\r\n1;2', 'utf8'),
+      'binary.bin': Buffer.from([0x00, 0x0d, 0x0a, 0xff, 0x0a, 0x0d]),
+    };
+    await mkdir(join(root, 'notes'), { recursive: true });
+    for (const [name, bytes] of Object.entries(files)) {
+      await writeFile(join(root, 'maestro/inbox', name), bytes);
+      await writeFile(join(root, 'notes', name), bytes);
+    }
+    const config = ['-c', `core.autocrlf=${autocrlf}`, '-c', 'user.name=Test', '-c', 'user.email=test@example.com'];
+    await git(root, ...config, 'add', '--', 'maestro/inbox', 'notes');
+    await git(root, ...config, 'commit', '-q', '-m', 'материалы');
+    const clone = join(parent, 'клон');
+    await git(parent, 'clone', '-q', '--config', `core.autocrlf=${autocrlf}`, root, clone);
+    for (const [name, bytes] of Object.entries(files)) {
+      expect((await readFile(join(clone, 'maestro/inbox', name))).equals(bytes), `inbox/${name}`).toBe(true);
+    }
+    // Контроль: без правила корневой `* text=auto eol=lf` нормализует переносы строк.
+    expect((await readFile(join(clone, 'notes/crlf.txt'))).equals(files['crlf.txt'] as Buffer)).toBe(false);
+    // Свой README Maestro внутри inbox (LF) изменённым не становится.
+    expect(await git(root, 'status', '--porcelain', '--', 'maestro/inbox/README.md')).toBe('');
   });
 });

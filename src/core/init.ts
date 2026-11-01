@@ -39,8 +39,20 @@ const GITIGNORE_PATH = '.gitignore';
 const IGNORED_WHEN_EMPTY_CHECK: readonly string[] = ['.git', '.DS_Store'];
 
 /** Шаблон .gitattributes: фиксирует LF для текстовых файлов проекта. */
-const GITATTRIBUTES_PATH = '.gitattributes';
 export const GITATTRIBUTES_CONTENT = '* text=auto eol=lf\n*.md text eol=lf\n*.json text eol=lf\n*.yml text eol=lf\n*.yaml text eol=lf\n';
+
+/**
+ * Материалы человека git хранит байт в байт: `-text` во вложенном `.gitattributes`
+ * перекрывает корневые правила, и свежий клон отдаёт исходные переносы строк.
+ * Отдельный файл, а не строка в корневом: корневой проект мог дописать, и тогда upgrade встал бы.
+ */
+export const INBOX_GITATTRIBUTES_CONTENT = '* -text\n';
+
+/** Managed-файлы, содержимое которых задаёт код, а не шаблон: без подстановок, побайтово. */
+export const CODE_MANAGED_SOURCES: Readonly<Record<string, string>> = {
+  '.gitattributes': GITATTRIBUTES_CONTENT,
+  'maestro/inbox/.gitattributes': INBOX_GITATTRIBUTES_CONTENT,
+};
 
 export interface InitOptions {
   target: string;
@@ -160,7 +172,7 @@ async function recoverProjectVars(
 ): Promise<{ projectName?: string; date?: string }> {
   const found: { projectName?: string; date?: string } = {};
   for (const relativePath of TEMPLATE_FILES) {
-    if (relativePath === GITATTRIBUTES_PATH || checksums[relativePath] === undefined) continue;
+    if (relativePath in CODE_MANAGED_SOURCES || checksums[relativePath] === undefined) continue;
     // Шаблоны пакета на Windows могут прийти с CRLF, а файлы проекта всегда пишутся с LF.
     const source = normalizeEol(await readTemplate(relativePath));
     const uses = templateUses(source);
@@ -470,8 +482,8 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   }
 
   for (const relativePath of TEMPLATE_FILES) {
-    const source = relativePath === GITATTRIBUTES_PATH ? GITATTRIBUTES_CONTENT : await readTemplate(relativePath);
-    await materialize(relativePath, relativePath === GITATTRIBUTES_PATH ? source : renderTemplate(source, vars));
+    const constant = CODE_MANAGED_SOURCES[relativePath];
+    await materialize(relativePath, constant ?? renderTemplate(await readTemplate(relativePath), vars));
   }
 
   for (const relativePath of CONTENT_OWNED_FILES) {

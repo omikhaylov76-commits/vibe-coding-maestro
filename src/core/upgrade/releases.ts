@@ -345,9 +345,10 @@ const v041Copy = (path: string): BaselineTemplate => ({
   sha256: V041_MANAGED_SHA256[path] as string,
 });
 
-/** Файлы, которые 0.4.2 изменил: со времён 0.3 beta (а discovery и runbook — с 0.2) они не менялись. */
+/** Файлы, которые 0.4.2 изменил: со времён 0.3 beta (а discovery, inbox и runbook — с 0.2) они не менялись. */
 export const CHANGED_IN_042_SAME_SINCE_BETA1: readonly string[] = [
   '.claude/commands/plan.md',
+  'maestro/inbox/README.md',
   'maestro/runbooks/cowork-discovery.md',
   'protocols/discovery.md',
 ];
@@ -355,8 +356,8 @@ export const CHANGED_IN_042_SAME_SINCE_BETA1: readonly string[] = [
 /** Файлы, которые 0.4.2 изменил: в 0.3.0 — 0.4.1 они одинаковы. */
 const CHANGED_IN_042_SAME_SINCE_030: readonly string[] = ['protocols/plan.md'];
 
-/** Канон 0.4.2: старт проекта — протокол и команда (Maestro), страница восстановления (проект). */
-const V042_TEMPLATE_FILES: readonly string[] = [...V040_TEMPLATE_FILES, '.claude/commands/start.md', 'protocols/start.md'];
+/** Канон 0.4.2: старт проекта — протокол и команда, материалы байт в байт (Maestro); страница восстановления (проект). */
+const V042_TEMPLATE_FILES: readonly string[] = [...V040_TEMPLATE_FILES, '.claude/commands/start.md', 'protocols/start.md', 'maestro/inbox/.gitattributes'];
 const V042_CONTENT_OWNED_FILES: readonly string[] = [...V040_CONTENT_OWNED_FILES, 'wiki/restore.md'];
 
 /** Слепок `templates/project` 0.4.2. */
@@ -364,10 +365,12 @@ const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...V041_MANAGED_SHA256,
   '.claude/commands/plan.md': '4ddbab1b68f68e967904b959db61355153c7d7877981ee47a9917f02c9e6e84c',
   '.claude/commands/start.md': '47b16629ab303da37232cac345714f8f9ba473e055ca2096579faee2fe74df96',
-  '.claude/rules/maestro.md': '172edd47e177e07cf533f4a8eb19f9df04855b728f3933e089fba8e4e63318c3',
+  '.claude/rules/maestro.md': '60b84ef69b937a6f8bd6a4265a5a0b9539c94dad0fd05a5e479526efb8ffdad4',
+  'maestro/inbox/.gitattributes': '705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da',
+  'maestro/inbox/README.md': '2fbd307347c2504ba7ce369e87ffa224aa630e1d7bf364ab666839a5bb7a4abd',
   'maestro/runbooks/cowork-discovery.md': 'a0b092f87e7a1749f6dda76a9e2cb2de4228cd9d5bcf27f3f89b79e34e3b6bc0',
   'protocols/discovery.md': '2c120e5bb2f118f9749fbe72eecb6ecd93635eddb84e3ce22b9f0de7bbc43374',
-  'protocols/plan.md': '20d8c98cf889146c42ee103a10365a853c388872ff6462d0aabda07ea9089566',
+  'protocols/plan.md': 'abfddeca88e0c91260909e172f7393e3140c6aa871abca0d09491dfa069aacf2',
   'protocols/start.md': '2b852f9c67fcab322c37e4e2a6f9f0d75beeaabba7c69b314307abe7420756d5',
 };
 

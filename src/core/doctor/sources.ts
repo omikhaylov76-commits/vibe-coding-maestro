@@ -42,7 +42,7 @@ export async function checkSources(root: string, findings: DoctorFinding[]): Pro
   }
   if (!existsSync(metadataAbsolute)) {
     const actualPaths = await sourceFiles(root, join(root, SOURCES_DIR), findings);
-    if (actualPaths.length > 0) findings.push(critical('source-hashes-missing', 'Для существующих sources отсутствует metadata с versioned hashes.', metadataPath));
+    if (actualPaths.length > 0) findings.push(critical('source-hashes-missing', 'В maestro/sources/ лежат файлы без снимка: эта папка — только для снимков команды `vibe-maestro sources --write`. Свои материалы кладите в maestro/inbox/ — там они не замечание.', metadataPath));
     return;
   }
   try {

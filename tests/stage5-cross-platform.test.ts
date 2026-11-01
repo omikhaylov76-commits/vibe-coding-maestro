@@ -74,14 +74,13 @@ describe('этап 5: полный механический doctor', () => {
     expect(codes(report)).toContain(expectedCode);
   });
 
-  it('fresh project green; непустой inbox даёт warning', async () => {
+  it('fresh project green; материалы в inbox — не замечание даже в --strict', async () => {
     const root = await makeTempDir();
     await init(root);
     expect(await doctorProject(root)).toMatchObject({ ok: true, findings: [] });
     await writeFile(join(root, 'maestro/inbox/note.txt'), 'todo');
-    const report = await doctorProject(root);
-    expect(report.ok).toBe(true);
-    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'inbox-not-empty', level: 'warning' }));
+    const report = await doctorProject(root, { strict: true });
+    expect(report).toMatchObject({ ok: true, findings: [] });
   });
 
   it('strict UTF-8 и обязательный frontmatter дают findings, не throw', async () => {

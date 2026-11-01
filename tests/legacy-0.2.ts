@@ -1,7 +1,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect } from 'vitest';
-import { GITATTRIBUTES_CONTENT, initProject } from '../src/core/init.js';
+import { CODE_MANAGED_SOURCES, initProject } from '../src/core/init.js';
 import { canonicalOwnershipInventory } from '../src/core/inventory.js';
 import {
   buildManifest,
@@ -60,7 +60,8 @@ const BASELINE_COPIES = new Map(BASELINE_TEMPLATES.map((template) => [template.p
  * `.gitattributes` шаблоном на диске не является: его пишет константа init.
  */
 export async function canonicalManagedSource(path: string): Promise<string> {
-  if (path === '.gitattributes') return GITATTRIBUTES_CONTENT;
+  const constant = CODE_MANAGED_SOURCES[path];
+  if (constant !== undefined) return constant;
   return lf(await readFile(join(templatesDir(), 'project', path), 'utf8'));
 }
 

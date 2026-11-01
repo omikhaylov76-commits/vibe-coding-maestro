@@ -2,7 +2,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { absolutePathHasSymlink, pathHasSymlink } from '../doctor/fs-utils.js';
 import { mergeGitignore } from '../gitignore.js';
-import { GITATTRIBUTES_CONTENT } from '../init.js';
+import { CODE_MANAGED_SOURCES } from '../init.js';
 import { canonicalManagedKind, canonicalOwnershipInventory, CONTENT_OWNED_FILES, TEMPLATE_FILES } from '../inventory.js';
 import type { CanonicalOwnership } from '../inventory.js';
 import {
@@ -127,9 +127,10 @@ async function readTemplate(relativePath: string): Promise<string> {
   return readFile(join(templatesDir(), 'project', relativePath), 'utf8');
 }
 
-/** Исходник managed-пути текущей версии. `.gitattributes` пишет константа init, а не шаблон. */
+/** Исходник managed-пути текущей версии. Оба `.gitattributes` пишет константа init, а не шаблон. */
 async function currentSource(relativePath: string): Promise<string> {
-  if (relativePath === '.gitattributes') return GITATTRIBUTES_CONTENT;
+  const constant = CODE_MANAGED_SOURCES[relativePath];
+  if (constant !== undefined) return constant;
   return normalizeEol(await readTemplate(relativePath));
 }
 
@@ -399,7 +400,10 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       continue;
     }
     let content: string;
-    if (TEMPLATE_FILES.includes(path) || CONTENT_OWNED_FILES.includes(path)) {
+    const constant = CODE_MANAGED_SOURCES[path];
+    if (constant !== undefined) {
+      content = constant;
+    } else if (TEMPLATE_FILES.includes(path) || CONTENT_OWNED_FILES.includes(path)) {
       const source = await readTemplate(path);
       const templateVars = renderVars(source);
       if (templateVars === null) {
@@ -426,7 +430,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       blockers.push(blocker('upgrade-variable-unrecoverable', 'Шаблон требует подстановку, которую нельзя восстановить из проекта; угадывать её нельзя.', path));
       continue;
     }
-    const content = path === '.gitattributes' ? next : renderTemplate(next, templateVars);
+    const content = path in CODE_MANAGED_SOURCES ? next : renderTemplate(next, templateVars);
     if (normalizeEol(content) === actual) {
       unchanged.push(path);
       continue;

@@ -4,6 +4,7 @@ export const TEMPLATE_FILES: readonly string[] = [
   'wiki/plans/README.md',
   'wiki/plans/TEMPLATE.md',
   'maestro/inbox/README.md',
+  'maestro/inbox/.gitattributes',
   'maestro/runbooks/cowork-discovery.md',
   'maestro/runbooks/cowork-audit.md',
   'maestro/runbooks/cowork-plan.md',

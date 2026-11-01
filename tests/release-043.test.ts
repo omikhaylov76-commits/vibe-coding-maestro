@@ -718,6 +718,25 @@ describe('0.4.3: pack — папка, состав до упаковки, под
     expect(handover).toContain('## Доступы');
   });
 
+  it('--dry-run до метки сдачи показывает последний коммит; упаковка без метки по-прежнему отказывает (живой прогон П8)', async () => {
+    const root = await delivered({ 'index.html': '<h1>Сайт</h1>\n' });
+    const { packProject } = await import('../src/core/pack.js');
+    const { readZip } = await import('../src/core/zip.js');
+    const out = join(root, '..', 'early.zip');
+    const dry = await packProject({ root, tag: 'v2.0.0', out, dryRun: true });
+    expect(dry.ok).toBe(true);
+    expect(dry.untagged).toBe(true);
+    expect(existsSync(out)).toBe(false);
+    const cli = collectIo();
+    expect(await runMaestroCli(['pack', '--path', root, '--tag', 'v2.0.0', '--dry-run'], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('Метки v2.0.0 ещё нет: показан состав последнего коммита');
+    expect((await packProject({ root, tag: 'v2.0.0', out })).findings.map((item) => item.code)).toEqual(['pack-tag-missing']);
+    await execGit(root, 'tag', '-a', 'v2.0.0', '-m', 'Сдача');
+    const real = await packProject({ root, tag: 'v2.0.0', out });
+    expect(real.ok).toBe(true);
+    expect(readZip(await readFile(out)).map((entry) => entry.path)).toEqual(dry.entries);
+  });
+
   it('протокол завершения: сначала --dry-run, состав проверяет агент, человеку — итог; упаковка и отправка — по «да»', async () => {
     const completion = await packageText('templates/project/protocols/completion.md');
     expect(completion).toContain('vibe-maestro pack --path . --tag vX.Y.Z --dry-run');

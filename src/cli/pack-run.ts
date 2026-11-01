@@ -54,7 +54,9 @@ export async function executePackCommand(options: PackRunOptions, io: CliIo): Pr
   if (result.dryRun === true) {
     const marks = new Map<string, string[]>();
     for (const item of highlights) marks.set(item.path, [...(marks.get(item.path) ?? []), `${item.reason}${item.line === undefined ? '' : ` (строка ${item.line})`}`]);
-    io.out(`Состав архива тега ${result.tag} (ничего не записано): файлов — ${result.files}.`);
+    io.out(result.untagged === true
+      ? `Метки ${result.tag} ещё нет: показан состав последнего коммита (${(result.commit ?? '').slice(0, 7)}), ничего не записано; файлов — ${result.files}. Метку ставят на этот коммит — архив будет таким же; незакоммиченное в архив не попадёт.`
+      : `Состав архива тега ${result.tag} (ничего не записано): файлов — ${result.files}.`);
     for (const path of result.entries ?? []) io.out(`  ${path}${marks.has(path) ? `  ← ${(marks.get(path) ?? []).join('; ')}` : ''}`);
     for (const note of result.notes ?? []) io.out(note);
     io.out(highlights.length === 0
@@ -62,7 +64,7 @@ export async function executePackCommand(options: PackRunOptions, io: CliIo): Pr
       : `Подсвечено — ${highlights.length}: проверьте и уберите внутреннее до упаковки (правка, коммит, новый тег). Подсветка — предупреждение, упаковку она не запрещает.`);
     io.out(result.noAccess === true
       ? 'HANDOVER.md: доступов не было — в паспорте все разделы о доступах «не применимо», менять заказчику нечего.'
-      : 'HANDOVER.md: первым делом заказчик меняет все пароли и ключи.');
+      : 'HANDOVER.md: первым делом заказчик меняет все пароли и ключи — в разделах паспорта о доступах есть записи. «Доступов не было» пишется, только если в каждом из них ровно «не применимо», без пояснений.');
     io.out(`Упаковать: ${serviceInvocation(VERSION)} pack --path ${quotePathArg(options.path)} --tag ${options.tag}${options.out === undefined ? '' : ` --out ${quotePathArg(options.out)}`} — только после «да» человека.`);
     return EXIT_OK;
   }

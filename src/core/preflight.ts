@@ -180,7 +180,7 @@ function decideForPlan(plan: PlanDocument, planPath: string, digest: string, dig
     return decision({ plan: planPath, route, planDigest: digest, findings });
   }
   if (plan.approvedDigest !== null && !digestMatches) {
-    at('preflight-plan-changed', 'Текст плана изменился после утверждения: покажите изменения человеку; после повторного «план утверждаю» запишите в approved_digest новый отпечаток.');
+    at('preflight-plan-changed', 'Текст плана изменился после утверждения: покажите изменения человеку; после его «да» — повторного «план утверждаю» или «да» на правку посреди плана (protocols/plan.md) — запишите в approved_digest новый отпечаток.');
     return decision({ plan: planPath, route: 'human', planDigest: digest, findings });
   }
 

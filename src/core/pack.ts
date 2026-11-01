@@ -90,6 +90,8 @@ export interface PackResult {
   dryRun?: true;
   /** Пути архива по порядку — только при показе состава. */
   entries?: string[];
+  /** Показ состава без метки: её ещё нет, показан последний коммит (HEAD). */
+  untagged?: true;
   /** В паспорте все разделы о доступах — «не применимо»: `HANDOVER.md` пишет «доступов не было». */
   noAccess?: true;
 }
@@ -402,10 +404,15 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
   }
   if (prefix !== '') return fail(finding('pack-not-git-root', 'Проект должен быть корнем своего Git-репозитория.'));
 
-  let commit: string;
-  try {
-    commit = (await git(root, ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`])).trim();
-  } catch {
+  /** Коммит метки; без метки показ состава берёт последний коммит (HEAD), а упаковка отказывает. */
+  const revision = async (ref: string): Promise<string | null> =>
+    (await git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => '')).trim() || null;
+  const tagged = await revision(`refs/tags/${tag}`);
+  // Состав смотрят до метки: агент убирает внутреннее, и метку ставят один раз, на чистый коммит.
+  const head = tagged === null && options.dryRun === true ? await revision('HEAD') : null;
+  const commit = tagged ?? head;
+  const untagged = tagged === null;
+  if (commit === null) {
     const tags = (await git(root, ['tag', '--list']).catch(() => '')).split('\n').filter((line) => line !== '');
     const known = tags.length === 0 ? 'В проекте пока нет ни одного тега.' : `Есть теги: ${tags.slice(-10).join(', ')}.`;
     return fail(finding('pack-tag-missing', `Тег «${tag}» не найден. ${known} Тег сдачи ставится по протоколу завершения, после «да» человека.`));
@@ -488,7 +495,7 @@ export async function packProject(options: PackOptions): Promise<PackResult> {
   };
   if (options.dryRun === true) {
     return {
-      ok: true, findings: [], tag, commit, dryRun: true, files: zipEntries.length,
+      ok: true, findings: [], tag, commit, dryRun: true, ...(untagged ? { untagged: true as const } : {}), files: zipEntries.length,
       entries: zipEntries.map((entry) => entry.path), ...(notes.length > 0 ? { notes } : {}), ...extra,
     };
   }

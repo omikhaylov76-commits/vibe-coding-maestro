@@ -102,6 +102,9 @@ const FIXTURES_040 = ['0.4.0-light', '0.4.0-standard', '0.4.0-advanced'];
 /** Проекты опубликованного 0.4.1: после них 0.4.2 добавил старт проекта. */
 const FIXTURES_041 = ['0.4.1-light', '0.4.1-standard', '0.4.1-advanced'];
 
+/** Проекты опубликованного 0.4.2: после них 0.4.3 убрал мелкие протоколы и добавил образец отчёта и Icebox. */
+const FIXTURES_042 = ['0.4.2-light', '0.4.2-standard', '0.4.2-advanced'];
+
 /** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
 const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_043_SINCE_030);
 
@@ -203,7 +206,7 @@ describe('реестр опубликованных канонов', () => {
     }
   });
 
-  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
     const data = await fixture(id);
     const release = findRelease(data.version);
     expect(release).toBeDefined();
@@ -764,5 +767,78 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
     const clone = join(await makeTempDir('clone-'), 'клон');
     await run(root, 'clone', '-q', root, clone);
     expect((await readFile(join(clone, 'maestro/inbox/бриф.txt'))).equals(brief)).toBe(true);
+  });
+});
+
+describe('upgrade с опубликованного 0.4.2 на текущую версию', () => {
+  /** Всё, что upgrade с 0.4.2 переписывает на нетронутом проекте: изменения 0.4.3 и закреплённая версия в командах. */
+  const UPDATED_FROM_042 = [
+    '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/handoff.md',
+    'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md', 'protocols/wiki.md',
+    'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
+  ];
+  const OWNED = ['wiki/hot.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'README.md'];
+
+  it.each(FIXTURES_042)('%s: dry-run и --diff ни байта не пишут; удаляются 10 протоколов, приходят образец отчёта и Icebox', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.fromVersion).toBe('0.4.2');
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_043);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_042);
+    expect(analysis.removes).toEqual(REMOVED_IN_043);
+    // README.md не в составе Maestro: upgrade его не называет и не трогает (проверено ниже, при --apply).
+    for (const path of OWNED.filter((item) => item !== 'README.md')) expect(analysis.preserves, path).toContain(path);
+    const cli = collect();
+    expect(await runMaestroCli(['upgrade', '--path', root, '--diff'], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('=== Будет удалено: protocols/seams.md');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it.each(FIXTURES_042)('%s: --apply даёт канон текущей версии, файлы проекта не тронуты, doctor --strict зелёный', async (id) => {
+    const { root, data } = await materialize(id);
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.error).toBeUndefined();
+    expect(result.applied).toBe(true);
+    for (const path of OWNED) expect(await readUtf8(root, path), path).toBe(data.files[path]);
+    for (const path of REMOVED_IN_043) expect(existsSync(join(root, path)), path).toBe(false);
+    expect(existsSync(join(root, 'protocols/build'))).toBe(false);
+    expect(await readUtf8(root, 'maestro/templates/audit.md')).toContain('## Finding AUD-YYYY-MM-DD-slug-F001');
+    expect(await readUtf8(root, 'wiki/icebox.md')).toContain('# Icebox');
+    const fresh = join(await makeTempDir('fresh-042-'), data.folder);
+    expect((await initProject({ target: fresh, name: 'Проект фикстуры', startingPoint: 'idea', depth: data.depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect((await loadManifest(root)).inventory).toEqual((await loadManifest(fresh)).inventory);
+    expect(Object.keys((await loadChecksums(root))?.files ?? {}).sort()).toEqual(Object.keys((await loadChecksums(fresh))?.files ?? {}).sort());
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await analyzeUpgrade(root)).analysis.status).toBe('current');
+  });
+
+  it('свой maestro/templates/audit.md: понятная остановка с советом переименовать, ни байта не записано', async () => {
+    const { root } = await materialize('0.4.2-standard');
+    await writeFile(join(root, 'maestro/templates/audit.md'), '# Мой образец отчёта\n', 'utf8');
+    const before = await snapshotTree(root);
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.ok).toBe(false);
+    expect(result.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-template-collision', path: 'maestro/templates/audit.md' })]);
+    expect(result.analysis.blockers[0]?.message).toContain('переименуйте свой');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it('утверждённый план с отпечатком 0.4.2 после upgrade остаётся зелёным', async () => {
+    const { root } = await materialize('0.4.2-standard');
+    const { legacyPlanBodyDigest } = await import('../src/core/plan.js');
+    const path = 'wiki/plans/0001-starter.md';
+    let text = await readUtf8(root, path);
+    text = text.replace(/^status: .*$/m, 'status: approved').replace(/^approved_by: .*$/m, 'approved_by: Человек').replace(/^approved_at: .*$/m, 'approved_at: 2026-11-01')
+      .replace(/^blocking_questions: .*$/m, 'blocking_questions: 0').replace(/^current_slice: .*$/m, 'current_slice: 01-start')
+      .replace('1. Пройти `/start` — знакомство с задачей.', '- [x] Пройти `/start` — знакомство с задачей.');
+    text = text.replace(/^(approved_at: .*)$/m, `$1\napproved_digest: ${legacyPlanBodyDigest(text)}`);
+    await writeFile(join(root, path), text, 'utf8');
+    await writeFile(join(root, 'wiki/hot.md'), (await readUtf8(root, 'wiki/hot.md')).replace(/^active_plan: .*$/m, 'active_plan: plans/0001-starter.md'), 'utf8');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    const cli = collect();
+    expect(await runMaestroCli(['preflight', '--path', root], cli.io)).toBe(0);
   });
 });

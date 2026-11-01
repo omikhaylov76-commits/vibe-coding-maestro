@@ -481,6 +481,15 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
         ));
         continue;
       }
+      if (path.startsWith('maestro/templates/')) {
+        const name = path.slice('maestro/templates/'.length);
+        blockers.push(blocker(
+          'upgrade-template-collision',
+          `У проекта уже есть свой образец maestro/templates/${name}, а эта версия Maestro добавляет образец с тем же именем. Upgrade его не перезаписывает: переименуйте свой (например, в maestro/templates/my-${name}) и повторите.`,
+          path,
+        ));
+        continue;
+      }
       blockers.push(blocker('upgrade-path-collision', 'Добавляемый путь уже занят: upgrade не перезаписывает существующее содержимое.', path));
       continue;
     }

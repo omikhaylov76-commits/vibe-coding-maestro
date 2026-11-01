@@ -99,8 +99,8 @@ function localLinks(markdown: string): { target: string; anchor: string | null }
 }
 
 describe('Phase 5: версия публикуется одинаково везде', () => {
-  it('package, lock, runtime и документация называют одну версию 0.4.2', async () => {
-    const expected = '0.4.2';
+  it('package, lock, runtime и документация называют одну версию 0.4.3', async () => {
+    const expected = '0.4.3';
     const pkg = JSON.parse(await doc('package.json')) as { version: string };
     const lock = JSON.parse(await doc('package-lock.json')) as { version: string; packages: Record<string, { version: string }> };
     expect(pkg.version).toBe(expected);

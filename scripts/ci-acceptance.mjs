@@ -69,7 +69,8 @@ try {
   await access(join(installedRoot, 'docs/THREAT_MODEL.md'));
   await access(join(installedRoot, 'docs/assets/quick-demo.gif'));
   await access(join(installedRoot, 'templates/project/protocols/build.md'));
-  await access(join(installedRoot, 'templates/project/protocols/build/step-1-rules.md'));
+  // С 0.4.3 правила работы — разделы build.md; копии убранных протоколов для upgrade — только в registry/baseline.
+  await access(join(installedRoot, 'registry/baseline/0.4.2/project/protocols/build/step-1-rules.md'));
   // Planning Gate: canonical owner и оба тонких адаптера обязаны доехать до tarball.
   const planningGateFiles = ['protocols/plan.md', '.claude/commands/plan.md', 'maestro/runbooks/cowork-plan.md'];
   for (const path of planningGateFiles) await access(join(installedRoot, 'templates/project', path));
@@ -239,7 +240,7 @@ status: waived
   assert.equal(waivedDoctor.status, 1, 'packed doctor must not allow waived to hide a critical finding');
   assert.ok(JSON.parse(waivedDoctor.stdout).findings.some((finding) => finding.code === 'audit-malformed' && finding.path === 'wiki/audits/waived.md'), 'packed doctor must reject waived audit status');
 
-  const protocolPath = join(installDir, strictProject, 'protocols/build/step-1-rules.md');
+  const protocolPath = join(installDir, strictProject, 'protocols/build.md');
   const protocol = await readFile(protocolPath, 'utf8');
   await writeFile(protocolPath, protocol.replace('<a id="VCM-HUMAN-AUTHORITY"></a>', ''), 'utf8');
   const drift = JSON.parse(runResult(process.execPath, [installedMaestro, 'doctor', '--path', strictProject, '--json'], installDir).stdout);

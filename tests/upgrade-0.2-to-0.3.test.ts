@@ -20,7 +20,7 @@ import {
   baselineOwnershipInventory,
 } from '../src/core/upgrade/baseline.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8, sha256, snapshotTree } from './helpers.js';
-import { baseline02Source, canonicalManagedSource, makeLegacy02Project } from './legacy-0.2.js';
+import { baseline02Source, currentManagedSource, makeLegacy02Project } from './legacy-0.2.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,7 +53,14 @@ const NEW_PATHS = [
 const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/plans/0001-starter.md', 'wiki/restore.md'];
 
 /** Managed-файлы, которые остаются за Maestro и обновляются. */
-const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-audit.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/build.md', 'protocols/context-budget.md', 'protocols/discovery.md', 'protocols/handoff.md', 'protocols/wiki.md'];
+const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-audit.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/wiki.md'];
+
+/** Мелкие протоколы, которые 0.4.3 убрал из состава: нетронутые upgrade удаляет. */
+const REMOVED = [
+  'protocols/build/audit-phase.md', 'protocols/build/audit-plan.md', 'protocols/build/step-1-rules.md', 'protocols/build/step-2-spec.md',
+  'protocols/build/step-3-architecture.md', 'protocols/build/step-5-feature-loop.md', 'protocols/context-budget.md', 'protocols/discovery.md',
+  'protocols/lessons.md', 'protocols/seams.md',
+];
 
 /** Бывшие managed-файлы, которые 0.3.0 передаёт проекту: нетронутые получают новый стартовый текст. */
 const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
@@ -86,7 +93,8 @@ describe('0.3 Phase 3: baseline 0.2 не дрейфует', () => {
   it('BASELINE_TEMPLATES перечисляет ровно те managed-пути, чьё содержимое 0.3 изменил', async () => {
     const changed: string[] = [];
     for (const path of BASELINE_TEMPLATE_FILES) {
-      if (sha256(await canonicalManagedSource(path)) !== BASELINE_MANAGED_SHA256[path]) changed.push(path);
+      const current = await currentManagedSource(path);
+      if (current === null || sha256(current) !== BASELINE_MANAGED_SHA256[path]) changed.push(path);
     }
     expect(changed.sort()).toEqual(BASELINE_TEMPLATES.map((template) => template.path).sort());
   });
@@ -97,7 +105,7 @@ describe('0.3 Phase 3: baseline 0.2 не дрейфует', () => {
       expect(sha256(source), template.path).toBe(template.sha256);
       expect(template.sha256, template.path).toBe(BASELINE_MANAGED_SHA256[template.path]);
       // Копия обязана быть именно прошлым содержимым, а не текущим шаблоном.
-      expect(source, template.path).not.toBe(await canonicalManagedSource(template.path));
+      expect(source, template.path).not.toBe(await currentManagedSource(template.path));
     }
   });
 
@@ -153,6 +161,7 @@ describe('0.3 Phase 3: analyzer не пишет ни байта', () => {
     expect(analysis.blockers).toEqual([]);
     expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_PATHS);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_PATHS);
+    expect(analysis.removes).toEqual(REMOVED);
     expect(analysis.handedOver).toEqual(HANDED_OVER);
     expect(analysis.preserves).toContain('wiki/hot.md');
     expect(analysis.preserves).toContain('.gitignore');
@@ -199,8 +208,10 @@ describe('0.3 Phase 3: применение upgrade', () => {
     expect(result.applied).toBe(true);
     expect(result.createdFiles.sort()).toEqual(NEW_PATHS);
     expect(result.updatedFiles.sort()).toEqual([...UPDATED_PATHS, '.maestro/checksums.json', '.maestro/manifest.json'].sort());
+    expect(result.removedFiles).toEqual(REMOVED);
 
     for (const path of NEW_PATHS) expect(existsSync(join(legacy.root, path)), path).toBe(true);
+    for (const path of REMOVED) expect(existsSync(join(legacy.root, path)), path).toBe(false);
     for (const [path, content] of Object.entries(preserved)) {
       expect(await readUtf8(legacy.root, path), path).toBe(content);
     }
@@ -234,7 +245,7 @@ describe('0.3 Phase 3: применение upgrade', () => {
       expect(checksums?.files[path], path).toMatch(/^[0-9a-f]{64}$/);
     }
     // Файлы проекта контрольной суммы Maestro не получают, а переданные теряют её.
-    for (const path of [...NEW_PROJECT_OWNED, ...HANDED_OVER]) expect(checksums?.files[path], path).toBeUndefined();
+    for (const path of [...NEW_PROJECT_OWNED, ...HANDED_OVER, ...REMOVED]) expect(checksums?.files[path], path).toBeUndefined();
   });
 
   it('сохраняет подстановки проекта в добавленных и обновлённых файлах', async () => {
@@ -286,7 +297,7 @@ describe('0.3 Phase 3: применение upgrade', () => {
     // Без trim: у порцелана значимы ведущие пробелы кода состояния.
     const raw = (await execFileAsync('git', ['status', '--porcelain', '-uall'], { cwd: legacy.root })).stdout;
     const status = raw.split('\n').filter((line) => line !== '').map((line) => line.slice(3).replace(/"/g, ''));
-    expect(status.sort()).toEqual([...NEW_PATHS, ...UPDATED_PATHS, '.maestro/checksums.json', '.maestro/manifest.json'].sort());
+    expect(status.sort()).toEqual([...NEW_PATHS, ...UPDATED_PATHS, ...REMOVED, '.maestro/checksums.json', '.maestro/manifest.json'].sort());
   });
 });
 
@@ -393,6 +404,17 @@ describe('0.3 Phase 3: конфликты блокируют весь upgrade', 
     const result = await upgradeProject(legacy.root, { apply: true });
     expect(result.ok).toBe(false);
     expect(result.analysis.blockers).toContainEqual(expect.objectContaining({ code: 'upgrade-managed-modified', path }));
+    expect(await snapshotTree(legacy.root)).toEqual(before);
+  });
+
+  it.each(REMOVED)('изменённый удаляемый протокол %s не удаляется и останавливает upgrade', async (path) => {
+    const legacy = await makeLegacy02Project();
+    await writeFile(join(legacy.root, path), `${await readUtf8(legacy.root, path)}\nМоя строка.\n`, 'utf8');
+    const before = await snapshotTree(legacy.root);
+
+    const result = await upgradeProject(legacy.root, { apply: true });
+    expect(result.ok).toBe(false);
+    expect(result.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-removed-modified', path })]);
     expect(await snapshotTree(legacy.root)).toEqual(before);
   });
 

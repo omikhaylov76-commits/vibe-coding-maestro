@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.4.2 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.4.3 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 

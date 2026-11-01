@@ -15,7 +15,7 @@
 6. Архив для заказчика — после «да» человека: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro pack --path . --tag vX.Y.Z`. Команда берёт всё из тега, не кладёт в архив `wiki/`, `maestro/`, `.claude/`, `protocols/`, `.maestro/`, `CLAUDE.md`, `AGENTS.md`, добавляет `HANDOVER.md` с паспортом и шагом «смените все пароли и ключи» и отказывает при секретах и неполном паспорте. Покажи человеку путь и размер архива; отправка заказчику — отдельное «да».
 7. Итоговая передача дел по [handoff](handoff.md): что сдано, где лежит, что осталось на стороне заказчика.
 8. План закрыт: `status: completed` в плане, `active_plan: none` в `wiki/hot.md`.
-9. Уроки записаны: одна запись в `wiki/log.md`, для advanced — по [lessons](lessons.md).
+9. Уроки записаны: одна запись в `wiki/log.md`, для advanced — по [lessons](wiki.md#VCM-LESSONS).
 
 ### Закрытие внутреннего проекта без сдачи
 

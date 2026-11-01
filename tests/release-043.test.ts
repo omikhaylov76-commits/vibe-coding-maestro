@@ -1,11 +1,17 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { doctorProject } from '../src/core/doctor.js';
+import { canonicalOwnershipInventory } from '../src/core/inventory.js';
 import { analyzeUpgrade } from '../src/core/upgrade/index.js';
-import { cleanupTempDirs, snapshotTree } from './helpers.js';
+import { REMOVED_PATHS } from '../src/core/upgrade/releases.js';
+import { cleanupTempDirs, listFiles, snapshotTree } from './helpers.js';
 import { collectIo, materializePublished } from './published.js';
+
+/** Файл пакета с LF: в checkout на Windows он может прийти с CRLF. */
+const packageText = async (path: string): Promise<string> => (await readFile(join(process.cwd(), path), 'utf8')).replace(/\r\n/g, '\n');
 
 afterEach(cleanupTempDirs);
 
@@ -110,5 +116,62 @@ describe('0.4.3: upgrade --diff показывает сами правки', () 
     const report = await doctorProject(root);
     const outdated = report.findings.find((item) => item.code === 'project-outdated');
     expect(outdated?.message).toContain('с --diff — сами правки построчно');
+  });
+});
+
+/** Ссылки Markdown сравниваются по тексту: адрес переехавшего раздела другой. */
+const withoutLinkTargets = (text: string): string => text.replace(/\]\([^)]*\)/g, ']');
+
+describe('0.4.3: мелкие протоколы вошли в соседние', () => {
+  const removed = Object.keys(REMOVED_PATHS).sort();
+
+  it('убраны ровно 10 протоколов: в шаблоне и составе их нет', async () => {
+    expect(removed).toEqual([
+      'protocols/build/audit-phase.md', 'protocols/build/audit-plan.md', 'protocols/build/step-1-rules.md', 'protocols/build/step-2-spec.md',
+      'protocols/build/step-3-architecture.md', 'protocols/build/step-5-feature-loop.md', 'protocols/context-budget.md', 'protocols/discovery.md',
+      'protocols/lessons.md', 'protocols/seams.md',
+    ]);
+    for (const path of removed) {
+      expect(existsSync(join(process.cwd(), 'templates/project', path)), path).toBe(false);
+      for (const depth of ['light', 'standard', 'advanced'] as const) expect(canonicalOwnershipInventory(depth)[path], `${depth}: ${path}`).toBeUndefined();
+    }
+    expect(existsSync(join(process.cwd(), 'templates/project/protocols/build'))).toBe(false);
+    expect((await listFiles(join(process.cwd(), 'templates/project/protocols'))).sort()).toEqual(
+      ['audit.md', 'build.md', 'completion.md', 'handoff.md', 'plan.md', 'start.md', 'status.md', 'wiki.md'],
+    );
+  });
+
+  it('каждый раздел с якорем переехал дословно к владельцу из реестра', async () => {
+    const ledger = JSON.parse(await packageText('registry/capabilities.v1.json')) as { capabilities: { ownerPath: string | null; contractId: string | null }[] };
+    const owners = new Map(ledger.capabilities.map((item) => [item.contractId, item.ownerPath]));
+    let sections = 0;
+    for (const path of removed) {
+      const old = await packageText(`registry/baseline/0.4.2/project/${path}`);
+      // Раздел: якорь, заголовок и абзац до пустой строки.
+      for (const match of old.matchAll(/^(<a id="(VCM-[A-Z0-9-]+)"><\/a>\n## [^\n]+\n[^\n]+(?:\n[^\n]+)*)/gm)) {
+        const id = match[2] as string;
+        const owner = owners.get(id);
+        expect(owner, id).toMatch(/^protocols\/(build|audit|wiki)\.md$/);
+        const text = withoutLinkTargets(await packageText(`templates/project/${owner}`));
+        expect(text, `${id} в ${owner}`).toContain(withoutLinkTargets(match[1] as string));
+        sections += 1;
+      }
+    }
+    // discovery.md с 0.4.2 только ссылался на старт: якорей в нём не было.
+    expect(sections).toBe(19);
+  });
+
+  it('в шаблоне нет ссылок и путей на убранные протоколы', async () => {
+    const root = join(process.cwd(), 'templates/project');
+    for (const file of (await listFiles(root)).filter((path) => /\.(md|json)$/.test(path))) {
+      const text = await packageText(`templates/project/${file}`);
+      for (const match of text.matchAll(/\]\(([^)#\s]+)(?:#[^)]*)?\)/g)) {
+        const target = posix.normalize(posix.join(posix.dirname(file), match[1] as string));
+        expect(removed, `${file}: ссылка ${match[1]}`).not.toContain(target);
+        if (!/^[a-z]+:/.test(match[1] as string)) expect(existsSync(join(root, target)), `${file}: битая ссылка ${match[1]}`).toBe(true);
+      }
+      for (const path of removed) expect(text, `${file}: ${path}`).not.toContain(path);
+      expect(text, file).not.toContain('protocols/build/');
+    }
   });
 });

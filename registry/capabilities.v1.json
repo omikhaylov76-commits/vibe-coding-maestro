@@ -4,7 +4,7 @@
     {
       "id": "human-authority",
       "status": "keep",
-      "ownerPath": "protocols/build/step-1-rules.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-HUMAN-AUTHORITY",
       "depths": [
         "light",
@@ -16,7 +16,7 @@
     {
       "id": "destructive-confirmation",
       "status": "keep",
-      "ownerPath": "protocols/build/step-1-rules.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-DESTRUCTIVE-CONFIRMATION",
       "depths": [
         "light",
@@ -28,7 +28,7 @@
     {
       "id": "role-capability-declaration",
       "status": "keep",
-      "ownerPath": "protocols/build/step-1-rules.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-ROLE-CAPABILITIES",
       "depths": [
         "light",
@@ -40,7 +40,7 @@
     {
       "id": "clarification-gate",
       "status": "keep",
-      "ownerPath": "protocols/build/step-1-rules.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-CLARIFICATION",
       "depths": [
         "light",
@@ -52,7 +52,7 @@
     {
       "id": "constitution-check",
       "status": "adapt",
-      "ownerPath": "protocols/build/step-2-spec.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-CONSTITUTION",
       "depths": [
         "light",
@@ -64,7 +64,7 @@
     {
       "id": "spec-delta",
       "status": "keep",
-      "ownerPath": "protocols/build/step-2-spec.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-SPEC-DELTA",
       "depths": [
         "light",
@@ -76,7 +76,7 @@
     {
       "id": "complexity-tracking",
       "status": "adapt",
-      "ownerPath": "protocols/build/step-3-architecture.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-COMPLEXITY",
       "depths": [
         "standard",
@@ -87,7 +87,7 @@
     {
       "id": "design-before-code",
       "status": "keep",
-      "ownerPath": "protocols/build/step-3-architecture.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-DESIGN-BEFORE-CODE",
       "depths": [
         "standard",
@@ -98,7 +98,7 @@
     {
       "id": "seam-analysis",
       "status": "keep",
-      "ownerPath": "protocols/seams.md",
+      "ownerPath": "protocols/audit.md",
       "contractId": "VCM-SEAMS",
       "depths": [
         "advanced"
@@ -108,7 +108,7 @@
     {
       "id": "task-context-capsule",
       "status": "keep",
-      "ownerPath": "protocols/context-budget.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-TASK-CAPSULE",
       "depths": [
         "light",
@@ -120,7 +120,7 @@
     {
       "id": "context-budget",
       "status": "adapt",
-      "ownerPath": "protocols/context-budget.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-CONTEXT-BUDGET",
       "depths": [
         "light",
@@ -132,7 +132,7 @@
     {
       "id": "tdd-feature-loop",
       "status": "keep",
-      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-TDD-LOOP",
       "depths": [
         "light",
@@ -144,7 +144,7 @@
     {
       "id": "live-evidence",
       "status": "keep",
-      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-LIVE-EVIDENCE",
       "depths": [
         "light",
@@ -156,7 +156,7 @@
     {
       "id": "deterministic-verification",
       "status": "keep",
-      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-DETERMINISTIC-VERIFICATION",
       "depths": [
         "light",
@@ -168,7 +168,7 @@
     {
       "id": "quality-gate",
       "status": "keep",
-      "ownerPath": "protocols/build/step-5-feature-loop.md",
+      "ownerPath": "protocols/build.md",
       "contractId": "VCM-QUALITY-GATE",
       "depths": [
         "light",
@@ -180,7 +180,7 @@
     {
       "id": "plan-audit",
       "status": "keep",
-      "ownerPath": "protocols/build/audit-plan.md",
+      "ownerPath": "protocols/audit.md",
       "contractId": "VCM-PLAN-AUDIT",
       "depths": [
         "standard",
@@ -202,7 +202,7 @@
     {
       "id": "advanced-council",
       "status": "adapt",
-      "ownerPath": "protocols/build/audit-phase.md",
+      "ownerPath": "protocols/audit.md",
       "contractId": "VCM-ADVANCED-COUNCIL",
       "depths": [
         "advanced"
@@ -284,7 +284,7 @@
     {
       "id": "evidence-lessons",
       "status": "adapt",
-      "ownerPath": "protocols/lessons.md",
+      "ownerPath": "protocols/wiki.md",
       "contractId": "VCM-LESSONS",
       "depths": [
         "advanced"
@@ -294,7 +294,7 @@
     {
       "id": "retrospective",
       "status": "adapt",
-      "ownerPath": "protocols/lessons.md",
+      "ownerPath": "protocols/wiki.md",
       "contractId": "VCM-RETROSPECTIVE",
       "depths": [
         "advanced"

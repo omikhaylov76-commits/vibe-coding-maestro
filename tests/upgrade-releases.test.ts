@@ -17,7 +17,7 @@ import { analyzeUpgrade, STAGING_DIR, upgradeProject } from '../src/core/upgrade
 import { findRelease, RELEASES, supportedVersions } from '../src/core/upgrade/releases.js';
 import { compareVersions } from '../src/core/version.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8, sha256, snapshotTree } from './helpers.js';
-import { canonicalManagedSource, makeLegacy02Project } from './legacy-0.2.js';
+import { canonicalManagedSource, currentManagedSource, makeLegacy02Project } from './legacy-0.2.js';
 
 afterEach(cleanupTempDirs);
 
@@ -34,10 +34,20 @@ const NEW_IN_040 = ['protocols/completion.md', 'wiki/passport.md'];
 /** Новые пути 0.4.2: старт проекта, правило для материалов, страница восстановления и README (его нет ни в одной фикстуре). */
 const NEW_IN_042 = ['.claude/commands/start.md', 'README.md', 'maestro/inbox/.gitattributes', 'protocols/start.md', 'wiki/restore.md'];
 
-/** Файлы Maestro, которые 0.4.2 переписывает на нетронутом проекте любой прошлой версии 0.3 и новее. */
-const UPDATED_IN_042 = ['.claude/commands/plan.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/discovery.md', 'protocols/plan.md'];
+/** Файлы Maestro, которые 0.4.2 переписывает на нетронутом проекте любой прошлой версии 0.3 и новее (discovery.md 0.4.3 убрал). */
+const UPDATED_IN_042 = ['.claude/commands/plan.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/plan.md'];
+
+/** Мелкие протоколы, которые 0.4.3 убрал из состава: upgrade с любой прошлой версии их удаляет. */
+const REMOVED_IN_043 = [
+  'protocols/build/audit-phase.md', 'protocols/build/audit-plan.md', 'protocols/build/step-1-rules.md', 'protocols/build/step-2-spec.md',
+  'protocols/build/step-3-architecture.md', 'protocols/build/step-5-feature-loop.md', 'protocols/context-budget.md', 'protocols/discovery.md',
+  'protocols/lessons.md', 'protocols/seams.md',
+];
 
 const union = (...lists: readonly string[][]): string[] => [...new Set(lists.flat())].sort();
+
+/** Файлы Maestro, которые 0.4.3 переписывает на нетронутом проекте любой прошлой версии (completion.md — с 0.4.0). */
+const UPDATED_IN_043 = union(['protocols/audit.md', 'protocols/build.md', 'protocols/plan.md', 'protocols/wiki.md'], UPDATED_IN_042);
 
 /** Новые пути текущего канона относительно 0.3 beta. */
 const NEW_SINCE_BETA = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', ...NEW_IN_040, ...NEW_IN_042].sort();
@@ -53,9 +63,9 @@ const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
 
 /** Всё, что upgrade с 0.3 beta переписывает на нетронутом проекте. */
 const UPDATED_FROM_BETA = union([
-  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md', 'protocols/context-budget.md',
+  '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md',
   'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md', 'wiki/index.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
-], UPDATED_IN_042);
+], UPDATED_IN_043);
 
 interface PublishedFixture {
   generatedBy: string;
@@ -82,10 +92,10 @@ const FIXTURES_040 = ['0.4.0-light', '0.4.0-standard', '0.4.0-advanced'];
 const FIXTURES_041 = ['0.4.1-light', '0.4.1-standard', '0.4.1-advanced'];
 
 /** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
-const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
+const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_043);
 
 /** Всё, что upgrade с 0.3.0 и 0.3.1 переписывает на нетронутом проекте. */
-const UPDATED_FROM_03X = union(['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
+const UPDATED_FROM_03X = union(['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_043);
 
 async function fixture(id: string): Promise<PublishedFixture> {
   return JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/published', `${id}.json`), 'utf8')) as PublishedFixture;
@@ -170,7 +180,8 @@ describe('реестр опубликованных канонов', () => {
     for (const release of RELEASES) {
       const changed: string[] = [];
       for (const [path, hash] of Object.entries(release.managedSha256)) {
-        if (sha256(await canonicalManagedSource(path)) !== hash) changed.push(path);
+        const current = await currentManagedSource(path);
+        if (current === null || sha256(current) !== hash) changed.push(path);
       }
       expect(release.templates.map((template) => template.path).sort(), release.id).toEqual(changed.sort());
       for (const template of release.templates) {
@@ -214,6 +225,7 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(analysis.toVersion).toBe(VERSION);
     expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_SINCE_BETA);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_BETA);
+    expect(analysis.removes).toEqual(REMOVED_IN_043);
     expect(analysis.handedOver).toEqual(HANDED_OVER);
     expect(analysis.preserves).toContain('wiki/hot.md');
     expect(await snapshotTree(root)).toEqual(before);
@@ -229,6 +241,8 @@ describe('upgrade с опубликованных бет на текущую в�
     expect(result.applied).toBe(true);
     expect(result.updatedFiles.filter((path) => !path.startsWith('.maestro/')).sort()).toEqual(UPDATED_FROM_BETA);
     expect(result.createdFiles.sort()).toEqual(NEW_SINCE_BETA);
+    expect(result.removedFiles).toEqual(REMOVED_IN_043);
+    expect(existsSync(join(root, 'protocols/build')), 'опустевшая папка protocols/build убрана').toBe(false);
 
     for (const path of PINNED_PATHS) {
       const text = await readUtf8(root, path);
@@ -279,6 +293,7 @@ describe('upgrade с опубликованных бет на текущую в�
     for (const path of NEW_PROJECT_OWNED) expect(after[path], path).toBeUndefined();
     for (const path of Object.keys(before)) {
       if (HANDED_OVER.includes(path)) continue;
+      if (REMOVED_IN_043.includes(path)) { expect(after[path], path).toBeUndefined(); continue; }
       if (UPDATED_FROM_BETA.includes(path)) expect(after[path], path).not.toBe(before[path]);
       else expect(after[path], path).toBe(before[path]);
     }
@@ -297,11 +312,11 @@ describe('upgrade с опубликованных бет на текущую в�
 
   it('правка в файле, который upgrade не трогает, его не блокирует и сохраняется', async () => {
     const { root } = await materialize('0.3.0-beta.3-standard');
-    const edited = `${await readUtf8(root, 'protocols/seams.md')}\nЛокальная заметка.\n`;
-    await writeFile(join(root, 'protocols/seams.md'), edited, 'utf8');
+    const edited = `${await readUtf8(root, 'protocols/status.md')}\nЛокальная заметка.\n`;
+    await writeFile(join(root, 'protocols/status.md'), edited, 'utf8');
     const result = await upgradeProject(root, { apply: true });
     expect(result.applied).toBe(true);
-    expect(await readUtf8(root, 'protocols/seams.md')).toBe(edited);
+    expect(await readUtf8(root, 'protocols/status.md')).toBe(edited);
   });
 
   it('проект более новой версии upgrade не трогает и называет нужную команду', async () => {
@@ -344,6 +359,7 @@ describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущ
     expect(analysis.fromVersion).toBe(data.version);
     expect(analysis.creates.map((item) => item.path).sort()).toEqual(union(NEW_IN_040, NEW_IN_042));
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_03X);
+    expect(analysis.removes).toEqual(REMOVED_IN_043);
     expect(analysis.updates.find((item) => item.path === '.gitignore')?.appends).toEqual(GITIGNORE_APPENDS);
     expect(analysis.handedOver).toEqual([]);
     expect(analysis.preserves).toContain('.claude/settings.json');
@@ -446,6 +462,7 @@ describe('upgrade с опубликованного 0.4.0 на текущую в
     expect(analysis.fromVersion).toBe('0.4.0');
     expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_042);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_040);
+    expect(analysis.removes).toEqual(REMOVED_IN_043);
     expect(analysis.handedOver).toEqual([]);
     expect(await snapshotTree(root)).toEqual(before);
   });
@@ -484,8 +501,8 @@ describe('doctor и версия проекта', () => {
     expect((await initProject({ target, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
     const manifest = await loadManifest(target);
     manifest.product.version = '9.0.0';
-    manifest.inventory = manifest.inventory.filter((entry) => entry.path !== 'protocols/seams.md');
-    manifest.managed = manifest.managed.filter((entry) => entry.path !== 'protocols/seams.md');
+    manifest.inventory = manifest.inventory.filter((entry) => entry.path !== 'protocols/status.md');
+    manifest.managed = manifest.managed.filter((entry) => entry.path !== 'protocols/status.md');
     await writeFile(join(target, MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
     const report = await doctorProject(target);
     expect(report.findings.map((item) => item.code)).toEqual(['project-newer']);
@@ -595,7 +612,7 @@ describe('находки независимого ревью beta.4', () => {
 
 describe('upgrade с опубликованного 0.4.1 на текущую версию', () => {
   /** Всё, что upgrade с 0.4.1 переписывает на нетронутом проекте: закреплённая версия и тексты старта. */
-  const UPDATED_FROM_041 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
+  const UPDATED_FROM_041 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_043);
 
   it.each(FIXTURES_041)('%s: dry-run ни байта не пишет и называет старт, правило для материалов, restore и README', async (id) => {
     const { root } = await materialize(id);
@@ -605,6 +622,7 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
     expect(analysis.fromVersion).toBe('0.4.1');
     expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_042);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_041);
+    expect(analysis.removes).toEqual(REMOVED_IN_043);
     for (const path of ['wiki/hot.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md']) {
       expect(analysis.preserves, path).toContain(path);
     }

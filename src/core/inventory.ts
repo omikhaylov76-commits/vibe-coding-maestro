@@ -24,20 +24,10 @@ export const TEMPLATE_FILES: readonly string[] = [
   'protocols/status.md',
   'protocols/wiki.md',
   'protocols/handoff.md',
-  'protocols/discovery.md',
   'protocols/plan.md',
   'protocols/audit.md',
-  'protocols/context-budget.md',
-  'protocols/seams.md',
-  'protocols/lessons.md',
   'protocols/completion.md',
   'protocols/start.md',
-  'protocols/build/step-1-rules.md',
-  'protocols/build/step-2-spec.md',
-  'protocols/build/step-3-architecture.md',
-  'protocols/build/step-5-feature-loop.md',
-  'protocols/build/audit-plan.md',
-  'protocols/build/audit-phase.md',
 ];
 
 /** Стартовые содержательные документы: Maestro создаёт, затем ими владеет проект. */

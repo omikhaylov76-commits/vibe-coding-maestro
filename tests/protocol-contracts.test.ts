@@ -117,19 +117,21 @@ describe('Phase 3: capability anti-loss contracts', () => {
 
   it('router applicability не активирует capability вне заявленных depth', async () => {
     const ledger = await json<Ledger>(ledgerPath);
-    const alwaysOwners = new Set([
-      'protocols/build/step-1-rules.md',
-      'protocols/build/step-2-spec.md',
-      'protocols/context-budget.md',
-      'protocols/build/step-5-feature-loop.md',
-      'protocols/status.md',
-      'protocols/wiki.md',
-      'protocols/handoff.md',
-      'protocols/discovery.md',
-      'protocols/start.md',
+    // С 0.4.3 у build.md, audit.md и wiki.md разделы разной глубины, поэтому «всегда» — по контрактам.
+    const always = new Set([
+      'VCM-HUMAN-AUTHORITY', 'VCM-DESTRUCTIVE-CONFIRMATION', 'VCM-ROLE-CAPABILITIES', 'VCM-CLARIFICATION',
+      'VCM-CONSTITUTION', 'VCM-SPEC-DELTA', 'VCM-TASK-CAPSULE', 'VCM-CONTEXT-BUDGET',
+      'VCM-TDD-LOOP', 'VCM-LIVE-EVIDENCE', 'VCM-DETERMINISTIC-VERIFICATION', 'VCM-QUALITY-GATE',
+      'VCM-HOT-FIRST', 'VCM-WIKI', 'VCM-ICEBOX', 'VCM-HANDOFF', 'VCM-DISCOVERY', 'VCM-START',
     ]);
-    for (const capability of ledger.capabilities.filter((item) => item.status !== 'reject' && alwaysOwners.has(item.ownerPath!))) {
-      expect(capability.depths, capability.id).toEqual(['light', 'standard', 'advanced']);
+    const found = ledger.capabilities.filter((item) => item.status !== 'reject' && always.has(item.contractId!));
+    expect(found.map((item) => item.contractId).sort()).toEqual([...always].sort());
+    for (const capability of found) expect(capability.depths, capability.id).toEqual(['light', 'standard', 'advanced']);
+    // Разделы только для старших глубин названы в маршруте build.md с той же оговоркой.
+    const router = await readFile(join(projectTemplate, 'protocols/build.md'), 'utf8');
+    for (const capability of ledger.capabilities.filter((item) => item.status !== 'reject' && !item.depths.includes('light'))) {
+      const line = router.split('\n').find((text) => text.includes(`#${capability.contractId})`));
+      if (line !== undefined) expect(line, capability.id).toMatch(capability.depths.includes('standard') ? /^\d+\. Standard\/Advanced:/ : /^\d+\. Advanced:/);
     }
   });
 

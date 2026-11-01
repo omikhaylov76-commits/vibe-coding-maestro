@@ -1,8 +1,8 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { expect } from 'vitest';
 import { CODE_MANAGED_SOURCES, initProject } from '../src/core/init.js';
-import { canonicalOwnershipInventory } from '../src/core/inventory.js';
+import { canonicalOwnershipInventory, TEMPLATE_FILES } from '../src/core/inventory.js';
 import {
   buildManifest,
   contentChecksum,
@@ -63,6 +63,12 @@ export async function canonicalManagedSource(path: string): Promise<string> {
   const constant = CODE_MANAGED_SOURCES[path];
   if (constant !== undefined) return constant;
   return lf(await readFile(join(templatesDir(), 'project', path), 'utf8'));
+}
+
+/** Исходник текущего канона или null, если путь из него ушёл (например, мелкие протоколы в 0.4.3). */
+export async function currentManagedSource(path: string): Promise<string | null> {
+  if (CODE_MANAGED_SOURCES[path] === undefined && !TEMPLATE_FILES.includes(path)) return null;
+  return canonicalManagedSource(path);
 }
 
 /**
@@ -127,6 +133,7 @@ export async function makeLegacy02Project(options: LegacyOptions = {}): Promise<
       expect(await readFile(join(root, path), 'utf8'), path).toBe('');
       continue;
     }
+    await mkdir(dirname(join(root, path)), { recursive: true });
     await writeFile(join(root, path), renderTemplate(await baseline02Source(path), vars), 'utf8');
   }
 

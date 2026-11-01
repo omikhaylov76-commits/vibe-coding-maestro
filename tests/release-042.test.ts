@@ -48,8 +48,8 @@ describe('0.4.2: команда /start со своим протоколом', ()
     const ledger = JSON.parse(await readFile(join(process.cwd(), 'registry/capabilities.v1.json'), 'utf8')) as { capabilities: { id: string; ownerPath: string | null; contractId: string | null }[] };
     expect(ledger.capabilities.find((item) => item.id === 'project-start')).toMatchObject({ ownerPath: 'protocols/start.md', contractId: 'VCM-START' });
     expect(ledger.capabilities.find((item) => item.id === 'discovery-before-code')).toMatchObject({ ownerPath: 'protocols/start.md', contractId: 'VCM-DISCOVERY' });
-    expect(await template('protocols/discovery.md')).toContain('[start](start.md)');
-    expect(await template('protocols/discovery.md')).not.toContain('<a id=');
+    // С 0.4.3 отдельного protocols/discovery.md нет: маршрут build.md ведёт прямо в старт.
+    expect(await template('protocols/build.md')).toContain('[старт](start.md)');
   });
 
   it('команда /start — тонкая ссылка на протокол', async () => {

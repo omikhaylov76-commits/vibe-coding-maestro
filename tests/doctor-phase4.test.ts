@@ -133,14 +133,14 @@ describe('Phase 4: versioned deterministic doctor policy', () => {
 
   it('обнаруживает исчезновение canonical contract anchor отдельным finding', async () => {
     const root = await fresh();
-    const path = join(root, 'protocols/build/step-1-rules.md');
+    const path = join(root, 'protocols/build.md');
     const text = await readFile(path, 'utf8');
     await writeFile(path, text.replace('<a id="VCM-HUMAN-AUTHORITY"></a>', ''), 'utf8');
     const report = await doctorProject(root);
     expect(report.findings).toContainEqual(expect.objectContaining({
       level: 'error',
       code: 'protocol-contract-missing',
-      path: 'protocols/build/step-1-rules.md',
+      path: 'protocols/build.md',
     }));
   });
 });

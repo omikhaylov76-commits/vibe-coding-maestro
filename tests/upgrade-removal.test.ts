@@ -6,6 +6,7 @@ import { runMaestroCli } from '../src/cli/maestro.js';
 import { doctorProject } from '../src/core/doctor.js';
 import { CHECKSUMS_PATH, contentChecksum, loadChecksums, MANIFEST_PATH } from '../src/core/manifest.js';
 import { analyzeUpgrade, upgradeProject } from '../src/core/upgrade/index.js';
+import { REMOVED_PATHS } from '../src/core/upgrade/releases.js';
 import { cleanupTempDirs, readUtf8, snapshotTree } from './helpers.js';
 import { collectIo, materializePublished } from './published.js';
 
@@ -59,6 +60,9 @@ vi.mock('../src/core/upgrade/releases.js', async (importOriginal) => {
   };
 });
 
+/** Всё, что удаляется с 0.4.1: настоящие ушедшие протоколы плюс искусственные. */
+const ALL_REMOVED = Object.keys(REMOVED_PATHS).sort();
+
 const licence = async (): Promise<string> => (await readFile(join(process.cwd(), 'LICENSE'), 'utf8')).replace(/\r\n/g, '\n');
 
 /** Проект 0.4.1 с лишними файлами Maestro: manifest и суммы их знают, как знал бы init прошлой версии. */
@@ -86,7 +90,8 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
     const before = await snapshotTree(root);
     const { analysis } = await analyzeUpgrade(root);
     expect(analysis.blockers).toEqual([]);
-    expect(analysis.removes).toEqual(RETIRED);
+    expect(analysis.removes).toEqual(ALL_REMOVED);
+    expect(analysis.removes).toEqual(expect.arrayContaining(RETIRED));
     const cli = collectIo();
     expect(await runMaestroCli(['upgrade', '--path', root], cli.io)).toBe(0);
     const lines = (await licence()).split('\n').length - 1;
@@ -101,7 +106,7 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
     const result = await upgradeProject(root, { apply: true });
     expect(result.error).toBeUndefined();
     expect(result.applied).toBe(true);
-    expect(result.removedFiles).toEqual(RETIRED);
+    expect(result.removedFiles).toEqual(ALL_REMOVED);
     for (const path of RETIRED) expect(existsSync(join(root, path)), path).toBe(false);
     expect(existsSync(join(root, 'protocols/retired')), 'пустая папка убрана').toBe(false);
     expect(existsSync(join(root, 'protocols')), 'папка с другими файлами осталась').toBe(true);
@@ -135,7 +140,7 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
     await rm(join(root, RETIRED[1] as string));
     const { analysis } = await analyzeUpgrade(root);
     expect(analysis.blockers).toEqual([]);
-    expect(analysis.removes).toEqual([RETIRED[0]]);
+    expect(analysis.removes).toEqual(ALL_REMOVED.filter((path) => path !== RETIRED[1]));
     expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
     expect((await loadChecksums(root))?.files[RETIRED[1] as string]).toBeUndefined();
     expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
@@ -174,7 +179,7 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
       'reportVersion', 'status', 'root', 'baselineId', 'fromVersion', 'toVersion',
       'creates', 'updates', 'removes', 'unchanged', 'preserves', 'handedOver', 'metadata', 'notes', 'blockers',
     ]);
-    expect(report.analysis.removes).toEqual(RETIRED);
+    expect(report.analysis.removes).toEqual(ALL_REMOVED);
     expect(JSON.stringify(report)).not.toContain((await licence()).split('\n')[0] as string);
   });
 

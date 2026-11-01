@@ -47,15 +47,13 @@ The recording shows the create-and-`doctor` surface of an earlier beta; the Plan
 
 ## Quick start
 
-**Requirements:** Node.js 20.10 or newer, npm, and Git. Nothing to clone or build.
-
-Run the guided setup:
+**Requirements:** Node.js 20.10 or newer, npm, and Git. Nothing to clone or build. Run the guided setup:
 
 ```bash
 npx create-vibe-maestro@latest
 ```
 
-The Guided First Run explains where files will be created and asks for no more than three decisions. A simple project name creates the folder on your Desktop; an explicit path always wins. Set `NO_COLOR=1` if you need plain output.
+The Guided First Run explains where files will be created and asks for no more than three decisions. A simple project name creates the folder on your Desktop; an explicit path always wins. When the GitHub CLI (`gh`) is installed and you are logged in, the first question also offers «Создать новый проект и закрытую копию на GitHub». Set `NO_COLOR=1` if you need plain output.
 
 Or pass every decision explicitly:
 
@@ -63,7 +61,7 @@ Or pass every decision explicitly:
 npx create-vibe-maestro@latest --yes --target "My Project" --name "My Project" --start idea --depth standard
 ```
 
-Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. To check it again later, open the project folder and run the command written in its `.claude/rules/maestro.md` (it names the exact version the project uses):
+Maestro creates the project, initializes Git on `main`, makes the initial commit, and runs `doctor`. Two optional flags for scripts: `--github` creates a private GitHub repository after the first commit (`gh repo create … --private --source … --remote origin --push`; any `gh` failure is only a warning with the command for later), and `--push-without-asking` lets the agent run a plain `git push` without a question while force pushes still ask. Without them `create --yes` creates no repository and keeps the default protections. To check it again later, open the project folder and run the command written in its `.claude/rules/maestro.md` (it names the exact version the project uses):
 
 ```bash
 cd "My Project"
@@ -74,12 +72,13 @@ Expected result:
 
 ```text
 Vibe Coding Maestro doctor: всё сходится.
+- git-no-remote: Копии проекта в облаке нет: у репозитория нет remote. …
 ```
 
-`@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
+The second line is `info` (from local Git data only; it never fails `doctor`, `--strict` or `preflight`) and disappears once the project has a copy in the cloud. `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -144,13 +143,14 @@ A Standard project starts with a structure like this:
 My Project/
 ├── AGENTS.md          # yours: entry for Codex and other AGENTS.md tools
 ├── CLAUDE.md          # yours: project instructions for Claude Code
+├── README.md          # yours: only when the folder had no README; rewrite it for your reader
 ├── .claude/rules/     # maestro.md (Maestro rules, loaded every session) + project.md (yours)
 ├── .claude/settings.json  # yours: default deny/ask rules (Maestro files, push, publish)
 ├── .claude/commands/  # /start, /status, /plan, /build, /wiki, /handoff adapters
 ├── .claude/agents/    # read-only code-reviewer and explorer
 ├── protocols/         # canonical rules for planning, building, handoff and project completion
-├── wiki/              # shared memory: plans, decisions, progress, audits and the project passport
-├── maestro/           # inbox, runbooks, and templates for handoff, ADR and progress
+├── wiki/              # shared memory: start answers, plans, decisions, progress, audits, passport, restore page
+├── maestro/           # inbox for your materials (kept byte for byte), runbooks, and templates
 └── .maestro/          # manifest, ownership inventory and integrity metadata
 ```
 
@@ -271,7 +271,7 @@ Run the preview from the project folder; it writes nothing:
 npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 ```
 
-It lists every file it would add or update and prints the exact command, with the exact version, that applies the change (`--apply`). A file you edited by hand is never overwritten: the upgrade stops and names it. After applying, add all changes to Git including the new files (`git add -A`), review and commit them — until then `doctor` reports the uncommitted and untracked Maestro files — then run `doctor --strict` with the same version.
+It lists every file it would add or update and prints the exact command, with the exact version, that applies the change (`--apply`). A file you edited by hand is never overwritten: the upgrade stops and names it. Moving to 0.4.2 adds the `/start` command and protocol, `maestro/inbox/.gitattributes` and `wiki/restore.md`, and a `README.md` only if the project has no README of any name; if materials already sit in `maestro/inbox/`, run `git add --renormalize maestro/inbox` before committing so Git keeps them byte for byte. After applying, add all changes to Git including the new files (`git add -A`), review and commit them — until then `doctor` reports the uncommitted and untracked Maestro files — then run `doctor --strict` with the same version.
 
 ## Automation and CI
 
@@ -294,14 +294,15 @@ npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 
 `preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources` and `upgrade` write nothing at all unless you add `--write` or `--apply`.
 
-The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0 and 0.4.1. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
 ## Current scope
 
 Available now:
 
-- Guided First Run;
-- fresh canonical project creation;
+- Guided First Run, with an optional private GitHub copy when `gh` is logged in;
+- fresh canonical project creation, then `/start`: the first session reads what exists and agrees on the task and on how we work, one question at a time;
+- `maestro/inbox/` as the one place for materials, kept byte for byte by Git;
 - Planning Gate: `/plan`, Cowork plan runbook, project plans, and the human approval gate;
 - mechanical `preflight` before the first line of code;
 - read-only `sources` inventory of existing code;
@@ -329,7 +330,7 @@ Not available yet:
 - automatic installation or execution of third-party skills;
 - a guarantee that an AI agent will not make mistakes.
 
-What comes next — the `/start` command for the first session, checks with a cutoff, and project memory that does not grow — is listed in the [roadmap](docs/ROADMAP.md).
+What comes next — checks with a cutoff, one set of labels, and project memory that does not grow — is listed in the [roadmap](docs/ROADMAP.md).
 
 ## Documentation
 

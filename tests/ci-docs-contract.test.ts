@@ -165,6 +165,21 @@ describe('этапы 12–13: CI и документационные контр�
     expect(await text('README.md')).toContain('docs/ROADMAP.md');
   });
 
+  it('0.4.2: заметки к выпуску, флаги создания и версии upgrade названы в документах', async () => {
+    const changelog = await text('CHANGELOG.md');
+    const entry = changelog.slice(changelog.indexOf('## 0.4.2'), changelog.indexOf('## 0.4.1'));
+    expect(entry).toContain('### For those who create projects with their own scripts');
+    for (const value of ['`maestro/inbox/`', '`* -text`', 'git add --renormalize maestro/inbox', '`start: done`', '«Сейчас в работе», «Открытые вопросы», «Следующий шаг»', '`create --yes` creates no repository', '`--github`', '`--push-without-asking`', '`git-no-remote`', 'Edit(/.claude/commands/start.md)']) {
+      expect(entry, value).toContain(value);
+    }
+    for (const path of ['README.md', 'docs/USER_GUIDE.md']) {
+      const doc = await text(path);
+      for (const flag of ['--github', '--push-without-asking', 'git add --renormalize maestro/inbox', '0.4.1']) expect(doc, `${path}: ${flag}`).toContain(flag);
+    }
+    expect(await text('docs/USER_GUIDE.md')).toContain('Откуда upgrade умеет обновлять: 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0 и 0.4.1.');
+    expect(await text('docs/ROADMAP.md')).toContain('**0.4.2** (выпуск');
+  });
+
   it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {
     const files = [...await shippedTextFiles(), 'packages/vibe-maestro/README.md', 'packages/vibe-maestro/package.json'];
     // Пример `/Users/me/…` в руководстве допустим; личные пути — нет.

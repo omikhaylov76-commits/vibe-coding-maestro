@@ -19,6 +19,9 @@ const git = async (cwd: string, ...args: string[]): Promise<string> => (await ex
 /** Шаблон пакета с LF: в checkout на Windows он может прийти с CRLF, а init пишет LF. */
 const template = async (path: string): Promise<string> => (await readFile(join(process.cwd(), 'templates/project', path), 'utf8')).replace(/\r\n/g, '\n');
 
+/** Руководство с LF: в checkout на Windows оно приходит с CRLF, а шаблоны поиска написаны под LF. */
+const guideText = async (): Promise<string> => (await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8')).replace(/\r\n/g, '\n');
+
 /** Раздел Markdown от заголовка до следующего заголовка того же или более высокого уровня. */
 function section(text: string, heading: string): string {
   const start = text.indexOf(heading);
@@ -128,7 +131,7 @@ describe('0.4.2: команда /start со своим протоколом', ()
 
   it('рецепт «отправки без вопроса» в протоколе совпадает с руководством', async () => {
     const final = section(await template('protocols/start.md'), '### 5. Сводка и запись');
-    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    const guide = await guideText();
     const block = /"allow": \[("Bash\(git push \*\)")\],\n\s+"ask": \[([\s\S]*?)\]/.exec(guide);
     expect(block).not.toBeNull();
     expect(final).toContain(`"allow": [${block?.[1]}]`);
@@ -296,7 +299,7 @@ describe('0.4.2: один первый шаг везде — создание �
   });
 
   it('руководство: первый шаг, команда /start и признак старта', async () => {
-    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    const guide = await guideText();
     expect(guide).toContain('### Шаг 3. Знакомство с задачей: `/start`');
     expect(guide).toContain('создание → `/start` → `/plan`');
     expect(guide).toContain('### `/start`');
@@ -384,7 +387,7 @@ describe('0.4.2: чужие файлы — байт в байт', () => {
 describe('0.4.2: отправка в облако без вопроса — только по флагу или по «да» на старте', () => {
   type Settings = { permissions: { deny: string[]; allow?: string[]; ask: string[] } };
   const guideRecipe = async (): Promise<{ allow: string[]; ask: string[] }> => {
-    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    const guide = await guideText();
     const block = /"allow": \[([^\]]*)\],\n\s+"ask": \[([\s\S]*?)\]/.exec(guide);
     const rules = (text: string | undefined): string[] => [...(text ?? '').matchAll(/"([^"]+)"/g)].map((match) => match[1] as string);
     return { allow: rules(block?.[1]), ask: rules(block?.[2]) };
@@ -474,7 +477,7 @@ describe('0.4.2: находки независимого ревью — текс
   });
 
   it('L8: команды перехода в руководстве включают git add --renormalize maestro/inbox', async () => {
-    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    const guide = await guideText();
     const block = guide.slice(guide.indexOf('vibe-maestro upgrade --path . --apply'), guide.indexOf('git commit -m "Maestro 0.4.2"'));
     expect(block).toContain('git add --renormalize maestro/inbox');
   });

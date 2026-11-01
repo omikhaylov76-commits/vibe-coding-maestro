@@ -691,6 +691,12 @@ describe('0.4.3: pack — папка, состав до упаковки, под
     expect(packHighlights('src/x.js', Buffer.from('const p = "/tmp/proj/a";\n'), { home: '/home/u', root: '/tmp/proj' }).map((item) => item.reason)).toEqual(['путь папки проекта']);
     expect(packHighlights('src/y.js', Buffer.from('const t = "/tmp/cache";\n'), { home: '/home/u', root: '/tmp/proj' }).map((item) => item.reason)).toEqual(['временная папка']);
 
+    // Windows: путь в строке кода или JSON записан с удвоенной обратной косой (так упал CI на Windows).
+    const windows = { home: 'C:\\Users\\me', root: 'C:\\Users\\me\\proj' };
+    expect(packHighlights('src/w.js', Buffer.from(`const p = ${JSON.stringify('C:\\Users\\me\\proj\\a')};\n`), windows).map((item) => item.reason)).toEqual(['путь папки проекта']);
+    expect(packHighlights('src/w.txt', Buffer.from('C:\\Users\\me\\proj\\a\n'), windows).map((item) => item.reason)).toEqual(['путь папки проекта']);
+    expect(packHighlights('src/h.js', Buffer.from(`const p = ${JSON.stringify('D:\\Users\\other\\x')};\n`), windows).map((item) => item.reason)).toEqual(['путь домашней папки']);
+
     // Путь самого проекта называется точнее, чем «домашняя папка».
     const own = await delivered({ 'src/where.js': '' });
     const { writeFile } = await import('node:fs/promises');

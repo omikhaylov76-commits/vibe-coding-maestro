@@ -323,14 +323,15 @@ const SERVICE_FILE = /(^|\/)(?:\.gitignore|\.gitattributes|\.DS_Store)$|(^|\/)(?
 
 /** Подсветка содержимого по строкам: первое совпадение каждого вида на файл. */
 function contentHighlights(text: string, home: string, root: string): { reason: string; line: number }[] {
-  const variants = (path: string): string[] => (path === '' ? [] : [...new Set([path, path.split('/').join('\\')])]);
+  // Путь Windows в строке кода или JSON записан с удвоенной обратной косой: `C:\\Users\\…`.
+  const variants = (path: string): string[] => (path === '' ? [] : [...new Set([path, path.split('/').join('\\'), path.split('/').join('\\\\')])]);
   const roots = variants(root.replace(/\\/g, '/').replace(/\/+$/, ''));
   const homes = variants(home.replace(/\\/g, '/').replace(/\/+$/, ''));
   const rules: { reason: string; test: (line: string) => boolean }[] = [
     { reason: 'путь папки проекта', test: (line) => roots.some((path) => line.includes(path)) },
     {
       reason: 'путь домашней папки',
-      test: (line) => homes.some((path) => line.includes(path)) || /(?:^|[^\w.-])(?:\/Users\/[^/\s]+\/|\/home\/[^/\s]+\/|[A-Za-z]:\\Users\\[^\\\s]+\\)/.test(line),
+      test: (line) => homes.some((path) => line.includes(path)) || /(?:^|[^\w.-])(?:\/Users\/[^/\s]+\/|\/home\/[^/\s]+\/|[A-Za-z]:\\{1,2}Users\\{1,2}[^\\\s]+\\)/.test(line),
     },
     { reason: 'временная папка', test: (line) => /(?:^|[^\w.-])(?:\/tmp\/|\/private\/var\/)/.test(line) },
     { reason: 'имя Maestro', test: (line) => /Vibe Coding Maestro|vibe-maestro/i.test(line) },

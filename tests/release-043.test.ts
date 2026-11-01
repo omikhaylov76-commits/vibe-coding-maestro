@@ -727,3 +727,85 @@ describe('0.4.3: pack — папка, состав до упаковки, под
     expect(completion).toContain('«доступов не было»');
   });
 });
+
+describe('0.4.3: context — окно по модели из журнала', () => {
+  async function session(model: string | undefined, context: number, extra: number[] = []): Promise<{ root: string; claudeDir: string }> {
+    const { makeTempDir } = await import('./helpers.js');
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const { projectLogDirName } = await import('../src/core/context.js');
+    const claudeDir = await makeTempDir('claude-');
+    const root = join(await makeTempDir('proj-'), 'app');
+    await mkdir(root);
+    const answer = (id: string, size: number, name: string | undefined) => ({
+      type: 'assistant', sessionId: 's-1',
+      message: { id, ...(name === undefined ? {} : { model: name }), usage: { input_tokens: 0, cache_read_input_tokens: size, cache_creation_input_tokens: 0, output_tokens: 0 } },
+    });
+    const lines = [...extra.map((size, index) => answer(`e${index}`, size, model)), answer('last', context, model)];
+    const dir = join(claudeDir, 'projects', projectLogDirName(root));
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'session-1.jsonl'), `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`);
+    return { root, claudeDir };
+  }
+
+  it('claude-opus-5-5 при 190 000 — 19%; claude-haiku-4-5 при 150 000 — 75%', async () => {
+    const { measureContext } = await import('../src/core/context.js');
+    const opus = await measureContext({ ...await session('claude-opus-5-5', 190_000), sessionId: 'session-1' });
+    expect([opus.budget, opus.percent, opus.windowSource, opus.model]).toEqual([1_000_000, 19, 'model', 'claude-opus-5-5']);
+    expect(opus.level).toBe('continue');
+    const haiku = await measureContext({ ...await session('claude-haiku-4-5', 150_000), sessionId: 'session-1' });
+    expect([haiku.budget, haiku.percent, haiku.level]).toEqual([200_000, 75, 'new-session']);
+  });
+
+  it('названия моделей: закрытый список 200 000, новее — 1 000 000, чужое — незнакомо', async () => {
+    const { windowForModel } = await import('../src/core/context.js');
+    for (const name of [
+      'claude-3-haiku-20240307', 'claude-3-5-sonnet-20241022', 'claude-3-7-sonnet-20250219', 'claude-3-opus-20240229', 'claude-3-5-haiku-20241022',
+      'claude-opus-4-20250514', 'claude-opus-4-0', 'claude-opus-4-1-20250805', 'claude-opus-4-5', 'claude-sonnet-4-0', 'claude-sonnet-4-5-20250929',
+      'claude-haiku-4-5', 'claude-haiku-4-5-20251001', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'claude-opus-4-5@20251101',
+    ]) expect(windowForModel(name), name).toBe(200_000);
+    for (const name of [
+      'claude-opus-4-6', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5', 'claude-opus-5-5', 'claude-sonnet-4-6', 'claude-sonnet-5', 'claude-sonnet-5-5',
+      'claude-haiku-5-5', 'claude-fable-5', 'claude-fable-5-1', 'claude-mythos-5-1', 'anthropic.claude-opus-5-5', 'claude-sonnet-4-5[1m]', 'claude-opus-7',
+    ]) expect(windowForModel(name), name).toBe(1_000_000);
+    for (const name of ['gpt-5', '<synthetic>', 'claude', 'claude-instant-1', 'claude-mythos-preview', '']) expect(windowForModel(name), name).toBeNull();
+  });
+
+  it('модель «на 200 000», а сессия больше — окно 1 000 000, как раньше; --window главнее', async () => {
+    const { measureContext } = await import('../src/core/context.js');
+    const big = await measureContext({ ...await session('claude-sonnet-4-5', 120_000, [400_000]), sessionId: 'session-1' });
+    expect([big.budget, big.windowSource]).toEqual([1_000_000, 'model']);
+    const forced = await measureContext({ ...await session('claude-opus-5-5', 100_000), budget: 200_000, sessionId: 'session-1' });
+    expect([forced.budget, forced.percent, forced.windowSource]).toEqual([200_000, 50, 'option']);
+  });
+
+  it('CLI: строка «Модель … — окно …», незнакомая модель названа честно; строка входа и totalInputTokens прежние', async () => {
+    const prev = process.env.CLAUDE_CONFIG_DIR;
+    const prevSession = process.env.CLAUDE_CODE_SESSION_ID;
+    delete process.env.CLAUDE_CODE_SESSION_ID;
+    try {
+      const known = await session('claude-opus-5-5', 190_000);
+      process.env.CLAUDE_CONFIG_DIR = known.claudeDir;
+      const cli = collectIo();
+      expect(await runMaestroCli(['context', '--path', known.root], cli.io)).toBe(0);
+      expect(cli.stdout()).toContain('Размер сессии: 190 000 токенов (19% окна модели в 1 000 000).');
+      expect(cli.stdout()).toContain('Модель claude-opus-5-5 — окно 1 000 000 токенов.');
+      expect(cli.stdout()).toContain('За сессию модель получила на вход 190 000 токенов (шагов модели: 1)');
+
+      const strange = await session('claude-nova-1', 100_000);
+      process.env.CLAUDE_CONFIG_DIR = strange.claudeDir;
+      const other = collectIo();
+      expect(await runMaestroCli(['context', '--path', strange.root], other.io)).toBe(0);
+      expect(other.stdout()).toContain('Модель «claude-nova-1» мне незнакома: окно взято 200 000 токенов по размеру сессии. Знаете окно этой модели — задайте его: --window <токены>.');
+
+      const json = collectIo();
+      process.env.CLAUDE_CONFIG_DIR = known.claudeDir;
+      expect(await runMaestroCli(['context', '--path', known.root, '--json'], json.io)).toBe(0);
+      const report = JSON.parse(json.stdout()) as Record<string, unknown>;
+      expect(report.totalInputTokens).toBe(190_000);
+      expect(report.model).toBe('claude-opus-5-5');
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev;
+      if (prevSession !== undefined) process.env.CLAUDE_CODE_SESSION_ID = prevSession;
+    }
+  });
+});

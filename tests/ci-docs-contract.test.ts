@@ -176,8 +176,31 @@ describe('этапы 12–13: CI и документационные контр�
       const doc = await text(path);
       for (const flag of ['--github', '--push-without-asking', 'git add --renormalize maestro/inbox', '0.4.1']) expect(doc, `${path}: ${flag}`).toContain(flag);
     }
-    expect(await text('docs/USER_GUIDE.md')).toContain('Откуда upgrade умеет обновлять: 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0 и 0.4.1.');
+    // Список версий растёт с каждым выпуском; 0.4.1 в нём остаётся.
+    expect(await text('docs/USER_GUIDE.md')).toMatch(/Откуда upgrade умеет обновлять: 0\.2\.0-beta\.1, 0\.3\.0-beta\.1 – 0\.3\.0-beta\.4, 0\.3\.0, 0\.3\.1, 0\.4\.0, 0\.4\.1/);
     expect(await text('docs/ROADMAP.md')).toContain('**0.4.2** (выпуск');
+  });
+
+  it('0.4.3: заметки к выпуску, новые флаги и версии upgrade названы в документах', async () => {
+    const changelog = await text('CHANGELOG.md');
+    const entry = changelog.slice(changelog.indexOf('## 0.4.3'), changelog.indexOf('## 0.4.2'));
+    expect(entry).toContain('### For those who create projects with their own scripts');
+    for (const value of [
+      '`protocols/discovery.md`', '`protocols/build/`', '`removes`', '`upgrade --diff`', '`maestro/templates/audit.md`', '`wiki/icebox.md`',
+      'Edit(/maestro/templates/audit.md)', 'FACT, HYPOTHESIS, UNKNOWN, HUMAN_DECISION, AGENT_PROPOSAL, OPEN_QUESTION', '`critical|high|medium|low`',
+      '`resolution: не исправляем — причина; где записано`', '`kind: mini`', '`--depth light`', '`[x]`', '`--dry-run`', '`totalInputTokens`',
+      '`upgrade-template-collision`', 'create-vibe-maestro@0.4.3',
+    ]) expect(entry, value).toContain(value);
+    for (const path of ['README.md', 'docs/USER_GUIDE.md']) {
+      const doc = await text(path);
+      for (const value of ['--diff', '--dry-run', '0.4.2', 'maestro/templates/audit.md', 'wiki/icebox.md']) expect(doc, `${path}: ${value}`).toContain(value);
+    }
+    const guide = await text('docs/USER_GUIDE.md');
+    expect(guide).toContain('Откуда upgrade умеет обновлять: 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1 и 0.4.2.');
+    for (const value of ['**Что меняет переход на 0.4.3.**', '## Проверки на GitHub', 'cancel-in-progress', 'доступов не было', 'по названию модели']) expect(guide, value).toContain(value);
+    expect(guide).not.toContain('mini-plan в `wiki/progress/`');
+    expect(await text('README.md')).not.toContain('mini-plan в `wiki/progress/`');
+    expect(await text('docs/ROADMAP.md')).toContain('**0.4.3** (выпуск');
   });
 
   it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {

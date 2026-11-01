@@ -78,7 +78,7 @@ Vibe Coding Maestro doctor: всё сходится.
 The second line is `info` (from local Git data only; it never fails `doctor`, `--strict` or `preflight`) and disappears once the project has a copy in the cloud. `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -114,7 +114,7 @@ npx --package create-vibe-maestro@latest vibe-maestro doctor --path .
 
 | Масштаб | Что создаётся |
 |---|---|
-| `QUICK` | mini-plan в `wiki/progress/`, без тяжёлого пакета планирования |
+| `QUICK` | mini-plan в `wiki/plans/` — тот же путь, что у любого плана, без тяжёлого пакета планирования |
 | `FEATURE` | один план `wiki/plans/<номер>-<слаг>.md` |
 | `PROJECT` | полный пакет планирования в одном основном плане |
 | `PROGRAM` / `INTEGRATION` | `wiki/programs/<слаг>/`: программа, фазы и source inventory |
@@ -148,7 +148,7 @@ My Project/
 ├── .claude/settings.json  # yours: default deny/ask rules (Maestro files, push, publish)
 ├── .claude/commands/  # /start, /status, /plan, /build, /wiki, /handoff adapters
 ├── .claude/agents/    # read-only code-reviewer and explorer
-├── protocols/         # canonical rules for planning, building, handoff and project completion
+├── protocols/         # eight canonical protocols: start, plan, build, audit, wiki, status, handoff, completion
 ├── wiki/              # shared memory: start answers, plans, decisions, progress, audits, passport, restore page
 ├── maestro/           # inbox for your materials (kept byte for byte), runbooks, and templates
 └── .maestro/          # manifest, ownership inventory and integrity metadata
@@ -178,7 +178,7 @@ From there, `protocols/build.md` routes the agent through the relevant rules, pl
 
 ## A normal working cycle
 
-The guided path above is the whole cycle: material in `maestro/inbox/` → `/start` (getting to know the task) → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
+The guided path above is the whole cycle: material in `maestro/inbox/` → `/start` (getting to know the task) → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Checks run once: the plan is always checked against the real situation, a plan audit before approval, one code review per slice, then only the fixes are re-checked; the agent runs tests and checks itself and asks the human only about what they understand and own. Independent audit findings are recorded with stable IDs on one `critical | high | medium | low` scale (sample: `maestro/templates/audit.md`); open `high` or `critical` findings block a green doctor result.
 
 Claude Code projects receive six thin commands:
 
@@ -206,8 +206,8 @@ Maestro is deliberately conservative around existing data and Git state:
 - `.claude/settings.json` ships default rules for Claude Code: its file tools are denied Maestro files, and `git push`, `npm publish`, `rm -rf` and `git reset --hard` ask first; this is not a sandbox, and the file belongs to the project, so a team can change the rules — see [how to tune protections for a project](docs/USER_GUIDE.md#как-подстроить-защиты-под-проект) (Russian);
 - API keys live only in `.env`, which `.gitignore` excludes and `doctor` reports if Git tracks it; the agent writes a key you paste into `.env` itself, or opens `.env` in an editor for you to paste it (a key typed into the chat stays in the session history);
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
-- `pack` builds the customer archive only from a delivery tag, leaves Maestro and agent folders out, adds `HANDOVER.md` with «change all passwords and keys», refuses on common kinds of secrets (a sieve, not a guarantee) or an incomplete passport, and gives the same bytes for the same tag;
-- `upgrade` is a dry run without `--apply`, refuses a modified managed file, and rolls back a failed apply;
+- `pack` builds the customer archive only from a delivery tag, leaves Maestro and agent folders out, adds `HANDOVER.md` with «change all passwords and keys» (or «there were no accesses» when every access section of the passport is «не применимо»), refuses on common kinds of secrets (a sieve, not a guarantee) or an incomplete passport, and gives the same bytes for the same tag; `pack --dry-run` shows the archive list first and highlights service files, personal paths, Maestro names, internal folders and plan numbers;
+- `upgrade` is a dry run without `--apply` (`--diff` prints the changes themselves), refuses a modified managed file, removes only untouched Maestro files that left the canon, and rolls back a failed apply;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
 - there is intentionally no `doctor --fix` that could overwrite useful work.
 
@@ -271,7 +271,7 @@ Run the preview from the project folder; it writes nothing:
 npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 ```
 
-It lists every file it would add or update and prints the exact command, with the exact version, that applies the change (`--apply`). A file you edited by hand is never overwritten: the upgrade stops and names it. Moving to 0.4.2 adds the `/start` command and protocol, `maestro/inbox/.gitattributes` and `wiki/restore.md`, and a `README.md` only if the project has no README of any name; if materials already sit in `maestro/inbox/`, run `git add --renormalize maestro/inbox` before committing so Git keeps them byte for byte. After applying, add all changes to Git including the new files (`git add -A`), review and commit them — until then `doctor` reports the uncommitted and untracked Maestro files — then run `doctor --strict` with the same version.
+It lists every file it would add, update or remove, with changed line counts, and prints the exact command, with the exact version, that applies the change (`--apply`); `--diff` prints the changes line by line. A file you edited by hand is never overwritten or removed: the upgrade stops and names it. Moving to 0.4.3 removes ten small protocols whose text moved into `protocols/build.md`, `protocols/audit.md` and `protocols/wiki.md`, and adds `maestro/templates/audit.md` and `wiki/icebox.md`. Moving to 0.4.2 adds the `/start` command and protocol, `maestro/inbox/.gitattributes` and `wiki/restore.md`, and a `README.md` only if the project has no README of any name; if materials already sit in `maestro/inbox/`, run `git add --renormalize maestro/inbox` before committing so Git keeps them byte for byte. After applying, add all changes to Git including the new files (`git add -A`), review and commit them — until then `doctor` reports the uncommitted and untracked Maestro files — then run `doctor --strict` with the same version.
 
 ## Automation and CI
 
@@ -294,7 +294,7 @@ npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
 
 `preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources` and `upgrade` write nothing at all unless you add `--write` or `--apply`.
 
-The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0 and 0.4.1. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1 and 0.4.2. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
 ## Current scope
 

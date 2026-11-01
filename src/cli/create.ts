@@ -14,6 +14,7 @@ interface CreateOptions {
   json: boolean;
   depth: ProjectDepth;
   github: boolean;
+  pushWithoutAsking: boolean;
   explicit: { depth?: boolean; startingPoint?: boolean };
 }
 
@@ -43,6 +44,8 @@ const HELP = `${PRODUCT_NAME} — подготовка проекта одной
   --no-git            не выполнять git init и стартовый commit
   --github            после первого коммита завести закрытую копию на GitHub
                       (нужны GitHub CLI gh и выполненный вход; без флага --yes её не заводит)
+  --push-without-asking  новый проект: обычный git push без вопроса, принудительная отправка
+                      по-прежнему с вопросом; без флага защиты прежние
   --yes, -y           неинтерактивный режим (все ответы взяты из флагов)
   --json              машиночитаемый отчёт
   --help, -h          эта справка
@@ -59,6 +62,7 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
     json: false,
     depth: 'standard',
     github: false,
+    pushWithoutAsking: false,
     explicit: {},
   };
 
@@ -76,6 +80,9 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
         break;
       case '--github':
         options.github = true;
+        break;
+      case '--push-without-asking':
+        options.pushWithoutAsking = true;
         break;
       case '--yes':
       case '-y':

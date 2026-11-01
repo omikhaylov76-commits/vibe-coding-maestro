@@ -372,3 +372,72 @@ describe('0.4.2: чужие файлы — байт в байт', () => {
     expect(await git(root, 'status', '--porcelain', '--', 'maestro/inbox/README.md')).toBe('');
   });
 });
+
+describe('0.4.2: отправка в облако без вопроса — только по флагу или по «да» на старте', () => {
+  type Settings = { permissions: { deny: string[]; allow?: string[]; ask: string[] } };
+  const guideRecipe = async (): Promise<{ allow: string[]; ask: string[] }> => {
+    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    const block = /"allow": \[([^\]]*)\],\n\s+"ask": \[([\s\S]*?)\]/.exec(guide);
+    const rules = (text: string | undefined): string[] => [...(text ?? '').matchAll(/"([^"]+)"/g)].map((match) => match[1] as string);
+    return { allow: rules(block?.[1]), ask: rules(block?.[2]) };
+  };
+
+  it('с --push-without-asking settings.json совпадает с рецептом руководства; запреты прежние', async () => {
+    const root = join(await makeTempDir('push-'), 'проект');
+    const { runCreateCli } = await import('../src/cli/create.js');
+    const io = { out: () => undefined, err: () => undefined };
+    expect(await runCreateCli(['--yes', '--no-git', '--target', root, '--push-without-asking'], io, { isTty: false })).toBe(0);
+    const raw = await readUtf8(root, '.claude/settings.json');
+    const settings = JSON.parse(raw) as Settings;
+    const recipe = await guideRecipe();
+    expect(settings.permissions.allow).toEqual(recipe.allow);
+    expect(settings.permissions.ask).toEqual(recipe.ask);
+    for (const forced of ['Bash(git push --force)', 'Bash(git push -f)', 'Bash(git push * +*)']) expect(settings.permissions.ask).toContain(forced);
+    expect(settings.permissions.deny).toEqual((JSON.parse(await template('.claude/settings.json')) as Settings).permissions.deny);
+    // Второй ключ ask молча отбросил бы первый вместе с остальными вопросами.
+    expect(raw.match(/"ask"/g)).toHaveLength(1);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+  });
+
+  it('без флага — прежние защиты: push с вопросом, разрешений нет', async () => {
+    const root = await newProject();
+    const raw = await readUtf8(root, '.claude/settings.json');
+    expect(raw).toBe(await template('.claude/settings.json'));
+    const settings = JSON.parse(raw) as Settings;
+    expect(settings.permissions.allow).toBeUndefined();
+    expect(settings.permissions.ask).toEqual(['Bash(git push *)', 'Bash(npm publish *)', 'Bash(rm -rf *)', 'Bash(rm -fr *)', 'Bash(git reset --hard *)']);
+  });
+
+  it('повторный create готового проекта флаг не применяет, settings.json не трогает и говорит почему', async () => {
+    const root = await newProject();
+    const before = await readUtf8(root, '.claude/settings.json');
+    const result = await initProject({ target: root, startingPoint: 'materials', git: false, now: FIXED_NOW, pushWithoutAsking: true });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join('\n')).toContain('--push-without-asking не применён');
+    expect(await readUtf8(root, '.claude/settings.json')).toBe(before);
+  });
+});
+
+describe('0.4.2: правила для всех, навыки, паспорт', () => {
+  it('правила Maestro: сверить предложение с тем, что есть; простые слова, термин — с объяснением', async () => {
+    const rules = await template('.claude/rules/maestro.md');
+    expect(rules).toContain('Предложение человека сначала сверь с тем, что уже есть в проекте, и прямо скажи, если оно не нужно или уже сделано.');
+    expect(rules).toContain('Объясняй простыми словами, на уровне человека; технический термин — только вместе с объяснением.');
+  });
+
+  it('выбор навыков: установленные, GitHub и каталоги Anthropic; сравнить, проверить, выбрать, ставить после «да»', async () => {
+    const skills = section(await template('protocols/plan.md'), '### Выбор навыков');
+    for (const item of ['уже установленных', 'на GitHub', 'официальных каталогах Anthropic', 'Найди несколько подходящих и сравни их', '`SKILL.md`', '`allowed-tools`', 'hooks', 'Выбери лучший', 'Ставь только после «да» человека', 'Maestro навыки сам не ставит']) {
+      expect(skills, item).toContain(item);
+    }
+  });
+
+  it('паспорт пишется для получателя: он уходит в HANDOVER.md, но вступление туда не попадает', async () => {
+    const passport = await template('wiki/passport.md');
+    expect(passport).toContain('Паспорт уходит получателю результата');
+    expect(passport).toContain('`HANDOVER.md`');
+    expect(passport).toContain('Пишите его для получателя');
+    const { handoverText } = await import('../src/core/pack.js');
+    expect(handoverText({ projectName: 'П', tag: 'v1', commit: 'abc', passport })).not.toContain('Пишите его для получателя');
+  });
+});

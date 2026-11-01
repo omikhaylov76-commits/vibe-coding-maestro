@@ -29,6 +29,7 @@ import { recoverTemplateVars, templateUses } from './template-recover.js';
 import { canonicalOwnershipInventory, CONTENT_OWNED_FILES, lazyDirsForDepth, TEMPLATE_FILES } from './inventory.js';
 import { canonicalizeSystemTempPrefix, onDiskBasename } from './platform-paths.js';
 import { hasAnyReadme, README_PATH } from './readme.js';
+import { SETTINGS_PATH, withPushWithoutAsking } from './settings.js';
 import { compareVersions } from './version.js';
 
 const execFileAsync = promisify(execFile);
@@ -63,6 +64,8 @@ export interface InitOptions {
   depth?: ProjectDepth;
   /** Параметры, которые человек указал явно: для готового проекта о них стоит сказать, а не молчать. */
   requested?: { depth?: ProjectDepth; startingPoint?: StartingPoint };
+  /** Новый проект: обычный `git push` без вопроса (рецепт руководства). Готовый проект не меняется. */
+  pushWithoutAsking?: boolean;
 }
 
 export interface InitResult {
@@ -402,6 +405,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   if (isExistingProject && options.requested?.startingPoint !== undefined && options.requested.startingPoint !== startingPoint) {
     warnings.push(`У проекта исходная точка ${startingPoint}; --start ${options.requested.startingPoint} не применён: create не меняет параметры готового проекта.`);
   }
+  if (isExistingProject && options.pushWithoutAsking === true) {
+    warnings.push('--push-without-asking не применён: create не меняет готовый проект, а `.claude/settings.json` принадлежит проекту. Настройку предложит `/start` — только с вашего «да».');
+  }
 
   const previousChecksums = (await loadChecksums(target))?.files ?? {};
   const nextChecksums: Record<string, string> = {};
@@ -496,8 +502,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
     managed.push({ path: relativePath, kind: 'generated' });
     const absolutePath = join(target, relativePath);
     if (!existsSync(absolutePath)) {
-      const source = await readTemplate(relativePath);
-      await writeTextFile(absolutePath, renderTemplate(source, vars));
+      const rendered = renderTemplate(await readTemplate(relativePath), vars);
+      const pushRecipe = relativePath === SETTINGS_PATH && options.pushWithoutAsking === true && !isExistingProject;
+      await writeTextFile(absolutePath, pushRecipe ? withPushWithoutAsking(rendered) : rendered);
       createdFiles.push(relativePath);
       ownedPaths.push(relativePath);
     } else {

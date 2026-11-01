@@ -25,6 +25,8 @@ export interface CreateRunOptions {
   depth: ProjectDepth;
   /** Завести закрытую копию на GitHub после первого коммита. */
   github?: boolean;
+  /** Новый проект: обычный `git push` без вопроса. */
+  pushWithoutAsking?: boolean;
   /** Флаги, переданные явно, а не взятые по умолчанию. */
   explicit?: { depth?: boolean; startingPoint?: boolean };
 }
@@ -92,6 +94,7 @@ async function createAndCheck(options: CreateRunOptions, io: CliIo, renderer?: C
     startingPoint: options.startingPoint,
     git: options.git,
     depth: options.depth,
+    ...(options.pushWithoutAsking === true ? { pushWithoutAsking: true } : {}),
     requested: {
       ...(options.explicit?.depth === true ? { depth: options.depth } : {}),
       ...(options.explicit?.startingPoint === true ? { startingPoint: options.startingPoint } : {}),

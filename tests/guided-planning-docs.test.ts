@@ -168,9 +168,10 @@ describe('Phase 5: команды документации совпадают с
 });
 
 describe('Phase 5: главный путь новичка объявлен и упорядочен', () => {
-  it('README ведёт по одному маршруту от идеи до handoff', async () => {
+  it('README ведёт по одному маршруту от старта до handoff', async () => {
     const readme = await doc(README);
-    const order = ['Обсудите идею', '/plan', 'классификаци', 'draft', 'план утверждаю', 'preflight', '/build', 'doctor', '/handoff'];
+    // С 0.4.2 первый шаг один: создание → /start → /plan.
+    const order = ['Напишите `/start`', '/plan', 'классификаци', 'draft', 'план утверждаю', 'preflight', '/build', 'doctor', '/handoff'];
     let cursor = -1;
     for (const anchor of order) {
       const index = readme.indexOf(anchor, cursor + 1);

@@ -364,6 +364,7 @@ const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...V041_MANAGED_SHA256,
   '.claude/commands/plan.md': '4ddbab1b68f68e967904b959db61355153c7d7877981ee47a9917f02c9e6e84c',
   '.claude/commands/start.md': '47b16629ab303da37232cac345714f8f9ba473e055ca2096579faee2fe74df96',
+  '.claude/rules/maestro.md': '172edd47e177e07cf533f4a8eb19f9df04855b728f3933e089fba8e4e63318c3',
   'maestro/runbooks/cowork-discovery.md': 'a0b092f87e7a1749f6dda76a9e2cb2de4228cd9d5bcf27f3f89b79e34e3b6bc0',
   'protocols/discovery.md': '2c120e5bb2f118f9749fbe72eecb6ecd93635eddb84e3ce22b9f0de7bbc43374',
   'protocols/plan.md': '20d8c98cf889146c42ee103a10365a853c388872ff6462d0aabda07ea9089566',
@@ -440,7 +441,7 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.4.1'],
     inventory: v040OwnershipInventory,
     managedSha256: V041_MANAGED_SHA256,
-    templates: [...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+    templates: ['.claude/rules/maestro.md', ...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
   },
   {
     id: '0.4.2',

@@ -83,25 +83,26 @@ Vibe Coding Maestro doctor: всё сходится.
 
 ## Что дальше после создания проекта: Planning Gate
 
-Проект создан — **откройте созданную папку** (`My Project`) в Claude Code или Cowork. Дальше работа идёт по одному маршруту: сначала план, который утверждает человек, и только потом код.
+Проект создан — **откройте созданную папку** (`My Project`) в Claude Code. Первый шаг один: `/start`, потом `/plan`. Дальше работа идёт по одному маршруту: сначала план, который утверждает человек, и только потом код.
 
 ```text
-обсудить идею → /plan → классификация → черновик плана
+создание → /start → /plan → классификация → черновик плана
 → человек утверждает → preflight → /build одной порции → тесты и doctor → /handoff
 ```
 
-1. **Обсудите идею** обычными словами прямо в чате агента. Материалы — заметки, требования, скриншоты — положите в `maestro/inbox/`.
-2. **Попросите план.** В Claude Code это команда `/plan`, в Cowork — фраза «план» по runbook `maestro/runbooks/cowork-plan.md`. Это две разные двери в один и тот же канонический `protocols/plan.md`.
-3. **Проверьте классификацию.** Агент называет масштаб, режим, глубину гарантий, риск и профили с причинами. Вы можете принять её, изменить или сузить объём.
-4. **Покажите существующий код**, если он есть: команда `sources` читает его read-only и по умолчанию ничего не пишет.
-5. **Получите черновик** в `wiki/plans/<номер>-<слаг>.md`. Пока он `draft`, гейт показывает `CODE_ALLOWED: NO`.
-6. **Утвердите план сами** — словами «план утверждаю». После этих слов агент сам записывает поля плана, объявляет его в `wiki/hot.md` и ставит отпечаток утверждения: если текст плана потом изменится, `doctor` и `preflight` это заметят. Maestro не может механически отличить, кто заполнил поля — человек или агент: следите, чтобы они появлялись только после ваших слов.
-7. **Проверьте право на код** механическим гейтом `preflight` (команды ниже).
-8. **`/build` ровно одной порции — лучше в новой сессии** → тесты → `doctor` → `/handoff`. Агент правит только файлы из раздела плана «Где правим».
+1. **Материалы**, если есть, — заметки, требования, скриншоты — положите в `maestro/inbox/`. Готовый код оставьте, где лежит: `/start` спросит путь и прочитает его только на чтение.
+2. **Напишите `/start`** — знакомство с задачей. Агент сначала читает, что уже есть, потом спрашивает по одному вопросу: о задаче (что делаем, для кого, кому отдаём результат, что значит «готово», что ещё есть, чего не делаем, ограничения) и о том, как работаем (кто решает, что только после вашего «да», когда начинать код, как говорить, как отдавать ключи, где копия проекта). «Не знаю» — нормальный ответ. Можно прерваться и продолжить. После вашего «да» на сводку ответы записываются в проект. Агент без команд (Codex и другие) проходит старт по `protocols/start.md`.
+3. **Попросите план.** В Claude Code это команда `/plan`, в Cowork — фраза «план» по runbook `maestro/runbooks/cowork-plan.md`. Это две разные двери в один и тот же канонический `protocols/plan.md`. План не переспрашивает ответы старта.
+4. **Проверьте классификацию.** Агент называет масштаб, режим, глубину гарантий, риск и профили с причинами. Вы можете принять её, изменить или сузить объём.
+5. **Покажите существующий код**, если он есть: команда `sources` читает его read-only и по умолчанию ничего не пишет.
+6. **Получите черновик** в `wiki/plans/<номер>-<слаг>.md`. Пока он `draft`, гейт показывает `CODE_ALLOWED: NO`.
+7. **Утвердите план сами** — словами «план утверждаю». После этих слов агент сам записывает поля плана, объявляет его в `wiki/hot.md` и ставит отпечаток утверждения: если текст плана потом изменится, `doctor` и `preflight` это заметят. Maestro не может механически отличить, кто заполнил поля — человек или агент: следите, чтобы они появлялись только после ваших слов.
+8. **Проверьте право на код** механическим гейтом `preflight` (команды ниже).
+9. **`/build` ровно одной порции — лучше в новой сессии** → тесты → `doctor` → `/handoff`. Агент правит только файлы из раздела плана «Где правим».
 
 ### Откуда запускать команды
 
-- `/plan`, `/build`, `/status`, `/wiki`, `/handoff` — внутри **папки проекта**, открытой в Claude Code.
+- `/start`, `/plan`, `/build`, `/status`, `/wiki`, `/handoff` — внутри **папки проекта**, открытой в Claude Code.
 - `doctor`, `preflight`, `sources`, `upgrade` — тоже из **папки проекта**, через `npx`, с `--path .`. Точная команда с версией вашего проекта записана в его `.claude/rules/maestro.md`; ниже — общая форма:
 
 ```bash
@@ -145,7 +146,7 @@ My Project/
 ├── CLAUDE.md          # yours: project instructions for Claude Code
 ├── .claude/rules/     # maestro.md (Maestro rules, loaded every session) + project.md (yours)
 ├── .claude/settings.json  # yours: default deny/ask rules (Maestro files, push, publish)
-├── .claude/commands/  # /status, /plan, /build, /wiki, /handoff adapters
+├── .claude/commands/  # /start, /status, /plan, /build, /wiki, /handoff adapters
 ├── .claude/agents/    # read-only code-reviewer and explorer
 ├── protocols/         # canonical rules for planning, building, handoff and project completion
 ├── wiki/              # shared memory: plans, decisions, progress, audits and the project passport
@@ -177,10 +178,11 @@ From there, `protocols/build.md` routes the agent through the relevant rules, pl
 
 ## A normal working cycle
 
-The guided path above is the whole cycle: material in `maestro/inbox/` → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
+The guided path above is the whole cycle: material in `maestro/inbox/` → `/start` (getting to know the task) → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Independent audit findings are recorded with stable IDs; open `high` or `critical` findings block a green doctor result.
 
-Claude Code projects receive five thin commands:
+Claude Code projects receive six thin commands:
 
+- `/start` — the first session: read what already exists, then agree on the task and on how we work, one question at a time;
 - `/status` — read current context without changing files;
 - `/plan` — follow the canonical planning protocol up to the human approval gate;
 - `/build` — follow the canonical build protocol;
@@ -252,7 +254,7 @@ The core format is vendor-neutral; integration depth is not identical across too
 | Interface | Level in 0.3 | What is available |
 |---|---|---|
 | Humans | Native | Plain Markdown, Git diffs, explicit ownership, runbooks |
-| Claude Code | Native adapter | `.claude/rules/` loaded every session, five project commands including `/plan`, read-only reviewer and explorer, default `settings.json` |
+| Claude Code | Native adapter | `.claude/rules/` loaded every session, six project commands including `/start` and `/plan`, read-only reviewer and explorer, default `settings.json` |
 | Codex and other `AGENTS.md` tools | Generic adapter | Universal `AGENTS.md` entry into canonical protocols |
 | Cursor and other filesystem-aware tools | Generic | They can read the same Markdown; no dedicated adapter yet |
 | Cowork-style research/audit | Runbook | Copyable plan, discovery, and independent-audit workflows; human imports the result |

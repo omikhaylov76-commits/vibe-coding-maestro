@@ -237,3 +237,57 @@ describe('0.4.2: README проекта', () => {
     for (const name of ['READ.md', 'my-readme.md', 'readmes', 'docs']) expect(isReadmeName(name), name).toBe(false);
   });
 });
+
+describe('0.4.2: один первый шаг везде — создание → /start → /plan', () => {
+  /** `/start` назван раньше `/plan`. */
+  const startThenPlan = (text: string, where: string): void => {
+    const start = text.indexOf('/start');
+    expect(start, `${where}: /start`).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('/plan', start), `${where}: /plan после /start`).toBeGreaterThan(start);
+  };
+
+  it('экран после создания, hot.md, стартовый план, правила Maestro и README', async () => {
+    const lines: string[] = [];
+    const { createRenderer } = await import('../src/cli/renderer.js');
+    createRenderer((text) => lines.push(text), { isTty: false, columns: 100, env: { NO_COLOR: '1' }, unicode: false })
+      .success({ action: 'create', target: '/tmp/проект', name: 'Проект', doctorOk: true });
+    const screen = lines.join('');
+    startThenPlan(screen.slice(screen.indexOf('Что делать дальше')), 'экран создания');
+    expect(screen).toContain('maestro/inbox/');
+
+    const root = await newProject();
+    const hot = await readUtf8(root, 'wiki/hot.md');
+    startThenPlan(section(hot, '## Следующий шаг'), 'hot.md');
+    expect(section(hot, '## Сейчас в работе')).toContain('`/start`');
+    // Агент без команд (Codex через AGENTS.md) понимает шаг по протоколу.
+    expect(hot).toContain('`protocols/start.md`');
+
+    const starter = await readUtf8(root, 'wiki/plans/0001-starter.md');
+    startThenPlan(section(starter, '## Порядок работ'), '0001-starter.md');
+    expect(section(starter, '## Что известно')).toContain('Его закрывает `/start`');
+
+    const rules = await readUtf8(root, '.claude/rules/maestro.md');
+    startThenPlan(rules, 'rules/maestro.md');
+    expect(rules).toContain('создание → `/start` → `/plan`');
+    expect(rules).toContain('`protocols/start.md`');
+    expect(rules).toMatch(/команды `build`, `status`, `wiki`, `handoff`, `plan`, `start`/);
+
+    const readme = await readFile(join(process.cwd(), 'README.md'), 'utf8');
+    startThenPlan(readme.slice(readme.indexOf('## Что дальше после создания проекта')), 'README');
+    expect(readme).toContain('создание → /start → /plan');
+  });
+
+  it('названия разделов wiki/hot.md не меняются — на них опираются скрипты', async () => {
+    const hot = await template('wiki/hot.md');
+    expect(hot.match(/^## .+$/gm)).toEqual(['## Сейчас в работе', '## Открытые вопросы', '## Следующий шаг']);
+  });
+
+  it('руководство: первый шаг, команда /start и признак старта', async () => {
+    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    expect(guide).toContain('### Шаг 3. Знакомство с задачей: `/start`');
+    expect(guide).toContain('создание → `/start` → `/plan`');
+    expect(guide).toContain('### `/start`');
+    expect(guide).toContain('`not_started` → `in_progress` → `done`');
+    expect(guide).toContain('### `wiki/restore.md`');
+  });
+});

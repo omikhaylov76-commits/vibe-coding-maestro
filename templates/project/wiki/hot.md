@@ -16,7 +16,7 @@ active_plan: none
 
 ## Сейчас в работе
 
-- Пока ничего. Первый шаг — заполнить `wiki/roadmap.md`.
+- Пока ничего. Первый шаг — `/start`: знакомство с задачей по `protocols/start.md`.
 
 ## Открытые вопросы
 
@@ -24,4 +24,4 @@ active_plan: none
 
 ## Следующий шаг
 
-- Опишите задачу и разложите её по этапам в `wiki/roadmap.md`.
+- `/start` — знакомство с задачей по `protocols/start.md`; затем `/plan` — план до кода по `protocols/plan.md`.

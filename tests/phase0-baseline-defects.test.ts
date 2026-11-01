@@ -69,7 +69,7 @@ describe('D3: обычная работа с wiki/hot.md и wiki/log.md', () => 
     const hot = await readUtf8(target, 'wiki/hot.md');
     await writeFile(
       join(target, 'wiki/hot.md'),
-      hot.replace('- Пока ничего. Первый шаг — заполнить `wiki/roadmap.md`.', '- Готовим первый этап.'),
+      hot.replace('- Пока ничего. Первый шаг — `/start`: знакомство с задачей по `protocols/start.md`.', '- Готовим первый этап.'),
       'utf8',
     );
 

@@ -371,7 +371,7 @@ const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'maestro/runbooks/cowork-discovery.md': 'a0b092f87e7a1749f6dda76a9e2cb2de4228cd9d5bcf27f3f89b79e34e3b6bc0',
   'protocols/discovery.md': '2c120e5bb2f118f9749fbe72eecb6ecd93635eddb84e3ce22b9f0de7bbc43374',
   'protocols/plan.md': '43cd0f436b5baa3e9f2642719c27b2fd42972e5677897f0bb360a4ad0c984ffc',
-  'protocols/start.md': '2b852f9c67fcab322c37e4e2a6f9f0d75beeaabba7c69b314307abe7420756d5',
+  'protocols/start.md': 'aba396d7cf6a0de304e753493a6161789c0a624896d0935aed48bde4e437aa1c',
 };
 
 export const RELEASES: readonly Release[] = [

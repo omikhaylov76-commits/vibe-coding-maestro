@@ -16,7 +16,7 @@ active_plan: none
 
 ## Сейчас в работе
 
-- Пока ничего. Первый шаг — `/start`: знакомство с задачей по `protocols/start.md`.
+- Пока ничего. Первый шаг — `/start`: знакомство с задачей по `protocols/start.md`; потом `/plan`.
 
 ## Открытые вопросы
 
@@ -24,4 +24,4 @@ active_plan: none
 
 ## Следующий шаг
 
-- `/start` — знакомство с задачей по `protocols/start.md`; затем `/plan` — план до кода по `protocols/plan.md`.
+- `/start` — знакомство с задачей по `protocols/start.md`, пока в шапке `wiki/concepts/discovery.md` не стоит `start: done` или `start: skipped`; затем `/plan` — план до кода по `protocols/plan.md`.

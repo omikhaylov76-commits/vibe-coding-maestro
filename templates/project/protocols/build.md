@@ -9,13 +9,15 @@
 3. Standard/Advanced: [архитектура и сложность](#VCM-DESIGN-BEFORE-CODE).
 4. Всегда: [Task Context Capsule и бюджет](#VCM-TASK-CAPSULE).
 5. Всегда: [TDD feature loop и live evidence](#VCM-TDD-LOOP).
-6. Standard/Advanced: [аудит плана](audit.md#VCM-PLAN-AUDIT) и [независимое ревью](audit.md#VCM-INDEPENDENT-REVIEW).
+6. Standard/Advanced: после порции и зелёных тестов — [независимое ревью](audit.md#VCM-INDEPENDENT-REVIEW), затем исправления и проверка только исправлений. [Аудит плана](audit.md#VCM-PLAN-AUDIT) идёт раньше — до утверждения плана (`plan.md`, Stage E).
 7. Advanced: [seams](audit.md#VCM-SEAMS), [council reconciliation](audit.md#VCM-ADVANCED-COUNCIL), [lessons](wiki.md#VCM-LESSONS).
 8. Конец порции: [wiki](wiki.md), [status](status.md), [handoff](handoff.md). Закрыл порцию — передача дел и предложение начать новую сессию; вторую крупную порцию в той же сессии без согласия человека не начинать.
 9. До кода при неизвестных: [старт](start.md), затем [planning gate и утверждение человеком](plan.md).
 10. Утверждённый активный план задаёт ровно одну текущую разрешённую порцию и её стоп-гейт.
 11. До первой строки кода: `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro preflight --path .`. Гейт механический: он читает `active_plan` в `wiki/hot.md`, статус плана, след утверждения человеком и поля `blocking_questions`, `spec_delta`, `current_slice`, а для программы — `current_phase_approved`. Блокировка означает возврат в [plan](plan.md), а не обход проверки.
 12. Последняя порция сделана — [завершение проекта](completion.md): сдача заказчику или закрытие внутреннего проекта.
+
+Порядок одной порции: порция → тесты → ревью → исправления → проверка исправлений → передача. Строгость — строже из двух: классификация плана или depth проекта; когда что проверять, шкала и отчёт — [проверки](audit.md).
 
 <a id="VCM-HUMAN-AUTHORITY"></a>
 ## Human authority

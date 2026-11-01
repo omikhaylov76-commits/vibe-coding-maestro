@@ -37,6 +37,7 @@ const NEW_PATHS = [
   'maestro/inbox/.gitattributes',
   'maestro/runbooks/cowork-plan.md',
   'maestro/templates/adr.md',
+  'maestro/templates/audit.md',
   'maestro/templates/handoff.md',
   'maestro/templates/progress.md',
   'protocols/completion.md',

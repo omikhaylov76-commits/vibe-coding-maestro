@@ -175,3 +175,134 @@ describe('0.4.3: мелкие протоколы вошли в соседние'
     }
   });
 });
+
+describe('0.4.3: проверки без лишнего круга — когда, насколько строго, шкала, отчёт', () => {
+  const template = (path: string): Promise<string> => packageText(`templates/project/${path}`);
+
+  /** Шкала для плана и кода: одна и та же в протоколе, у ревьюера и в prompt для Cowork. */
+  const scale = async (): Promise<string> => {
+    const audit = await template('protocols/audit.md');
+    const block = /\n(- `critical` — [^\n]+\n- `high` — [^\n]+\n- `medium` — [^\n]+\n- `low` — [^\n]+)\n/.exec(audit)?.[1];
+    expect(block, 'шкала в protocols/audit.md').toBeDefined();
+    return block as string;
+  };
+
+  async function project(depth: 'light' | 'standard' | 'advanced' = 'standard'): Promise<string> {
+    const { initProject } = await import('../src/core/init.js');
+    const { FIXED_NOW, makeTempDir } = await import('./helpers.js');
+    const root = join(await makeTempDir('release-043-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    return root;
+  }
+
+  async function report(root: string, text: string): Promise<{ codes: string[]; strict: string[] }> {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await mkdir(join(root, 'wiki/audits'), { recursive: true });
+    await writeFile(join(root, 'wiki/audits/AUD-2026-11-01-proba.md'), text, 'utf8');
+    return {
+      codes: (await doctorProject(root)).findings.map((item) => item.code),
+      strict: (await doctorProject(root, { strict: true })).findings.map((item) => item.code),
+    };
+  }
+
+  it('одна шкала: в audit.md, у ревьюера и в Cowork-runbook дословно одна и та же', async () => {
+    const block = await scale();
+    expect(block).toContain('план: ');
+    expect(block).toContain('код: ');
+    for (const path of ['.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md']) {
+      expect(await template(path), path).toContain(block);
+    }
+    // Уровни самого doctor — другое: протокол так и говорит.
+    expect(await template('protocols/audit.md')).toContain('`critical`, `error`, `warning`, `info`');
+  });
+
+  it('образец отчёта — файл Maestro, защищён от правки, и сам по себе отчёт, который doctor принимает', async () => {
+    for (const depth of ['light', 'standard', 'advanced'] as const) expect(canonicalOwnershipInventory(depth)['maestro/templates/audit.md'], depth).toBe('managed');
+    const settings = JSON.parse(await template('.claude/settings.json')) as { permissions: { deny: string[] } };
+    expect(settings.permissions.deny).toContain('Edit(/maestro/templates/audit.md)');
+
+    const root = await project();
+    const sample = await packageText('templates/project/maestro/templates/audit.md');
+    // high закрыта после проверенного исправления, medium «не исправляем» открыта, low проверки исправлений — своя находка.
+    expect(sample).toMatch(/- severity: high\n[^#]*- status: resolved\n- resolution: [^\n]*проверка исправления/);
+    expect(sample).toMatch(/- severity: medium\n[^#]*- status: open\n- resolution: не исправляем — причина; где записано/);
+    expect(sample).toMatch(/- evidence: найдено проверкой исправления F001/);
+    const result = await report(root, sample);
+    expect(result.codes).toEqual([]);
+    expect(result.strict).toEqual([]);
+  });
+
+  it('открытая high — блокирующая находка; resolved-отчёт с открытой medium — неверный отчёт', async () => {
+    const sample = await packageText('templates/project/maestro/templates/audit.md');
+    const root = await project();
+    const openHigh = sample.replace('- severity: high\n- target: src/файл.ts:42\n- evidence: что воспроизведено — команда, строка или наблюдение\n- status: resolved', '- severity: high\n- target: src/файл.ts:42\n- evidence: что воспроизведено — команда, строка или наблюдение\n- status: open');
+    expect(openHigh).not.toBe(sample);
+    expect((await report(root, openHigh)).codes).toContain('audit-blocking-finding');
+    // «не исправляем» нельзя прятать в закрытом отчёте: resolved — только проверенное исправление.
+    expect((await report(root, sample.replace('status: open\n---', 'status: resolved\n---'))).codes).toContain('audit-malformed');
+  });
+
+  it('проверку исправления нельзя писать отдельным разделом после находок — потому она в resolution', async () => {
+    const sample = await packageText('templates/project/maestro/templates/audit.md');
+    const root = await project();
+    const tail = `${sample}\n## Проверка исправлений\n- status: проверено\n`;
+    expect((await report(root, tail)).codes).toContain('audit-malformed');
+    expect(await template('protocols/audit.md')).toContain('Проверка исправления — одной строкой в `resolution` той же находки');
+  });
+
+  it('один порядок проверок: аудит плана до утверждения, ревью после порции', async () => {
+    const order = 'порция → тесты → ревью → исправления → проверка исправлений → передача';
+    expect(await template('protocols/build.md')).toContain(order);
+    expect(await template('protocols/audit.md')).toContain(order);
+    const plan = await template('protocols/plan.md');
+    const stageE = plan.slice(plan.indexOf('## Stage E'), plan.indexOf('## Stage F'));
+    expect(stageE).toContain('Независимый аудит плана идёт до утверждения и до `preflight`');
+    expect(await template('protocols/audit.md')).toContain('Аудит плана — до утверждения плана и до `preflight`; ревью кода — после порции');
+    const router = await template('protocols/build.md');
+    expect(router).toContain('[Аудит плана](audit.md#VCM-PLAN-AUDIT) идёт раньше — до утверждения плана');
+    // Строже из двух — одной формулой в трёх местах.
+    for (const path of ['protocols/build.md', 'protocols/audit.md', 'protocols/plan.md']) expect(await template(path), path).toContain('строже из двух');
+    expect(plan).toContain('Governance плана не ниже depth проекта; ниже — действует depth.');
+    expect(plan).not.toContain('он совпадает с depth проекта');
+  });
+
+  it('Stage D: проверка по углам на действующей ситуации для любого масштаба, повторно — только заметно изменённое', async () => {
+    const plan = await template('protocols/plan.md');
+    const stageD = plan.slice(plan.indexOf('## Stage D'), plan.indexOf('## Stage E'));
+    expect(stageD).toContain('для любого масштаба, и для `QUICK`');
+    expect(stageD).toContain('по файлу, коду или выводу команды');
+    expect(stageD).toContain('опытом');
+    expect(stageD).toContain('«Что известно»');
+    expect(stageD).toContain('`OPEN_QUESTION`, а не правка');
+    expect(stageD).toContain('подход, состав или порядок порций, границы, данные, безопасность, deployment');
+    expect(plan).not.toContain('Один полный зелёный проход достаточен');
+  });
+
+  it('круг проверки: critical/high — исправить и проверить исправление, medium/low — исправить или записать и остановиться', async () => {
+    const audit = await template('protocols/audit.md');
+    expect(audit).toContain('Medium и low — исправь или запиши «не исправляем — причина; где записано»');
+    expect(audit).toContain('Проверка исправлений нашла critical или high — исправь и проверь только это исправление');
+    expect(audit).toContain('Нашла только medium и low — исправь или запиши и остановись');
+    expect(audit).toContain('Проверка исправлений — одна на круг');
+    expect(audit).toContain('Ничего не исправляли — проверять нечего');
+    expect(audit).toContain('«проверь ещё раз» — проверка');
+    expect(audit).toContain('`status: open` с `resolution: не исправляем — причина; где записано`');
+    expect(audit).toContain('текст каждой находки из отчёта, файлы и строки исправления и сам текст изменений');
+  });
+
+  it('ревьюер: три вида работы, только читает, находки возвращает, файл не пишет', async () => {
+    const reviewer = await template('.claude/agents/code-reviewer.md');
+    expect(reviewer).toContain('tools: Read, Grep, Glob\n');
+    for (const kind of ['- Ревью порции —', '- Аудит плана —', '- Проверка исправлений —']) expect(reviewer).toContain(kind);
+    expect(reviewer).toContain('Файл отчёта не пиши');
+    expect(reviewer).toContain('maestro/templates/audit.md');
+  });
+
+  it('открытые находки — в передаче порции и в итоге завершения', async () => {
+    const handoff = await template('maestro/templates/handoff.md');
+    const risks = handoff.slice(handoff.indexOf('## Риски и открытые вопросы'), handoff.indexOf('## Следующий шаг'));
+    expect(risks).toContain('Открытые находки проверок');
+    expect(await template('protocols/completion.md')).toContain('находки проверок «не исправляем»');
+    expect(await template('maestro/runbooks/cowork-audit.md')).toContain('`resolution: не исправляем — причина; где записано`');
+  });
+});

@@ -392,6 +392,9 @@ const REMOVED_IN_043: readonly string[] = [
 
 /** Файлы Maestro, которые 0.4.3 изменил. */
 const CHANGED_IN_043: readonly string[] = [
+  '.claude/agents/code-reviewer.md',
+  'maestro/runbooks/cowork-audit.md',
+  'maestro/templates/handoff.md',
   'protocols/audit.md',
   'protocols/build.md',
   'protocols/completion.md',
@@ -417,17 +420,21 @@ function copiesFor043(managedSha256: Readonly<Record<string, string>>): Baseline
     .map(v042Copy);
 }
 
-/** Канон 0.4.3: мелкие протоколы вошли в соседние. */
-const V043_TEMPLATE_FILES: readonly string[] = V042_TEMPLATE_FILES.filter((path) => !REMOVED_IN_043.includes(path));
+/** Канон 0.4.3: мелкие протоколы вошли в соседние; образец отчёта проверки (Maestro). */
+const V043_TEMPLATE_FILES: readonly string[] = [...V042_TEMPLATE_FILES.filter((path) => !REMOVED_IN_043.includes(path)), 'maestro/templates/audit.md'];
 const V043_CONTENT_OWNED_FILES: readonly string[] = V042_CONTENT_OWNED_FILES;
 
 /** Слепок `templates/project` 0.4.3. */
 const V043_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(V042_MANAGED_SHA256).filter(([path]) => !REMOVED_IN_043.includes(path))),
-  'protocols/audit.md': '430d2e52d2c662028d97aff1ee40e2900a8a47d774cbb779c1d5b7b7bf31f548',
-  'protocols/build.md': '6850acee546a743f29c8bd7043acd7d9951bb230973aae40ba43315c350c4b5e',
-  'protocols/completion.md': 'acdc3afde98b9aa1efc094c5370a2c88a80dc993504b3a1825eb9df41f947db1',
-  'protocols/plan.md': '0811949cdeea2ff124ccc2a1692a1cf4c82537fc69846f2b269e16f98511a943',
+  '.claude/agents/code-reviewer.md': 'b32a19e4e45b1d798e516353c919c07fd278151673cc9e271023946a76bbeb83',
+  'maestro/runbooks/cowork-audit.md': 'f1db1fe45606d549700867d62af36f833ca293c6a37823940848c40bca5e65c2',
+  'maestro/templates/audit.md': '842808fa52f5570c6aa6e5a43d04d647ccdb54425168e52aa6bd00934d47cc72',
+  'maestro/templates/handoff.md': 'f93d9d538ca9905b8c57b6ed7938eada3ab3d5fe76b11f3ff70a8595bfbcc597',
+  'protocols/audit.md': '8b2b7bfcd4816f4ae53a9d022fa9ed963e5b19998c5014402253f132d1bf9135',
+  'protocols/build.md': '57ba2aab90909623b8c766b1f523e0c0b3060bfbf1c0a836131dbbd4818553b4',
+  'protocols/completion.md': '8b61ba1aa0edd510f1627886c2d6348efcff243f4e3972b818ed99ec59dc8045',
+  'protocols/plan.md': '8ba0557076dcc9715405e4d3f4f598db46d95b0ecc89660ef467d2ba9b0bced4',
   'protocols/wiki.md': 'ff335b833096190a4ffaa9851040fcd813de14036c49f629ec8458519702503e',
 };
 

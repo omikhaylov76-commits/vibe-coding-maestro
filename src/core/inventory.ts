@@ -17,6 +17,7 @@ export const TEMPLATE_FILES: readonly string[] = [
   '.claude/agents/code-reviewer.md',
   '.claude/agents/explorer.md',
   'maestro/templates/handoff.md',
+  'maestro/templates/audit.md',
   'maestro/templates/adr.md',
   'maestro/templates/progress.md',
   '.gitattributes',

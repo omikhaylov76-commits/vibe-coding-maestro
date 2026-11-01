@@ -35,7 +35,8 @@ export const defaultGhRunner: GhRunner = (args, options) => new Promise((resolve
     encoding: 'utf8',
     windowsHide: true,
     // gh не задаёт вопросов и не проверяет обновления: ответить ему некому.
-    env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' },
+    // git внутри gh тоже не спрашивает логин в терминале: лучше быстрый понятный сбой, чем зависание.
+    env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1', GIT_TERMINAL_PROMPT: '0' },
   }, (error, stdout, stderr) => {
     if (error === null) { resolve({ code: 0, stdout, stderr }); return; }
     const cause = error as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };

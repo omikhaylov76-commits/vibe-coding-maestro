@@ -416,7 +416,16 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
         }
         blockers.push(blocker(
           'upgrade-inbox-gitattributes-foreign',
-          'В maestro/inbox/ уже лежит свой .gitattributes. Upgrade кладёт сюда файл Maestro с правилом `* -text` (git хранит материалы байт в байт) и чужой не перезаписывает: уберите или переименуйте свой файл — нужные правила перенесите в корневой .gitattributes, — затем повторите.',
+          'В maestro/inbox/ уже лежит свой .gitattributes. Upgrade кладёт сюда файл Maestro с правилом `* -text` (git хранит материалы байт в байт) и чужой не перезаписывает: уберите или переименуйте свой файл, затем повторите. Если его правила нужны, положите их в .gitattributes подпапки внутри maestro/inbox/ — он действует на свою папку. Корневой .gitattributes не правьте: это файл Maestro.',
+          path,
+        ));
+        continue;
+      }
+      if (path.startsWith('.claude/commands/')) {
+        const name = path.slice('.claude/commands/'.length).replace(/\.md$/, '');
+        blockers.push(blocker(
+          'upgrade-command-collision',
+          `У проекта уже есть своя команда /${name}, а эта версия Maestro добавляет команду с тем же именем. Upgrade её не перезаписывает: переименуйте свою (например, в .claude/commands/my-${name}.md) и повторите.`,
           path,
         ));
         continue;

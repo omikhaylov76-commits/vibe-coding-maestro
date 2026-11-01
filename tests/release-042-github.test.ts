@@ -104,6 +104,10 @@ describe('0.4.2: проверка входа в gh', () => {
       expect(await githubReady(defaultGhRunner)).toBe(true);
       process.env.PATH = await makeTempDir('empty-bin-');
       expect(await githubReady(defaultGhRunner)).toBe(false);
+      // Ревью L6: git внутри gh не спрашивает логин в терминале.
+      await writeFile(join(bin, 'gh'), '#!/bin/sh\n[ "$GIT_TERMINAL_PROMPT" = 0 ] && [ "$GH_PROMPT_DISABLED" = 1 ]\n', 'utf8');
+      process.env.PATH = `${bin}:${path ?? ''}`;
+      expect(await githubReady(defaultGhRunner)).toBe(true);
     } finally {
       process.env.PATH = path;
     }
@@ -178,8 +182,11 @@ describe('0.4.2: create --github', () => {
     expect(await runCreateCli(['--yes', '--target', root, '--github'], collect().io, { isTty: false, gh: gh.runner })).toBe(0);
     const again = collect();
     expect(await runCreateCli(['--yes', '--target', root, '--github'], again.io, { isTty: false, gh: gh.runner })).toBe(0);
-    expect(again.err()).toContain('--github не применён');
+    expect(again.err()).toContain('Копию на GitHub не завожу');
     expect(again.err()).toContain('уже есть');
+    // Ревью M5: у готового проекта с remote строка о копии — правдивая.
+    expect(again.out()).toContain('Копия в облаке: ');
+    expect(again.out()).not.toContain('Копии в облаке нет');
     expect(await gh.calls()).toHaveLength(1);
 
     const plain = await target('без облака');
@@ -356,6 +363,35 @@ describe('0.4.2: doctor — копия в облаке по локальным �
     const root = await target('без git');
     expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
     expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
-    await mkdir(join(root, 'x'), { recursive: true });
+  });
+
+  it('doctor о копии зовёт только локальные команды git — ни fetch, ни ls-remote (ревью L9)', async () => {
+    // Комментарии не в счёт: в них честно сказано, что `git fetch` не запускается.
+    const source = (await readFile(join(process.cwd(), 'src/core/doctor/git.ts'), 'utf8'))
+      .split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*\*)/.test(line)).join('\n');
+    const commands = [...source.matchAll(/gitAnswer\(root, \['([a-z-]+)'/g)].map((match) => match[1]);
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) expect(['remote', 'symbolic-ref', 'rev-parse', 'rev-list'], command).toContain(command);
+    for (const network of ['fetch', 'ls-remote', 'pull', "'update'", "'show'"]) expect(source, network).not.toContain(network);
+  });
+
+  it('git-no-upstream называет настоящий remote, а не всегда origin (ревью L5)', async () => {
+    const root = await project();
+    await git(root, 'remote', 'add', 'backup', join(await makeTempDir('bare-'), 'x.git'));
+    const finding = (await doctorProject(root)).findings.find((item) => item.code === 'git-no-upstream');
+    expect(finding?.message).toContain('git push -u backup main');
+  });
+
+  it('число проблем в выводе doctor не считает пометки info (ревью L3)', async () => {
+    const root = await project();
+    await writeFile(join(root, 'protocols/seams.md'), 'правка\n', 'utf8');
+    const { runMaestroCli } = await import('../src/cli/maestro.js');
+    const cli = collect();
+    expect(await runMaestroCli(['doctor', '--path', root], cli.io)).toBe(1);
+    const report = await doctorProject(root);
+    const problems = report.findings.filter((item) => item.level !== 'info').length;
+    expect(problems).toBeLessThan(report.findings.length);
+    expect(cli.err()).toContain(`найдено проблем — ${problems}.`);
+    expect(cli.err()).toContain('git-no-remote');
   });
 });

@@ -671,6 +671,19 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
     expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
   });
 
+  it('своя команда /start: понятная остановка с советом переименовать, ни байта не записано (ревью M4)', async () => {
+    const { root } = await materialize('0.4.1-standard');
+    await mkdir(join(root, '.claude/commands'), { recursive: true });
+    await writeFile(join(root, '.claude/commands/start.md'), 'Моя команда старта.\n', 'utf8');
+    const before = await snapshotTree(root);
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.ok).toBe(false);
+    expect(result.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-command-collision', path: '.claude/commands/start.md' })]);
+    expect(result.analysis.blockers[0]?.message).toContain('переименуйте свою');
+    expect(result.analysis.blockers[0]?.message).toContain('my-start.md');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
   it('уже лежащий maestro/inbox/.gitattributes, побайтово как у Maestro, принимается; чужой — понятная остановка', async () => {
     const { root } = await materialize('0.4.1-standard');
     await writeFile(join(root, 'maestro/inbox/.gitattributes'), '* -text\n', 'utf8');
@@ -689,10 +702,15 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
     expect(foreign.ok).toBe(false);
     expect(foreign.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-inbox-gitattributes-foreign', path: 'maestro/inbox/.gitattributes' })]);
     expect(foreign.analysis.blockers[0]?.message).toContain('уберите или переименуйте');
+    // Ревью M3: совет не ведёт к правке корневого .gitattributes — это файл Maestro, doctor бы покраснел.
+    expect(foreign.analysis.blockers[0]?.message).toContain('подпапки внутри maestro/inbox/');
+    expect(foreign.analysis.blockers[0]?.message).toContain('Корневой .gitattributes не правьте');
     expect(await snapshotTree(other)).toEqual(before);
   });
 
-  it('удалённый после 0.4.2 README следующий upgrade не возвращает', async () => {
+  // Ревью L9: ветку README_SINCE этот тест не проходит — обновить проект 0.4.2 пока нечем.
+  // Он проверяет только, что удалённый README не делает проект «устаревшим» и не красит doctor.
+  it('проект 0.4.2 без README: upgrade говорит «обновлять нечего», doctor --strict без замечаний', async () => {
     const target = join(await makeTempDir('readme-gone-'), 'проект');
     expect((await initProject({ target, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
     await rm(join(target, 'README.md'));

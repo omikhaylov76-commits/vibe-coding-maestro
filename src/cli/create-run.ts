@@ -56,6 +56,16 @@ async function hasRemote(root: string): Promise<boolean> {
   return remotes !== null && remotes.stdout.trim() !== '';
 }
 
+/** Адрес копии в облаке по локальным данным Git: origin, иначе первый remote; нет — null. */
+async function remoteUrl(root: string): Promise<string | null> {
+  const remotes = await execFileAsync('git', ['remote'], { cwd: root, encoding: 'utf8' }).catch(() => null);
+  const names = (remotes?.stdout ?? '').split(/\r?\n/).filter(Boolean);
+  const name = names.includes('origin') ? 'origin' : names[0];
+  if (name === undefined) return null;
+  const url = await execFileAsync('git', ['remote', 'get-url', name], { cwd: root, encoding: 'utf8' }).catch(() => null);
+  return url?.stdout.trim() || null;
+}
+
 /**
  * Копия на GitHub — только для проекта, чей репозиторий и первый коммит сделал этот create.
  * Сбой gh не отменяет созданный проект: человек получает причину и команду на потом.
@@ -66,15 +76,15 @@ async function cloudStep(options: CreateRunOptions, result: InitResult, gh?: GhR
     return {
       status: 'skipped',
       reason: (await hasRemote(result.target))
-        ? '--github не применён: это готовый проект, и копия в облаке (remote) у него уже есть. Create не меняет готовый проект.'
-        : '--github не применён: create не меняет готовый проект. Завести копию в облаке поможет `/start`.',
+        ? 'Копию на GitHub не завожу: это готовый проект, и копия в облаке (remote) у него уже есть. Create не меняет готовый проект.'
+        : 'Копию на GitHub не завожу: create не меняет готовый проект. Завести копию в облаке поможет `/start`.',
     };
   }
   const name = githubRepoName(onDiskBasename(result.target));
   if (result.gitCreated !== true) {
     return {
       status: 'skipped',
-      reason: `--github не применён: первый коммит не сделан (репозиторий Git уже был или шаги Git пропущены). Когда коммит будет, из папки проекта: ${githubCreateCommand(name)}`,
+      reason: `Копию на GitHub не завожу: первый коммит не сделан (репозиторий Git уже был или шаги Git пропущены). Когда коммит будет, из папки проекта: ${githubCreateCommand(name)}`,
     };
   }
   const copy = await createGithubCopy(result.target, name, gh);
@@ -84,8 +94,8 @@ async function cloudStep(options: CreateRunOptions, result: InitResult, gh?: GhR
   return { status: 'failed', reason: copy.reason, later };
 }
 
-function cloudLine(cloud: CloudOutcome): string {
-  return cloud.status === 'created' ? `Копия в облаке: ${cloud.url}` : 'Копии в облаке нет — завести её поможет /start.';
+function cloudLine(url: string | null): string {
+  return url !== null ? `Копия в облаке: ${url}` : 'Копии в облаке нет — завести её поможет /start.';
 }
 
 async function createAndCheck(options: CreateRunOptions, io: CliIo, renderer?: CliRenderer, gh?: GhRunner): Promise<number> {
@@ -114,7 +124,11 @@ async function createAndCheck(options: CreateRunOptions, io: CliIo, renderer?: C
   if (cloud.status === 'skipped') warnings.push(cloud.reason);
   if (cloud.status === 'failed') warnings.push(`Копию на GitHub завести не удалось: ${cloud.reason}. Проект создан и работает на этом компьютере. Повторить можно из папки проекта: ${cloud.later}`);
 
+  // Строка о копии — по фактическому remote: у готового проекта копия могла появиться раньше.
+  const cloudUrl = cloud.status === 'created' ? cloud.url : await remoteUrl(result.target);
   const report = await doctorProject(result.target);
+  // Пометки info — не проблемы.
+  const problems = report.findings.filter((item) => item.level !== 'info').length;
   const output = { init: result, ...(options.github === true ? { github: cloud } : {}), doctor: report };
   if (options.json) {
     io.out(JSON.stringify(output, null, 2));
@@ -125,11 +139,11 @@ async function createAndCheck(options: CreateRunOptions, io: CliIo, renderer?: C
       else io.err(`Предупреждение: ${warning}`);
     }
     if (renderer) {
-      if (report.ok) renderer.success({ action: 'create', target: result.target, name: options.name ?? basename(result.target), doctorOk: true, cloud: cloud.status === 'created' ? cloud.url : null });
-      else renderer.failure(`Проверка нашла проблем: ${report.findings.length}.`);
+      if (report.ok) renderer.success({ action: 'create', target: result.target, name: options.name ?? basename(result.target), doctorOk: true, cloud: cloudUrl });
+      else renderer.failure(`Проверка нашла проблем: ${problems}.`);
     } else {
-      io.out(cloudLine(cloud));
-      io.out(report.ok ? 'Doctor: всё сходится.' : `Doctor: найдено проблем — ${report.findings.length}.`);
+      io.out(cloudLine(cloudUrl));
+      io.out(report.ok ? 'Doctor: всё сходится.' : `Doctor: найдено проблем — ${problems}.`);
     }
   }
   return report.ok ? EXIT_OK : EXIT_FAILED;

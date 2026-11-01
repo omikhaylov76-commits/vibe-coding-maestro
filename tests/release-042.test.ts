@@ -133,7 +133,8 @@ describe('0.4.2: команда /start со своим протоколом', ()
     expect(block).not.toBeNull();
     expect(final).toContain(`"allow": [${block?.[1]}]`);
     const forced = (block?.[2] ?? '').match(/"Bash\(git push [^"]+\)"/g) ?? [];
-    expect(forced).toHaveLength(6);
+    // Принудительная отправка (6 правил) и удаление в облаке (6 правил, ревью L4).
+    expect(forced).toHaveLength(12);
     for (const rule of forced) expect(final, rule).toContain(rule);
   });
 
@@ -267,7 +268,8 @@ describe('0.4.2: один первый шаг везде — создание �
     startThenPlan(section(hot, '## Следующий шаг'), 'hot.md');
     // Живой прогон: после старта hot.md всё ещё звал на /start — заготовка верна и до, и после старта.
     expect(section(hot, '## Следующий шаг')).toContain('пока в шапке `wiki/concepts/discovery.md` не стоит `start: done` или `start: skipped`');
-    expect(section(hot, '## Сейчас в работе')).toContain('`/start`');
+    // Ревью L10: «Сейчас в работе» не называет шаг без условия — после старта он устарел бы.
+    expect(section(hot, '## Сейчас в работе')).not.toContain('`/start`');
     // Агент без команд (Codex через AGENTS.md) понимает шаг по протоколу.
     expect(hot).toContain('`protocols/start.md`');
 
@@ -443,5 +445,35 @@ describe('0.4.2: правила для всех, навыки, паспорт', 
     expect(passport).toContain('Пишите его для получателя');
     const { handoverText } = await import('../src/core/pack.js');
     expect(handoverText({ projectName: 'П', tag: 'v1', commit: 'abc', passport })).not.toContain('Пишите его для получателя');
+  });
+});
+
+describe('0.4.2: находки независимого ревью — тексты', () => {
+  it('M1: правила Maestro называют исключение «отправка без вопроса», а рецепт записывается в «Как работаем»', async () => {
+    const rules = await template('.claude/rules/maestro.md');
+    expect(rules).toContain('Исключение — обычный `git push`, если человек сам включил «отправку в облако без вопроса»');
+    expect(rules).toContain('принудительная отправка и удаление в облаке — по-прежнему с «да»');
+    expect(rules.split('\n').length).toBeLessThanOrEqual(40);
+    expect(section(await template('protocols/start.md'), '### 5. Сводка и запись')).toContain('Включил — запиши в «Как работаем»');
+  });
+
+  it('M2: команда /start не спорит с протоколом о черновике', async () => {
+    const command = await template('.claude/commands/start.md');
+    expect(command).toContain('Черновик ответов веди, как сказано в протоколе');
+    expect(command).toContain('в разделы проекта записывай только после «да» человека на сводку');
+  });
+
+  it('L1, L2, L11: sources — сводка; нет раздела — добавить; skipped и /start человека', async () => {
+    const protocol = await template('protocols/start.md');
+    expect(section(protocol, '### 1. Сначала прочитай, что уже есть')).toContain('сводку о нём (что за проект, чем собирается, что умеет) даёт команда');
+    expect(section(protocol, '### 2. Как спрашивать')).toContain('Нет такого раздела или поля (проект создан до 0.4.2) — добавь их.');
+    expect(section(protocol, '### 5. Сводка и запись')).toContain('нет нужного раздела — добавь его');
+    expect(protocol).toContain('если потом он сам пишет `/start`, проходи старт как обычно');
+  });
+
+  it('L8: команды перехода в руководстве включают git add --renormalize maestro/inbox', async () => {
+    const guide = await readFile(join(process.cwd(), 'docs/USER_GUIDE.md'), 'utf8');
+    const block = guide.slice(guide.indexOf('vibe-maestro upgrade --path . --apply'), guide.indexOf('git commit -m "Maestro 0.4.2"'));
+    expect(block).toContain('git add --renormalize maestro/inbox');
   });
 });

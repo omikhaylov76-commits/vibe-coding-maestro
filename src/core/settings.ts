@@ -7,7 +7,10 @@ export const SETTINGS_PATH = '.claude/settings.json';
 
 export const PUSH_ALLOW: readonly string[] = ['Bash(git push *)'];
 
-/** Принудительная отправка, которая может стереть чужую работу: `--force`, `-f`, `+ветка`. */
+/**
+ * Отправка, которая может перезаписать или стереть работу в облаке: принудительная
+ * (`--force`, `-f`, `+ветка`) и удаление веток (`--delete`, `-d`, `:ветка`, `--mirror`, `--prune`).
+ */
 export const FORCE_PUSH_ASK: readonly string[] = [
   'Bash(git push --force)',
   'Bash(git push -f)',
@@ -15,6 +18,12 @@ export const FORCE_PUSH_ASK: readonly string[] = [
   'Bash(git push -f*)',
   'Bash(git push * -f*)',
   'Bash(git push * +*)',
+  'Bash(git push *--delete*)',
+  'Bash(git push -d *)',
+  'Bash(git push * -d *)',
+  'Bash(git push * :*)',
+  'Bash(git push *--mirror*)',
+  'Bash(git push *--prune*)',
 ];
 
 interface Permissions { deny?: string[]; allow?: string[]; ask?: string[]; [key: string]: unknown }

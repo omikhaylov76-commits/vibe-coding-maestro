@@ -409,12 +409,13 @@ npx --package create-vibe-maestro@latest vibe-maestro upgrade --path . --json
 ```bash
 npx --package create-vibe-maestro@0.4.2 vibe-maestro upgrade --path . --apply
 git add -A
+git add --renormalize maestro/inbox
 git diff --cached
 git commit -m "Maestro 0.4.2"
 npx --package create-vibe-maestro@0.4.2 vibe-maestro doctor --path . --strict
 ```
 
-`git add -A` добавит и ваши незакоммиченные файлы, поэтому перед upgrade закоммитьте или отложите свою работу. После обновления команды в `.claude/rules/maestro.md` и протоколах называют новую версию.
+`git add -A` добавит и ваши незакоммиченные файлы, поэтому перед upgrade закоммитьте или отложите свою работу. `git add --renormalize maestro/inbox` нужен при переходе на 0.4.2, если в `maestro/inbox/` уже лежат материалы (см. ниже); в остальных случаях он ничего не меняет. После обновления команды в `.claude/rules/maestro.md` и протоколах называют новую версию.
 
 **Что меняет переход на 0.3.0.** Появляются `.claude/rules/maestro.md`, `.claude/rules/project.md`, `.claude/settings.json`, разведчик `explorer` и образцы в `maestro/templates/`. `CLAUDE.md`, `AGENTS.md` и `wiki/index.md` переходят к проекту: нетронутые получают новый короткий стартовый текст, изменённые остаются как есть. Если проект уже завёл свой `.claude/settings.json`, upgrade его не трогает.
 
@@ -422,7 +423,7 @@ npx --package create-vibe-maestro@0.4.2 vibe-maestro doctor --path . --strict
 
 **Что меняет переход на 0.4.1.** Состав файлов тот же. Правила Maestro и протокол передачи после закрытой порции зовут [`context`](#размер-сессии), протокол завершения — [`pack`](#завершение-проекта).
 
-**Что меняет переход на 0.4.2.** Появляются команда и протокол [`/start`](#шаг-3-знакомство-с-задачей-start), `maestro/inbox/.gitattributes` (материалы байт в байт) и страница `wiki/restore.md`; `README.md` — только если в корне нет никакого README (`README`, `readme.md`, `README.rst` и т. п.), свой не трогается. Обновляются правила Maestro, протоколы `plan.md` и `discovery.md`, команда `/plan`, `maestro/inbox/README.md` и runbook `cowork-discovery`. Ваши `wiki/hot.md`, `wiki/plans/0001-starter.md`, `wiki/concepts/discovery.md`, `.claude/rules/project.md`, `.claude/settings.json` и паспорт не меняются: новые тексты получают только новые проекты. Поля `start:` у старого проекта нет — `/plan` один раз предложит пройти старт. Если в `maestro/inbox/` уже лежат материалы, перед коммитом выполните `git add --renormalize maestro/inbox`: без этого git не перечитывает уже известные ему файлы, и правило `-text` к ним не применится. Если в `maestro/inbox/` уже есть свой `.gitattributes`, не такой, как у Maestro, upgrade остановится и попросит убрать или переименовать его. Защиту новых файлов от правки агентом допишите сами в `deny` своего `settings.json`: `Edit(/.claude/commands/start.md)` и `Edit(/maestro/inbox/.gitattributes)`.
+**Что меняет переход на 0.4.2.** Появляются команда и протокол [`/start`](#шаг-3-знакомство-с-задачей-start), `maestro/inbox/.gitattributes` (материалы байт в байт) и страница `wiki/restore.md`; `README.md` — только если в корне нет никакого README (`README`, `readme.md`, `README.rst` и т. п.), свой не трогается. Обновляются правила Maestro, протоколы `plan.md` и `discovery.md`, команда `/plan`, `maestro/inbox/README.md` и runbook `cowork-discovery`. Ваши `wiki/hot.md`, `wiki/plans/0001-starter.md`, `wiki/concepts/discovery.md`, `.claude/rules/project.md`, `.claude/settings.json` и паспорт не меняются: новые тексты получают только новые проекты. Поля `start:` у старого проекта нет — `/plan` один раз предложит пройти старт. Если в `maestro/inbox/` уже лежат материалы, перед коммитом выполните `git add --renormalize maestro/inbox`: без этого git не перечитывает уже известные ему файлы, и правило `-text` к ним не применится. Если в `maestro/inbox/` уже есть свой `.gitattributes`, не такой, как у Maestro, upgrade остановится и попросит убрать или переименовать его. Если у проекта уже есть своя команда `.claude/commands/start.md`, upgrade тоже остановится: переименуйте её (например, в `my-start.md`) и повторите. Защиту новых файлов от правки агентом допишите сами в `deny` своего `settings.json`: `Edit(/.claude/commands/start.md)` и `Edit(/maestro/inbox/.gitattributes)`.
 
 Откуда upgrade умеет обновлять: 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0 и 0.4.1. Список зашит в пакет вместе с прошлыми версиями файлов; без них upgrade не смог бы доказать, что файл на диске — неизменённый файл Maestro.
 
@@ -883,7 +884,7 @@ Maestro не принимает существующий файл за собс�
 
 Типовые настройки:
 
-- **Отправка в облако без вопроса.** Подходит, если репозиторий закрытый и вы работаете один. Обычный push разрешается, а принудительный (`--force`, `-f`, `+ветка`), который может стереть чужую работу, остаётся с вопросом — «спросить» сильнее «разрешить». Блок `permissions` в `.claude/settings.json` после правки (список `deny` — как был):
+- **Отправка в облако без вопроса.** Подходит, если репозиторий закрытый и вы работаете один. Обычный push разрешается, а принудительный (`--force`, `-f`, `+ветка`) и удаление в облаке (`--delete`, `-d`, `:ветка`, `--mirror`, `--prune`), которые могут стереть работу, остаются с вопросом — «спросить» сильнее «разрешить». Блок `permissions` в `.claude/settings.json` после правки (список `deny` — как был):
 
   ```json
   "permissions": {
@@ -892,6 +893,8 @@ Maestro не принимает существующий файл за собс�
     "ask": [
       "Bash(git push --force)", "Bash(git push -f)",
       "Bash(git push *--force*)", "Bash(git push -f*)", "Bash(git push * -f*)", "Bash(git push * +*)",
+      "Bash(git push *--delete*)", "Bash(git push -d *)", "Bash(git push * -d *)", "Bash(git push * :*)",
+      "Bash(git push *--mirror*)", "Bash(git push *--prune*)",
       "Bash(npm publish *)", "Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(git reset --hard *)"
     ]
   }

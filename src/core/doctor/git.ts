@@ -75,7 +75,9 @@ async function checkCloudCopy(root: string, findings: DoctorFinding[]): Promise<
   if (branch === null || branch === '' || await gitAnswer(root, ['rev-parse', '--verify', '--quiet', 'HEAD']) === null) return;
   const upstream = await gitAnswer(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
   if (upstream === null || upstream === '') {
-    findings.push(info('git-no-upstream', `Ветка ${branch} ещё не связана с копией в облаке (upstream), по данным последней синхронизации. Первая отправка: git push -u origin ${branch}.`));
+    const names = remotes.split(/\r?\n/).filter(Boolean);
+    const remote = names.includes('origin') ? 'origin' : names[0] ?? 'origin';
+    findings.push(info('git-no-upstream', `Ветка ${branch} ещё не связана с копией в облаке (upstream), по данным последней синхронизации. Первая отправка: git push -u ${remote} ${branch}.`));
     return;
   }
   const ahead = Number(await gitAnswer(root, ['rev-list', '--count', '@{u}..HEAD']));

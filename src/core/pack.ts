@@ -5,6 +5,8 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, posix, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { GITIGNORE_BLOCK_HEADER, REQUIRED_GITIGNORE_ENTRIES } from './gitignore.js';
+import { GITATTRIBUTES_CONTENT } from './init.js';
 import { MANIFEST_PATH } from './manifest.js';
 import { buildZip, ZipTooLargeError } from './zip.js';
 import type { ZipEntry } from './zip.js';
@@ -307,11 +309,14 @@ export function findSecrets(path: string, data: Buffer): PackFinding[] {
   return found;
 }
 
-/** Корневые файлы Maestro в архиве: подсвечиваются с пометкой «оставьте», содержимое не разбирается. */
-const MAESTRO_ROOT_FILES: Readonly<Record<string, string>> = {
-  '.gitattributes': 'служебный файл Maestro — оставьте: его проверяет doctor, заказчику он не мешает',
-  '.gitignore': 'служебный файл — оставьте: он не пускает в git секреты и лишнее',
-};
+/**
+ * Корневые файлы, которые пишет Maestro: подсвечиваются с пометкой «оставьте».
+ * Строки самого Maestro не разбираются; свои строки проекта в `.gitignore` — как обычно.
+ */
+const MAESTRO_ROOT_FILES = new Map<string, { reason: string; ownLines: ReadonlySet<string> }>([
+  ['.gitattributes', { reason: 'служебный файл Maestro — оставьте: его проверяет doctor, заказчику он не мешает', ownLines: new Set(GITATTRIBUTES_CONTENT.split('\n')) }],
+  ['.gitignore', { reason: 'служебный файл — оставьте: он не пускает в git секреты и лишнее', ownLines: new Set([GITIGNORE_BLOCK_HEADER, ...REQUIRED_GITIGNORE_ENTRIES]) }],
+]);
 
 /** Служебные файлы разработки: заказчику обычно не нужны. */
 const SERVICE_FILE = /(^|\/)(?:\.gitignore|\.gitattributes|\.DS_Store)$|(^|\/)(?:\.vscode|\.idea|\.github)\/|\.log$/;
@@ -329,8 +334,8 @@ function contentHighlights(text: string, home: string, root: string): { reason: 
     },
     { reason: 'временная папка', test: (line) => /(?:^|[^\w.-])(?:\/tmp\/|\/private\/var\/)/.test(line) },
     { reason: 'имя Maestro', test: (line) => /Vibe Coding Maestro|vibe-maestro/i.test(line) },
-    // После `/` — часть адреса (`…/wiki/…` в ссылке), а не внутренняя папка проекта.
-    { reason: 'внутренняя папка', test: (line) => /(?<![\w./-])(?:wiki|maestro|protocols)\/|(?<![\w/-])\.claude\//.test(line) },
+    // Адрес в интернете (`https://…/wiki/…`) — не внутренняя папка проекта: адреса вырезаются до проверки.
+    { reason: 'внутренняя папка', test: (line) => /(?<![\w.-])(?:wiki|maestro|protocols)\/|(?<![\w-])\.claude\//.test(line.replace(/\b[a-z][\w+.-]*:\/\/\S+/gi, '')) },
     // «план 0002», «по плану 0002»; год («план 2026 года») — не номер плана.
     { reason: 'номер плана', test: (line) => /\bPLAN-\d{4}\b|(?<!\p{L})план(?:а|е|у|ы|ом)?\s+(?!(?:19|20)\d\d(?!\d))\d{4}(?!\d)/iu.test(line) },
   ];
@@ -351,14 +356,16 @@ function contentHighlights(text: string, home: string, root: string): { reason: 
  */
 export function packHighlights(path: string, data: Buffer, context: { home: string; root: string }): PackHighlight[] {
   // Корневые файлы, которые кладёт Maestro: о них стоит знать, но убирать их не нужно — они безвредны.
-  const kept = MAESTRO_ROOT_FILES[path];
-  if (kept !== undefined) return [{ path, reason: kept }];
+  const maestro = MAESTRO_ROOT_FILES.get(path);
   const highlights: PackHighlight[] = [];
-  if (SERVICE_FILE.test(path)) highlights.push({ path, reason: 'служебный файл' });
+  if (maestro !== undefined) highlights.push({ path, reason: maestro.reason });
+  else if (SERVICE_FILE.test(path)) highlights.push({ path, reason: 'служебный файл' });
   if (data.length > MAX_SCAN_BYTES) return highlights;
   const text = scanText(data);
   if (text === null) return highlights;
-  for (const item of contentHighlights(text, context.home, context.root)) highlights.push({ path, ...item });
+  // Строки самого Maestro заменяются пустыми: номера остальных строк не сдвигаются.
+  const own = maestro === undefined ? text : text.split('\n').map((line) => (maestro.ownLines.has(line.trim()) ? '' : line)).join('\n');
+  for (const item of contentHighlights(own, context.home, context.root)) highlights.push({ path, ...item });
   return highlights;
 }
 

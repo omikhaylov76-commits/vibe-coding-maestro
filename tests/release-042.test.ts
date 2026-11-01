@@ -101,7 +101,8 @@ describe('0.4.2: команда /start со своим протоколом', ()
     expect(questions).toHaveLength(6);
     for (const question of questions) expect(question).toContain('По умолчанию:');
     expect(questions[0]).toContain('от вашего имени агент не пишет никому');
-    expect(questions[1]).toMatch(/деньги, публикация, отправка в облако, сообщения людям, удаление, чужой код, смена настроек — только после «да»/);
+    // С 0.4.3 удаление уточнено: «да» — на то, чего нет в истории git и копиях.
+    expect(questions[1]).toMatch(/деньги, публикация, отправка в облако, сообщения людям, удаление того, чего нет в истории git и копиях, чужой код, смена настроек — только после «да»/);
     expect(questions[2]).toContain('По умолчанию: ждать слова «начинай»');
     expect(questions[3]).toMatch(/FACT.*HYPOTHESIS.*UNKNOWN/);
     expect(questions[3]).toContain('один раз');

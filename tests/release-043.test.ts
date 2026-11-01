@@ -894,3 +894,52 @@ describe('0.4.3: исправления по независимому ревью
     for (const part of ['## Цель', '## Как проверим', '## Где правим', '## Риски и откат', '## Стоп-гейт', '(`OPEN_QUESTION`)', '- [ ] ']) expect(starter, part).toContain(part);
   });
 });
+
+describe('0.4.3: исправления по проверке исправлений ревью', () => {
+  const highlightsOf = async (path: string, text: string): Promise<{ reason: string; line?: number }[]> => {
+    const { packHighlights } = await import('../src/core/pack.js');
+    return packHighlights(path, Buffer.from(text), { home: '/Users/x', root: '/Users/x/p' }).map(({ reason, line }) => (line === undefined ? { reason } : { reason, line }));
+  };
+
+  it('N1 (medium): корневой файл с именем свойства объекта не роняет подсветку', async () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const found = await highlightsOf(name, 'путь /Users/x/notes\n');
+      expect(found, name).toEqual([{ reason: 'путь домашней папки', line: 1 }]);
+    }
+  });
+
+  it('N1 (low): относительные ссылки на внутренние папки снова подсвечиваются, адреса в интернете — нет', async () => {
+    for (const text of ['[план](./wiki/plans/0002.md)', '[x](../wiki/hot.md)', './maestro/inbox/a.txt', './protocols/build.md', './.claude/agents/x.md', 'см. ~/.claude/projects']) {
+      expect((await highlightsOf('docs/a.md', `${text}\n`)).map((item) => item.reason), text).toEqual(['внутренняя папка']);
+    }
+    expect(await highlightsOf('docs/a.md', 'https://ru.wikipedia.org/wiki/Чаевые и https://example.com/.claude/x\n')).toEqual([]);
+  });
+
+  it('N4: в .gitignore пропускаются только строки Maestro; свои строки проекта подсвечиваются', async () => {
+    const { REQUIRED_GITIGNORE_ENTRIES, GITIGNORE_BLOCK_HEADER } = await import('../src/core/gitignore.js');
+    const maestro = [GITIGNORE_BLOCK_HEADER, ...REQUIRED_GITIGNORE_ENTRIES].join('\n');
+    expect(await highlightsOf('.gitignore', `${maestro}\n`)).toEqual([{ reason: 'служебный файл — оставьте: он не пускает в git секреты и лишнее' }]);
+    const own = await highlightsOf('.gitignore', `${maestro}\n/Users/oleg/secret-notes/\n# PLAN-0007\n`);
+    expect(own.map((item) => item.reason)).toEqual(['служебный файл — оставьте: он не пускает в git секреты и лишнее', 'путь домашней папки', 'номер плана']);
+    const { GITATTRIBUTES_CONTENT } = await import('../src/core/init.js');
+    expect((await highlightsOf('.gitattributes', GITATTRIBUTES_CONTENT)).map((item) => item.reason)).toEqual(['служебный файл Maestro — оставьте: его проверяет doctor, заказчику он не мешает']);
+  });
+
+  it('N2: совет для изменённого удаляемого протокола без git не зовёт git log', async () => {
+    const { root } = await materializePublished('0.4.2-standard');
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(root, 'protocols/lessons.md'), `${await readFile(join(root, 'protocols/lessons.md'), 'utf8')}\nМоё.\n`, 'utf8');
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-removed-modified', path: 'protocols/lessons.md' })]);
+    expect(analysis.blockers[0]?.message).toContain('исходник лежит в пакете create-vibe-maestro@0.4.2');
+    expect(analysis.blockers[0]?.message).not.toContain('git log');
+    // С git — прежний текст покажет история.
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    expect((await analyzeUpgrade(root)).analysis.blockers[0]?.message).toContain('`git log -p -- protocols/lessons.md`');
+  });
+
+  it('N3: значение по умолчанию в /start совпадает с правилом Maestro об удалении', async () => {
+    expect(await packageText('templates/project/protocols/start.md')).toContain('удаление того, чего нет в истории git и копиях, чужой код, смена настроек — только после «да»');
+  });
+});

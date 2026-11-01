@@ -410,7 +410,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     if (recovered === null) {
       blockers.push(blocker(
         'upgrade-removed-modified',
-        `В версии ${REMOVED_PATHS[path]} этот файл Maestro убран из состава, и upgrade удалил бы его, но файл изменён вручную относительно версии ${fromVersion}. Перенесите свои правки в собственный файл проекта и удалите этот (или верните его исходный вид — прежний текст покажет \`git log -p -- ${path}\`), затем повторите.`,
+        `В версии ${REMOVED_PATHS[path]} этот файл Maestro убран из состава, и upgrade удалил бы его, но файл изменён вручную относительно версии ${fromVersion}. Перенесите свои правки в собственный файл проекта и удалите этот (или верните его исходный вид — ${await exists(join(root, '.git')) ? `прежний текст покажет \`git log -p -- ${path}\`` : `исходник лежит в пакете create-vibe-maestro@${fromVersion}`}), затем повторите.`,
         path,
       ));
       continue;

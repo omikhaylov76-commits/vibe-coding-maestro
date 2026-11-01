@@ -131,7 +131,8 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
     expect(result.ok).toBe(false);
     expect(result.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-removed-modified', path: RETIRED[0] })]);
     expect(result.analysis.blockers[0]?.message).toContain('Перенесите свои правки в собственный файл проекта и удалите этот');
-    expect(result.analysis.blockers[0]?.message).toContain(`git log -p -- ${RETIRED[0]}`);
+    // Фикстура без git: исходник — в пакете прошлой версии, а не в истории Git (проверка исправлений ревью, N2).
+    expect(result.analysis.blockers[0]?.message).toContain('исходник лежит в пакете create-vibe-maestro@0.4.1');
     expect(result.analysis.blockers[0]?.message).toContain('9.9.9');
     expect(await snapshotTree(root)).toEqual(before);
   });

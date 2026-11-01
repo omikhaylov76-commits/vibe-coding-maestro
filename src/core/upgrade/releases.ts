@@ -365,13 +365,13 @@ const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...V041_MANAGED_SHA256,
   '.claude/commands/plan.md': '4ddbab1b68f68e967904b959db61355153c7d7877981ee47a9917f02c9e6e84c',
   '.claude/commands/start.md': '44e1321e7ed557d96540835b882d549c523aa834da5c396318605f5aec9794b2',
-  '.claude/rules/maestro.md': '72249ff439c1cf81c037e89c5411f3f4d9b32b29feb486c711338c4e37c5c281',
+  '.claude/rules/maestro.md': '29e768f5c0d3f7b54bc4340ae19c0de720b75794619f8bd68a5766d70324ed62',
   'maestro/inbox/.gitattributes': '705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da',
   'maestro/inbox/README.md': '2fbd307347c2504ba7ce369e87ffa224aa630e1d7bf364ab666839a5bb7a4abd',
   'maestro/runbooks/cowork-discovery.md': 'a0b092f87e7a1749f6dda76a9e2cb2de4228cd9d5bcf27f3f89b79e34e3b6bc0',
   'protocols/discovery.md': '2c120e5bb2f118f9749fbe72eecb6ecd93635eddb84e3ce22b9f0de7bbc43374',
   'protocols/plan.md': '43cd0f436b5baa3e9f2642719c27b2fd42972e5677897f0bb360a4ad0c984ffc',
-  'protocols/start.md': '8a7fdbaf82277416c6c8823216136ee46d23ecfe3c642c970408d30b65cbcbf2',
+  'protocols/start.md': '567024859e702424348fb5e4e72c1d09895e34f2d7e25ee2ccf7139369cdb022',
 };
 
 export const RELEASES: readonly Release[] = [

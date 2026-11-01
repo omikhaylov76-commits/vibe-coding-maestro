@@ -94,6 +94,11 @@ export type GithubCopy =
   | { ok: true; url: string }
   | { ok: false; reason: string };
 
+/** Адрес копии для показа: логин и пароль (токен), вшитые в адрес, не печатаются никогда. */
+export function displayRemoteUrl(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1');
+}
+
 /** Команда, которой человек заведёт копию сам, из папки проекта. */
 export function githubCreateCommand(name: string): string {
   return `gh repo create ${name} --private --source . --remote origin --push`;
@@ -123,5 +128,5 @@ export async function createGithubCopy(
   if (url !== undefined) return { ok: true, url };
   // gh не напечатал адрес — берём тот, что он записал в remote.
   const remote = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd: projectRoot, encoding: 'utf8' }).catch(() => null);
-  return { ok: true, url: remote?.stdout.trim() || name };
+  return { ok: true, url: displayRemoteUrl(remote?.stdout.trim() || name) };
 }

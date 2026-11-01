@@ -133,8 +133,10 @@ describe('0.4.2: команда /start со своим протоколом', ()
     expect(block).not.toBeNull();
     expect(final).toContain(`"allow": [${block?.[1]}]`);
     const forced = (block?.[2] ?? '').match(/"Bash\(git push [^"]+\)"/g) ?? [];
-    // Принудительная отправка (6 правил) и удаление в облаке (6 правил, ревью L4).
-    expect(forced).toHaveLength(12);
+    // Принудительная отправка (6 правил) и удаление в облаке (5 правил, ревью L4).
+    expect(forced).toHaveLength(11);
+    // Ревью N2: шаблон на `:*` Claude Code читает как «начинается с …» — обычный push спрашивал бы.
+    for (const rule of forced) expect(rule, rule).not.toMatch(/:\*\)"$/);
     for (const rule of forced) expect(final, rule).toContain(rule);
   });
 
@@ -452,7 +454,7 @@ describe('0.4.2: находки независимого ревью — текс
   it('M1: правила Maestro называют исключение «отправка без вопроса», а рецепт записывается в «Как работаем»', async () => {
     const rules = await template('.claude/rules/maestro.md');
     expect(rules).toContain('Исключение — обычный `git push`, если человек сам включил «отправку в облако без вопроса»');
-    expect(rules).toContain('принудительная отправка и удаление в облаке — по-прежнему с «да»');
+    expect(rules).toContain('принудительная отправка, удаление в облаке и отправка тега — по-прежнему с «да»');
     expect(rules.split('\n').length).toBeLessThanOrEqual(40);
     expect(section(await template('protocols/start.md'), '### 5. Сводка и запись')).toContain('Включил — запиши в «Как работаем»');
   });

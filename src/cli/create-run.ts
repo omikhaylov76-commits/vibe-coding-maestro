@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { promisify } from 'node:util';
 import { doctorProject } from '../core/doctor.js';
 import { describeFsError } from '../core/fs-errors.js';
-import { createGithubCopy, githubCreateCommand, githubRepoName } from '../core/github.js';
+import { createGithubCopy, displayRemoteUrl, githubCreateCommand, githubRepoName } from '../core/github.js';
 import type { GhRunner } from '../core/github.js';
 import { initProject } from '../core/init.js';
 import type { InitResult } from '../core/init.js';
@@ -63,7 +63,8 @@ async function remoteUrl(root: string): Promise<string | null> {
   const name = names.includes('origin') ? 'origin' : names[0];
   if (name === undefined) return null;
   const url = await execFileAsync('git', ['remote', 'get-url', name], { cwd: root, encoding: 'utf8' }).catch(() => null);
-  return url?.stdout.trim() || null;
+  const shown = url?.stdout.trim();
+  return shown ? displayRemoteUrl(shown) : null;
 }
 
 /**

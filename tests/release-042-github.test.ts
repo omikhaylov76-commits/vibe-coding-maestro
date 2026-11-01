@@ -395,3 +395,15 @@ describe('0.4.2: doctor — копия в облаке по локальным �
     expect(cli.err()).toContain('git-no-remote');
   });
 });
+
+describe('0.4.2: адрес копии печатается без пароля (ревью N1)', () => {
+  it('логин и токен из адреса remote не попадают в вывод create', async () => {
+    const root = await target('с токеном');
+    expect(await runCreateCli(['--yes', '--target', root], collect().io, { isTty: false })).toBe(0);
+    await git(root, 'remote', 'add', 'origin', 'https://oleg:ghp_FAKEFAKEFAKE1234567890@github.com/oleg/local.git');
+    const again = collect();
+    expect(await runCreateCli(['--yes', '--target', root], again.io, { isTty: false })).toBe(0);
+    expect(again.out()).toContain('Копия в облаке: https://github.com/oleg/local.git');
+    expect(`${again.out()}\n${again.err()}`).not.toContain('ghp_');
+  });
+});

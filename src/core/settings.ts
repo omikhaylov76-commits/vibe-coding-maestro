@@ -9,7 +9,9 @@ export const PUSH_ALLOW: readonly string[] = ['Bash(git push *)'];
 
 /**
  * Отправка, которая может перезаписать или стереть работу в облаке: принудительная
- * (`--force`, `-f`, `+ветка`) и удаление веток (`--delete`, `-d`, `:ветка`, `--mirror`, `--prune`).
+ * (`--force`, `-f`, `+ветка`) и удаление веток (`--delete`, `-d`, `--mirror`, `--prune`).
+ * Запись `:ветка` правилом не ловится: шаблон на `:*` Claude Code читает как старое
+ * «команда начинается с …», и тогда с вопросом шёл бы любой push.
  */
 export const FORCE_PUSH_ASK: readonly string[] = [
   'Bash(git push --force)',
@@ -21,7 +23,6 @@ export const FORCE_PUSH_ASK: readonly string[] = [
   'Bash(git push *--delete*)',
   'Bash(git push -d *)',
   'Bash(git push * -d *)',
-  'Bash(git push * :*)',
   'Bash(git push *--mirror*)',
   'Bash(git push *--prune*)',
 ];

@@ -306,3 +306,180 @@ describe('0.4.3: проверки без лишнего круга — когд�
     expect(await template('maestro/runbooks/cowork-audit.md')).toContain('`resolution: не исправляем — причина; где записано`');
   });
 });
+
+/**
+ * Разбор подмножества YAML, которым написан образец настройки проверок: блочные словари и
+ * списки с отступом в два пробела, строки и списки в квадратных скобках. Чужое — ошибка.
+ */
+function parseYamlSubset(text: string): unknown {
+  const lines = text.split('\n').filter((line) => line.trim() !== '' && !line.trim().startsWith('#'));
+  for (const line of lines) expect(line, 'без табуляции').not.toMatch(/\t/);
+  const scalar = (raw: string): unknown => {
+    const value = raw.trim();
+    if (value.startsWith('[')) {
+      expect(value.endsWith(']'), value).toBe(true);
+      return value.slice(1, -1).split(',').map((item) => item.trim().replace(/^'(.*)'$/, '$1')).filter((item) => item !== '');
+    }
+    return value.replace(/^'(.*)'$/, '$1').replace(/^"(.*)"$/, '$1');
+  };
+  let index = 0;
+  const block = (indent: number): unknown => {
+    const first = lines[index] as string;
+    const isList = first.slice(indent).startsWith('- ');
+    const result: unknown[] | Record<string, unknown> = isList ? [] : {};
+    while (index < lines.length) {
+      const line = lines[index] as string;
+      const own = line.length - line.trimStart().length;
+      if (own < indent) break;
+      expect(own, `отступ: ${line}`).toBe(indent);
+      if (isList) {
+        expect(line.slice(indent).startsWith('- '), line).toBe(true);
+        // Элемент списка «- key: value» — словарь, его ключи идут с отступом indent + 2.
+        lines[index] = `${' '.repeat(indent + 2)}${line.slice(indent + 2)}`;
+        (result as unknown[]).push(/^[\w-]+:( |$)/.test(line.slice(indent + 2)) ? block(indent + 2) : scalar(line.slice(indent + 2)));
+        if (!/^[\w-]+:( |$)/.test(line.slice(indent + 2))) index += 1;
+        continue;
+      }
+      const match = /^([\w-]+):(?: (.*))?$/.exec(line.slice(indent));
+      expect(match, `строка словаря: ${line}`).not.toBeNull();
+      index += 1;
+      const [, key, value] = match as RegExpExecArray;
+      (result as Record<string, unknown>)[key as string] = value === undefined ? block(indent + 2) : scalar(value);
+    }
+    return result;
+  };
+  const parsed = block(0);
+  expect(index, 'разобраны все строки').toBe(lines.length);
+  return parsed;
+}
+
+describe('0.4.3: маленькая задача, метки, новая сессия, проверки на GitHub, Icebox', () => {
+  const template = (path: string): Promise<string> => packageText(`templates/project/${path}`);
+  const SESSION = 'Новую сессию советует `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro context --path .`: по его выводу простыми словами скажи человеку, пора ли в новую сессию — она начнёт с `wiki/hot.md` и последней передачи, а не с пересылки всей истории.';
+
+  it('одна и та же фраза о новой сессии в четырёх местах; «всегда новая сессия после утверждения» ушло', async () => {
+    for (const path of ['.claude/rules/maestro.md', 'protocols/handoff.md', 'protocols/build.md', 'protocols/plan.md']) {
+      expect(await template(path), path).toContain(SESSION);
+    }
+    expect(await template('protocols/plan.md')).not.toContain('Работу по утверждённому плану начинай в новой сессии');
+  });
+
+  it('метки: одна таблица в plan.md, те же шесть в шаблоне плана, в разговоре — три со ссылкой на таблицу', async () => {
+    const labels = [
+      ['FACT', 'Факт'], ['HUMAN_DECISION', 'Решение человека'], ['HYPOTHESIS', 'Гипотеза'],
+      ['AGENT_PROPOSAL', 'Предложение агента'], ['OPEN_QUESTION', 'Открытый вопрос'], ['UNKNOWN', 'Неизвестно'],
+    ] as const;
+    const plan = await template('protocols/plan.md');
+    const rows = [...plan.matchAll(/^\| `([A-Z_]+)` \| ([^|]+) \| [^|]+ \|$/gm)].map((match) => [match[1], (match[2] as string).trim()]);
+    expect(rows).toEqual(labels.map(([label, name]) => [label, name]));
+    const known = await template('wiki/plans/TEMPLATE.md');
+    const section = known.slice(known.indexOf('## Что известно'), known.indexOf('## Как проверим'));
+    expect([...section.matchAll(/^- \*\*([^*]+)\*\* \(`([A-Z_]+)`\)/gm)].map((match) => [match[2], match[1]])).toEqual(labels.map(([label, name]) => [label, name]));
+    const rules = await template('.claude/rules/maestro.md');
+    expect(rules).toContain('FACT (и чем проверено) / HYPOTHESIS (и как проверить) / UNKNOWN');
+    expect(rules).toContain('полная таблица меток для плана — `protocols/plan.md`, Stage A');
+  });
+
+  it('QUICK: мини-план в wiki/plans/, нигде не отправлен в wiki/progress/; маленькая правка при активном плане — новой порцией', async () => {
+    const plan = await template('protocols/plan.md');
+    expect(plan).toContain('- `QUICK` — мини-план без бюрократии там же, где все планы: `wiki/plans/<номер>-<слаг>.md` с `kind: mini` и `scale: quick`');
+    expect(plan).toContain('«добавляю правку: что именно, что это значит для вас; делаем?»');
+    expect(plan).toContain('План `FEATURE` и крупнее обязан определить');
+    expect(plan).not.toContain('--scale quick');
+    for (const file of await listFiles(join(process.cwd(), 'templates/project'))) {
+      const text = await template(file);
+      for (const line of text.split('\n').filter((item) => /QUICK|мини-план/.test(item))) {
+        expect(line, `${file}: ${line}`).not.toMatch(/progress/);
+      }
+    }
+    expect(await template('protocols/build.md')).toContain('`QUICK` — один подтверждённый красный тест на весь набор правок');
+    expect(await template('protocols/completion.md')).toContain('Проект из одной маленькой задачи (`QUICK`) завершается тем же путём');
+  });
+
+  it('проверки на GitHub: все правила, в том числе «после отправки не жди», — в build.md и коротко в правилах Maestro', async () => {
+    const build = await template('protocols/build.md');
+    const github = build.slice(build.indexOf('## Проверки на GitHub'), build.indexOf('<a id="VCM-HUMAN-AUTHORITY">'));
+    for (const rule of [
+      'проверь на компьютере теми же командами, что и на GitHub, до отправки',
+      'отправляй пачкой после закрытой порции, а не после каждого коммита',
+      'не отправляй, пока идёт прошлый прогон: посмотри один раз',
+      'не чаще раза за закрытую порцию и никогда вместо локальной',
+      'после отправки не жди и не опрашивай проверку — работай дальше',
+      'ждать по-настоящему — только перед слиянием, один раз',
+      'сколько проверок на сервере запускал и зачем',
+      'Расписание (`schedule`) — только по решению человека о стоимости',
+    ]) expect(github, rule).toContain(rule);
+    const rules = await template('.claude/rules/maestro.md');
+    for (const rule of ['проверь на компьютере теми же командами до отправки', 'отправляй пачкой после закрытой порции', 'после отправки не жди и не опрашивай проверку — работай дальше']) {
+      expect(rules, rule).toContain(rule);
+    }
+    expect(await template('protocols/handoff.md')).toContain('после отправки не жди проверку');
+  });
+
+  it('образец настройки проверок — разбираемый YAML: отмена устаревших прогонов, быстрый на ветке, полный на pull request', async () => {
+    const build = await template('protocols/build.md');
+    const yaml = /```yaml\n([\s\S]*?)```/.exec(build)?.[1] ?? '';
+    const config = parseYamlSubset(yaml) as Record<string, any>;
+    expect(config.concurrency['cancel-in-progress']).toBe('true');
+    expect(config.concurrency.group).toBe('${{ github.workflow }}-${{ github.ref }}');
+    expect(config.on.push['branches-ignore']).toEqual(['main']);
+    expect(config.on.pull_request.branches).toEqual(['main']);
+    for (const event of ['push', 'pull_request']) expect(config.on[event]['paths-ignore']).toEqual(['wiki/**', 'maestro/**', 'docs/**', '**/*.md']);
+    expect(config.jobs.quick.if).toBe("github.event_name == 'push'");
+    expect(config.jobs.full.if).toBe("github.event_name == 'pull_request'");
+    expect(config.on.schedule).toBeUndefined();
+    // Выражения GitHub `${{ … }}` переживают рендер шаблона как есть.
+    const { initProject } = await import('../src/core/init.js');
+    const { FIXED_NOW, makeTempDir } = await import('./helpers.js');
+    const root = join(await makeTempDir('release-043-gh-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect(await readFile(join(root, 'protocols/build.md'), 'utf8')).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
+  });
+
+  it('settings.json шаблона: защиты с вопросом (ask) — как в 0.4.2; в deny добавлена только защита образца отчёта', async () => {
+    type Settings = { permissions: { deny: string[]; ask: string[] } };
+    const now = JSON.parse(await template('.claude/settings.json')) as Settings;
+    const { execFileSync } = await import('node:child_process');
+    const before = JSON.parse(execFileSync('git', ['show', 'v0.4.2:templates/project/.claude/settings.json'], { encoding: 'utf8' })) as Settings;
+    expect(now.permissions.ask).toEqual(before.permissions.ask);
+    expect(now.permissions.deny.filter((rule) => !before.permissions.deny.includes(rule))).toEqual(['Edit(/maestro/templates/audit.md)']);
+    expect(before.permissions.deny.filter((rule) => !now.permissions.deny.includes(rule))).toEqual([]);
+    expect(JSON.stringify(now)).not.toContain('gh workflow');
+  });
+
+  it('спрашивать только понятное человеку: правило в maestro.md, и ни один файл Maestro не просит «да» на тесты и проверки', async () => {
+    const rules = await template('.claude/rules/maestro.md');
+    expect(rules).toContain('Спрашивай «да» только о том, что человек понимает и за что отвечает');
+    expect(rules).toContain('Тесты, проверки плана и кода, перепроверку исправлений и проверки на GitHub делай сам по правилам Maestro, без вопросов');
+    expect(rules).toContain('итог простыми словами в две-три строки');
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
+    const files = (await listFiles(join(process.cwd(), 'templates/project'))).filter((path) => /^(protocols|\.claude|maestro)\//.test(path) && path.endsWith('.md'));
+    for (const file of files) {
+      for (const sentence of (await template(file)).split(/(?<=[.!?])\s+|\n/)) {
+        // Фразы, где проверки агент делает сам («без вопросов», «— сам»), — то самое правило, а не просьба «да».
+        if (!sentence.includes('«да»') || sentence.includes('без вопросов') || /запускать проверки — сам/.test(sentence)) continue;
+        expect(sentence, `${file}: «да» на проверку`).not.toMatch(/тест|проверк|провер[яи]|GitHub|\bCI\b|ревью|аудит/i);
+      }
+    }
+    const handoff = await template('maestro/templates/handoff.md');
+    expect(handoff.indexOf('## Итог для человека')).toBeLessThan(handoff.indexOf('## Состояние'));
+    expect(await template('protocols/handoff.md')).toContain('Скажи человеку итог порции простыми словами, в две-три строки');
+  });
+
+  it('Icebox — файл проекта wiki/icebox.md: create кладёт, upgrade приносит, свой не трогает', async () => {
+    for (const depth of ['light', 'standard', 'advanced'] as const) expect(canonicalOwnershipInventory(depth)['wiki/icebox.md'], depth).toBe('project-owned');
+    const icebox = await template('wiki/icebox.md');
+    expect(icebox).toContain('| Идея | Почему отложена | Когда вернуться |');
+    expect(await template('protocols/wiki.md')).toContain('фиксируй в `wiki/icebox.md`: идея, почему отложена, когда вернуться');
+    expect(await template('wiki/index.md')).toContain('[icebox.md](icebox.md)');
+
+    const { root } = await materializePublished('0.4.1-standard');
+    expect((await analyzeUpgrade(root)).analysis.creates.map((item) => item.path)).toContain('wiki/icebox.md');
+    const { root: own } = await materializePublished('0.4.1-standard');
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(own, 'wiki/icebox.md'), '# Наши идеи\n', 'utf8');
+    const { analysis } = await analyzeUpgrade(own);
+    expect(analysis.creates.map((item) => item.path)).not.toContain('wiki/icebox.md');
+    expect(analysis.preserves).toContain('wiki/icebox.md');
+  });
+});

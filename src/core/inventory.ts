@@ -43,6 +43,7 @@ export const CONTENT_OWNED_FILES: readonly string[] = [
   'wiki/roadmap.md',
   'wiki/passport.md',
   'wiki/restore.md',
+  'wiki/icebox.md',
   'wiki/concepts/discovery.md',
   'wiki/plans/0001-starter.md',
 ];

@@ -393,13 +393,16 @@ const REMOVED_IN_043: readonly string[] = [
 /** Файлы Maestro, которые 0.4.3 изменил. */
 const CHANGED_IN_043: readonly string[] = [
   '.claude/agents/code-reviewer.md',
+  '.claude/rules/maestro.md',
   'maestro/runbooks/cowork-audit.md',
   'maestro/templates/handoff.md',
   'protocols/audit.md',
   'protocols/build.md',
   'protocols/completion.md',
+  'protocols/handoff.md',
   'protocols/plan.md',
   'protocols/wiki.md',
+  'wiki/plans/TEMPLATE.md',
 ];
 
 /** Копии шаблонов 0.4.2, изменённых или убранных в 0.4.3. */
@@ -420,22 +423,25 @@ function copiesFor043(managedSha256: Readonly<Record<string, string>>): Baseline
     .map(v042Copy);
 }
 
-/** Канон 0.4.3: мелкие протоколы вошли в соседние; образец отчёта проверки (Maestro). */
+/** Канон 0.4.3: мелкие протоколы вошли в соседние; образец отчёта проверки (Maestro); Icebox (проект). */
 const V043_TEMPLATE_FILES: readonly string[] = [...V042_TEMPLATE_FILES.filter((path) => !REMOVED_IN_043.includes(path)), 'maestro/templates/audit.md'];
-const V043_CONTENT_OWNED_FILES: readonly string[] = V042_CONTENT_OWNED_FILES;
+const V043_CONTENT_OWNED_FILES: readonly string[] = [...V042_CONTENT_OWNED_FILES, 'wiki/icebox.md'];
 
 /** Слепок `templates/project` 0.4.3. */
 const V043_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...Object.fromEntries(Object.entries(V042_MANAGED_SHA256).filter(([path]) => !REMOVED_IN_043.includes(path))),
   '.claude/agents/code-reviewer.md': 'b32a19e4e45b1d798e516353c919c07fd278151673cc9e271023946a76bbeb83',
+  '.claude/rules/maestro.md': '30ee0d60eaa35296141271c7ee31b7cf1db62b934752659b441a4854a8655c34',
   'maestro/runbooks/cowork-audit.md': 'f1db1fe45606d549700867d62af36f833ca293c6a37823940848c40bca5e65c2',
   'maestro/templates/audit.md': '842808fa52f5570c6aa6e5a43d04d647ccdb54425168e52aa6bd00934d47cc72',
-  'maestro/templates/handoff.md': 'f93d9d538ca9905b8c57b6ed7938eada3ab3d5fe76b11f3ff70a8595bfbcc597',
+  'maestro/templates/handoff.md': '993f3ca2317caefe208593e099c1d572dcefeb99a463f9672d6cb136ef536c4c',
   'protocols/audit.md': '8b2b7bfcd4816f4ae53a9d022fa9ed963e5b19998c5014402253f132d1bf9135',
-  'protocols/build.md': '57ba2aab90909623b8c766b1f523e0c0b3060bfbf1c0a836131dbbd4818553b4',
-  'protocols/completion.md': '8b61ba1aa0edd510f1627886c2d6348efcff243f4e3972b818ed99ec59dc8045',
-  'protocols/plan.md': '8ba0557076dcc9715405e4d3f4f598db46d95b0ecc89660ef467d2ba9b0bced4',
-  'protocols/wiki.md': 'ff335b833096190a4ffaa9851040fcd813de14036c49f629ec8458519702503e',
+  'protocols/build.md': '80e8d1271749330bd44033adcf07c7a9a8dd4986cf8139de26065fe80d4cd20d',
+  'protocols/completion.md': '7f746a80f20fad3e30e99e05d667d2fd5066aa8e406a74ed8e44774dc3894e4c',
+  'protocols/handoff.md': '279b6bddfa6ecd226522815ddc92c39d376013057348a69ee54a2e82b6a2f493',
+  'protocols/plan.md': '7acbfbf24bcf5e63419448038a6a27d60e24912827dfbbde93bd5f0199b48597',
+  'protocols/wiki.md': '980eb9c5e1013fc3d7c45fd5a30a1c5075f5e575d35b1b17d4bbdd7c50013194',
+  'wiki/plans/TEMPLATE.md': 'db9eeaef71d2c41e1d9094ca99d240d2ff37cd5ac1cd2175bf496347544c97fc',
 };
 
 /**

@@ -15,6 +15,7 @@ updated: ГГГГ-ММ-ДД
 - [concepts/discovery.md](concepts/discovery.md) — что за продукт и для кого.
 - [passport.md](passport.md) — паспорт: где что живёт и как запустить, обновить, откатить.
 - [restore.md](restore.md) — как восстановить проект на новом компьютере.
+- [icebox.md](icebox.md) — отложенные идеи: почему отложены и когда вернуться.
 - [plans/README.md](plans/README.md) — как устроены планы и их утверждение.
 
 ## Планы

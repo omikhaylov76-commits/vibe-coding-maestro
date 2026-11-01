@@ -48,14 +48,14 @@ const union = (...lists: readonly string[][]): string[] => [...new Set(lists.fla
 
 /** Файлы Maestro, которые 0.4.3 переписывает на нетронутом проекте любой прошлой версии (completion.md — с 0.4.0). */
 const UPDATED_IN_043 = union([
-  '.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/plan.md', 'protocols/wiki.md',
+  '.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md',
 ], UPDATED_IN_042);
 
-/** То же для проектов 0.3.0 и новее: у них уже есть образец передачи. */
-const UPDATED_IN_043_SINCE_030 = union(UPDATED_IN_043, ['maestro/templates/handoff.md']);
+/** То же для проектов 0.3.0 и новее: у них уже есть правила Maestro, образец передачи и шаблон плана. */
+const UPDATED_IN_043_SINCE_030 = union(UPDATED_IN_043, ['.claude/rules/maestro.md', 'maestro/templates/handoff.md', 'wiki/plans/TEMPLATE.md']);
 
-/** Новые пути 0.4.3: образец отчёта проверки. */
-const NEW_IN_043 = ['maestro/templates/audit.md'];
+/** Новые пути 0.4.3: образец отчёта проверки (Maestro) и Icebox (проект). */
+const NEW_IN_043 = ['maestro/templates/audit.md', 'wiki/icebox.md'];
 
 /** Новые пути текущего канона относительно 0.4.1. */
 const NEW_SINCE_041 = union(NEW_IN_042, NEW_IN_043);
@@ -64,7 +64,7 @@ const NEW_SINCE_041 = union(NEW_IN_042, NEW_IN_043);
 const NEW_SINCE_BETA = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', ...NEW_IN_040, ...NEW_SINCE_041].sort();
 
 /** Новые пути, которыми владеет проект: контрольной суммы Maestro у них нет. */
-const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'README.md', 'wiki/passport.md', 'wiki/restore.md'];
+const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'README.md', 'wiki/icebox.md', 'wiki/passport.md', 'wiki/restore.md'];
 
 /** Строки, которые 0.4.0 дописывает в `.gitignore` проекта. */
 const GITIGNORE_APPENDS = ['.claude/worktrees/', '.claude/settings.local.json'];

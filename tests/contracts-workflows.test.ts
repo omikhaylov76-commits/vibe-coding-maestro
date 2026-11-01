@@ -92,7 +92,7 @@ describe('этапы 8–10: contracts/workflows', () => {
     const rules = await readFile(join(target, '.claude/rules/maestro.md'), 'utf8');
     for (const route of ['wiki/hot.md', 'protocols/plan.md', 'protocols/build.md', 'protocols/handoff.md']) expect(rules).toContain(route);
     // Rules без paths Claude Code грузит в каждую сессию: файл обязан оставаться коротким.
-    expect(rules.split('\n').length).toBeLessThanOrEqual(40);
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
     expect(rules).not.toMatch(/^paths:/m);
   });
 

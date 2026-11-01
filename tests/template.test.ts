@@ -63,3 +63,12 @@ describe('renderTemplate', () => {
     expect(() => renderTemplate('{{НЕИЗВЕСТНО}}\n', VARS)).toThrowError(/НЕИЗВЕСТНО/);
   });
 });
+
+describe('выражения GitHub Actions в шаблоне (0.4.3)', () => {
+  it('`${{ … }}` остаётся как есть, а неизвестный {{…}} по-прежнему падает', async () => {
+    const { renderTemplate } = await import('../src/core/template.js');
+    const vars = { projectName: 'П', date: '2026-11-01', startingPoint: 'idea' as const };
+    expect(renderTemplate('group: ${{ github.ref }} — {{PROJECT_NAME}}', vars)).toBe('group: ${{ github.ref }} — П');
+    expect(() => renderTemplate('{{ОПЕЧАТКА}}', vars)).toThrow('Неизвестный плейсхолдер');
+  });
+});

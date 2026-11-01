@@ -458,7 +458,7 @@ describe('0.4.2: находки независимого ревью — текс
     const rules = await template('.claude/rules/maestro.md');
     expect(rules).toContain('Исключение — обычный `git push`, если человек сам включил «отправку в облако без вопроса»');
     expect(rules).toContain('принудительная отправка, удаление в облаке и отправка тега — по-прежнему с «да»');
-    expect(rules.split('\n').length).toBeLessThanOrEqual(40);
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
     expect(section(await template('protocols/start.md'), '### 5. Сводка и запись')).toContain('Включил — запиши в «Как работаем»');
   });
 

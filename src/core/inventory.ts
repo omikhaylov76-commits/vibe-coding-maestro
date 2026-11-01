@@ -12,6 +12,7 @@ export const TEMPLATE_FILES: readonly string[] = [
   '.claude/commands/wiki.md',
   '.claude/commands/handoff.md',
   '.claude/commands/plan.md',
+  '.claude/commands/start.md',
   '.claude/agents/code-reviewer.md',
   '.claude/agents/explorer.md',
   'maestro/templates/handoff.md',
@@ -29,6 +30,7 @@ export const TEMPLATE_FILES: readonly string[] = [
   'protocols/seams.md',
   'protocols/lessons.md',
   'protocols/completion.md',
+  'protocols/start.md',
   'protocols/build/step-1-rules.md',
   'protocols/build/step-2-spec.md',
   'protocols/build/step-3-architecture.md',
@@ -48,6 +50,7 @@ export const CONTENT_OWNED_FILES: readonly string[] = [
   'wiki/log.md',
   'wiki/roadmap.md',
   'wiki/passport.md',
+  'wiki/restore.md',
   'wiki/concepts/discovery.md',
   'wiki/plans/0001-starter.md',
 ];

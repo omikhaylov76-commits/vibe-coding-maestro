@@ -5,7 +5,7 @@ import { initProject } from '../src/core/init.js';
 import { loadChecksums, loadManifest } from '../src/core/manifest.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir } from './helpers.js';
 
-const adapters = ['.claude/commands/build.md', '.claude/commands/status.md', '.claude/commands/wiki.md', '.claude/commands/handoff.md', '.claude/commands/plan.md'] as const;
+const adapters = ['.claude/commands/build.md', '.claude/commands/status.md', '.claude/commands/wiki.md', '.claude/commands/handoff.md', '.claude/commands/plan.md', '.claude/commands/start.md'] as const;
 
 async function fresh(depth: 'light' | 'standard' | 'advanced') {
   const target = await makeTempDir(`protocol-${depth}-`);

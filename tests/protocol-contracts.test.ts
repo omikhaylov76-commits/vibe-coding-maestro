@@ -72,6 +72,7 @@ describe('Phase 3: capability anti-loss contracts', () => {
       'destructive-confirmation',
       'clarification-gate',
       'discovery-before-code',
+      'project-start',
       'design-before-code',
       'role-capability-declaration',
       'constitution-check',
@@ -125,6 +126,7 @@ describe('Phase 3: capability anti-loss contracts', () => {
       'protocols/wiki.md',
       'protocols/handoff.md',
       'protocols/discovery.md',
+      'protocols/start.md',
     ]);
     for (const capability of ledger.capabilities.filter((item) => item.status !== 'reject' && alwaysOwners.has(item.ownerPath!))) {
       expect(capability.depths, capability.id).toEqual(['light', 'standard', 'advanced']);

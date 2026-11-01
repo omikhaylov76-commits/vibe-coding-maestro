@@ -104,8 +104,11 @@ describe('этапы 8–10: contracts/workflows', () => {
     expect(wiki).toContain('дополняется');
     expect(wiki).toMatch(/wiki\/hot\.md` изменяет handoff/);
 
-    const discovery = (await readFile(join(target, 'protocols/discovery.md'), 'utf8')).toLowerCase();
-    expect(discovery).toContain('не пишет production code');
+    // Discovery вошёл в старт: правила знакомства живут в protocols/start.md, discovery.md только ссылается.
+    const start = (await readFile(join(target, 'protocols/start.md'), 'utf8')).toLowerCase();
+    expect(start).toContain('кода не пишет');
+    expect(start).toContain('факт держи отдельно от догадки');
+    expect(await readFile(join(target, 'protocols/discovery.md'), 'utf8')).toContain('(start.md)');
     const audit = (await readFile(join(target, 'protocols/audit.md'), 'utf8')).toLowerCase();
     expect(audit).toContain('независим');
 

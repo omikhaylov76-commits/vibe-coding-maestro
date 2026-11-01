@@ -28,6 +28,7 @@ import { renderTemplate } from './template.js';
 import { recoverTemplateVars, templateUses } from './template-recover.js';
 import { canonicalOwnershipInventory, CONTENT_OWNED_FILES, lazyDirsForDepth, TEMPLATE_FILES } from './inventory.js';
 import { canonicalizeSystemTempPrefix, onDiskBasename } from './platform-paths.js';
+import { hasAnyReadme, README_PATH } from './readme.js';
 import { compareVersions } from './version.js';
 
 const execFileAsync = promisify(execFile);
@@ -484,6 +485,14 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
     } else {
       preservedFiles.push(relativePath);
     }
+  }
+
+  // README — только в новый проект и только если в корне нет никакого README: удалённый
+  // человеком README повторный create не возвращает, а doctor его не требует.
+  if (!isExistingProject && !(await hasAnyReadme(target))) {
+    await writeTextFile(join(target, README_PATH), renderTemplate(await readTemplate(README_PATH), vars));
+    createdFiles.push(README_PATH);
+    ownedPaths.push(README_PATH);
   }
 
   for (const dir of lazyDirs) {

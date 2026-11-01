@@ -9,6 +9,7 @@
       "Edit(/.claude/commands/wiki.md)",
       "Edit(/.claude/commands/handoff.md)",
       "Edit(/.claude/commands/plan.md)",
+      "Edit(/.claude/commands/start.md)",
       "Edit(/.claude/agents/code-reviewer.md)",
       "Edit(/.claude/agents/explorer.md)",
       "Edit(/maestro/runbooks/cowork-discovery.md)",

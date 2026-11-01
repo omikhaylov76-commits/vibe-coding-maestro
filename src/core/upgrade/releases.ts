@@ -330,6 +330,46 @@ const v040Copy = (path: string): BaselineTemplate => ({
   sha256: V040_MANAGED_SHA256[path] as string,
 });
 
+/** Слепок `templates/project` 0.4.1: тот же состав файлов; правила и протоколы зовут `context` и `pack`. */
+const V041_MANAGED_SHA256: Readonly<Record<string, string>> = {
+  ...V040_MANAGED_SHA256,
+  '.claude/rules/maestro.md': '490eed80098f853068d208ced54391d71c1de740e1fbd8199f54d98f9831216e',
+  'protocols/handoff.md': '10b1a9d21ce40eef441eaf545024cb246b6dda9ae84bfdd4226891aedb253044',
+  'protocols/completion.md': 'fe500e828bf1fc5e73745815cd019af455180f94aba06f13c2b02dfcad61cbfd',
+};
+
+/** Копии шаблонов 0.4.1, изменённых в 0.4.2; одна копия служит всем версиям с тем же содержимым. */
+const v041Copy = (path: string): BaselineTemplate => ({
+  path,
+  source: `registry/baseline/0.4.1/project/${path}`,
+  sha256: V041_MANAGED_SHA256[path] as string,
+});
+
+/** Файлы, которые 0.4.2 изменил: со времён 0.3 beta (а discovery и runbook — с 0.2) они не менялись. */
+export const CHANGED_IN_042_SAME_SINCE_BETA1: readonly string[] = [
+  '.claude/commands/plan.md',
+  'maestro/runbooks/cowork-discovery.md',
+  'protocols/discovery.md',
+];
+
+/** Файлы, которые 0.4.2 изменил: в 0.3.0 — 0.4.1 они одинаковы. */
+const CHANGED_IN_042_SAME_SINCE_030: readonly string[] = ['protocols/plan.md'];
+
+/** Канон 0.4.2: старт проекта — протокол и команда (Maestro), страница восстановления (проект). */
+const V042_TEMPLATE_FILES: readonly string[] = [...V040_TEMPLATE_FILES, '.claude/commands/start.md', 'protocols/start.md'];
+const V042_CONTENT_OWNED_FILES: readonly string[] = [...V040_CONTENT_OWNED_FILES, 'wiki/restore.md'];
+
+/** Слепок `templates/project` 0.4.2. */
+const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
+  ...V041_MANAGED_SHA256,
+  '.claude/commands/plan.md': '4ddbab1b68f68e967904b959db61355153c7d7877981ee47a9917f02c9e6e84c',
+  '.claude/commands/start.md': '47b16629ab303da37232cac345714f8f9ba473e055ca2096579faee2fe74df96',
+  'maestro/runbooks/cowork-discovery.md': 'a0b092f87e7a1749f6dda76a9e2cb2de4228cd9d5bcf27f3f89b79e34e3b6bc0',
+  'protocols/discovery.md': '2c120e5bb2f118f9749fbe72eecb6ecd93635eddb84e3ce22b9f0de7bbc43374',
+  'protocols/plan.md': '20d8c98cf889146c42ee103a10365a853c388872ff6462d0aabda07ea9089566',
+  'protocols/start.md': '2b852f9c67fcab322c37e4e2a6f9f0d75beeaabba7c69b314307abe7420756d5',
+};
+
 export const RELEASES: readonly Release[] = [
   {
     id: BASELINE_ID,
@@ -347,6 +387,7 @@ export const RELEASES: readonly Release[] = [
     templates: [
       ...['CLAUDE.md', 'AGENTS.md', '.claude/commands/build.md', 'protocols/build.md', 'protocols/plan.md'].map(v03BetaCopy),
       ...CHANGED_IN_030_SAME_SINCE_BETA1.map(v03Beta4Copy),
+      ...CHANGED_IN_042_SAME_SINCE_BETA1.map(v041Copy),
     ],
   },
   {
@@ -354,7 +395,10 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.3.0-beta.4'],
     inventory: v03OwnershipInventory,
     managedSha256: V03_BETA4_MANAGED_SHA256,
-    templates: ['CLAUDE.md', 'AGENTS.md', 'protocols/build.md', 'protocols/plan.md', ...CHANGED_IN_030_SAME_SINCE_BETA1].map(v03Beta4Copy),
+    templates: [
+      ...['CLAUDE.md', 'AGENTS.md', 'protocols/build.md', 'protocols/plan.md', ...CHANGED_IN_030_SAME_SINCE_BETA1].map(v03Beta4Copy),
+      ...CHANGED_IN_042_SAME_SINCE_BETA1.map(v041Copy),
+    ],
   },
   {
     id: '0.3.0',
@@ -368,6 +412,7 @@ export const RELEASES: readonly Release[] = [
         sha256: V030_MANAGED_SHA256['.claude/rules/maestro.md'] as string,
       },
       ...CHANGED_IN_040_SAME_SINCE_030.map(v031Copy),
+      ...[...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
     ],
   },
   {
@@ -375,26 +420,33 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.3.1'],
     inventory: v030OwnershipInventory,
     managedSha256: V031_MANAGED_SHA256,
-    templates: ['.claude/rules/maestro.md', ...CHANGED_IN_040_SAME_SINCE_030].map(v031Copy),
+    templates: [
+      ...['.claude/rules/maestro.md', ...CHANGED_IN_040_SAME_SINCE_030].map(v031Copy),
+      ...[...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+    ],
   },
   {
     id: '0.4.0',
     versions: ['0.4.0'],
     inventory: v040OwnershipInventory,
     managedSha256: V040_MANAGED_SHA256,
-    templates: ['.claude/rules/maestro.md', 'protocols/completion.md', 'protocols/handoff.md'].map(v040Copy),
+    templates: [
+      ...['.claude/rules/maestro.md', 'protocols/completion.md', 'protocols/handoff.md'].map(v040Copy),
+      ...[...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+    ],
   },
   {
-    // 0.4.1: тот же состав файлов; правила и протоколы зовут `context` и `pack`.
     id: '0.4.1',
     versions: ['0.4.1'],
     inventory: v040OwnershipInventory,
-    managedSha256: {
-      ...V040_MANAGED_SHA256,
-      '.claude/rules/maestro.md': '490eed80098f853068d208ced54391d71c1de740e1fbd8199f54d98f9831216e',
-      'protocols/handoff.md': '10b1a9d21ce40eef441eaf545024cb246b6dda9ae84bfdd4226891aedb253044',
-      'protocols/completion.md': 'fe500e828bf1fc5e73745815cd019af455180f94aba06f13c2b02dfcad61cbfd',
-    },
+    managedSha256: V041_MANAGED_SHA256,
+    templates: [...CHANGED_IN_042_SAME_SINCE_BETA1, ...CHANGED_IN_042_SAME_SINCE_030].map(v041Copy),
+  },
+  {
+    id: '0.4.2',
+    versions: ['0.4.2'],
+    inventory: ownershipInventory(V042_TEMPLATE_FILES, V042_CONTENT_OWNED_FILES),
+    managedSha256: V042_MANAGED_SHA256,
     templates: [],
   },
 ];

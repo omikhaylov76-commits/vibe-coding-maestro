@@ -27,11 +27,19 @@ const PINNED_PATHS = ['.claude/commands/build.md', '.claude/rules/maestro.md', '
 /** Новые пути канона 0.4.0 относительно 0.3.0 и 0.3.1. */
 const NEW_IN_040 = ['protocols/completion.md', 'wiki/passport.md'];
 
+/** Новые пути канона 0.4.2: старт проекта и страница восстановления. */
+const NEW_IN_042 = ['.claude/commands/start.md', 'protocols/start.md', 'wiki/restore.md'];
+
+/** Файлы Maestro, которые 0.4.2 переписывает на нетронутом проекте любой прошлой версии 0.3 и новее. */
+const UPDATED_IN_042 = ['.claude/commands/plan.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/discovery.md', 'protocols/plan.md'];
+
+const union = (...lists: readonly string[][]): string[] => [...new Set(lists.flat())].sort();
+
 /** Новые пути текущего канона относительно 0.3 beta. */
-const NEW_SINCE_BETA = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', ...NEW_IN_040].sort();
+const NEW_SINCE_BETA = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', ...NEW_IN_040, ...NEW_IN_042].sort();
 
 /** Новые пути, которыми владеет проект: контрольной суммы Maestro у них нет. */
-const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md'];
+const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md'];
 
 /** Строки, которые 0.4.0 дописывает в `.gitignore` проекта. */
 const GITIGNORE_APPENDS = ['.claude/worktrees/', '.claude/settings.local.json'];
@@ -40,10 +48,10 @@ const GITIGNORE_APPENDS = ['.claude/worktrees/', '.claude/settings.local.json'];
 const HANDED_OVER = ['AGENTS.md', 'CLAUDE.md', 'wiki/index.md'];
 
 /** Всё, что upgrade с 0.3 beta переписывает на нетронутом проекте. */
-const UPDATED_FROM_BETA = [
+const UPDATED_FROM_BETA = union([
   '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'maestro/runbooks/cowork-audit.md', 'protocols/build.md', 'protocols/context-budget.md',
   'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md', 'wiki/index.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
-];
+], UPDATED_IN_042);
 
 interface PublishedFixture {
   generatedBy: string;
@@ -67,10 +75,10 @@ const FIXTURES_03X = ['0.3.0-standard', '0.3.1-light', '0.3.1-standard', '0.3.1-
 const FIXTURES_040 = ['0.4.0-light', '0.4.0-standard', '0.4.0-advanced'];
 
 /** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
-const UPDATED_FROM_040 = ['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'];
+const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
 
 /** Всё, что upgrade с 0.3.0 и 0.3.1 переписывает на нетронутом проекте. */
-const UPDATED_FROM_03X = ['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'];
+const UPDATED_FROM_03X = union(['.claude/agents/code-reviewer.md', '.claude/agents/explorer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', '.gitignore', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
 
 async function fixture(id: string): Promise<PublishedFixture> {
   return JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/published', `${id}.json`), 'utf8')) as PublishedFixture;
@@ -327,7 +335,7 @@ describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущ
     const { analysis } = await analyzeUpgrade(root);
     expect(analysis.blockers).toEqual([]);
     expect(analysis.fromVersion).toBe(data.version);
-    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_040);
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(union(NEW_IN_040, NEW_IN_042));
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_03X);
     expect(analysis.updates.find((item) => item.path === '.gitignore')?.appends).toEqual(GITIGNORE_APPENDS);
     expect(analysis.handedOver).toEqual([]);
@@ -342,7 +350,7 @@ describe('upgrade с опубликованных 0.3.0 и 0.3.1 на текущ
     const result = await upgradeProject(root, { apply: true });
     expect(result.error).toBeUndefined();
     expect(result.applied).toBe(true);
-    expect(result.createdFiles.sort()).toEqual(NEW_IN_040);
+    expect(result.createdFiles.sort()).toEqual(union(NEW_IN_040, NEW_IN_042));
     expect(result.updatedFiles.filter((path) => !path.startsWith('.maestro/')).sort()).toEqual(UPDATED_FROM_03X);
 
     const gitignore = data.files['.gitignore'] as string;
@@ -429,7 +437,7 @@ describe('upgrade с опубликованного 0.4.0 на текущую в
     const { analysis } = await analyzeUpgrade(root);
     expect(analysis.blockers).toEqual([]);
     expect(analysis.fromVersion).toBe('0.4.0');
-    expect(analysis.creates).toEqual([]);
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_042);
     expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_040);
     expect(analysis.handedOver).toEqual([]);
     expect(await snapshotTree(root)).toEqual(before);

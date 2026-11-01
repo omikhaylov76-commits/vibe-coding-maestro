@@ -1,5 +1,3 @@
 # Discovery protocol
 
-<a id="VCM-DISCOVERY"></a>
-## Discovery before code
-Собери sources, assumptions, пользователей, problem statement, MVP, non-goals, risks и open questions. Отделяй факт от гипотезы. Discovery не пишет production code и завершается human-approved границами.
+Знакомство с задачей до кода — часть старта проекта: [start](start.md), команда `/start`. Все правила — там: сначала прочитать, что уже есть; факт отдельно от гипотезы; кода не писать; границы утверждает человек.

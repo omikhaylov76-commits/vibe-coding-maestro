@@ -28,6 +28,8 @@ import { renderTemplate } from './template.js';
 import { recoverTemplateVars, templateUses } from './template-recover.js';
 import { canonicalOwnershipInventory, CONTENT_OWNED_FILES, lazyDirsForDepth, TEMPLATE_FILES } from './inventory.js';
 import { canonicalizeSystemTempPrefix, onDiskBasename } from './platform-paths.js';
+import { hasAnyReadme, README_PATH } from './readme.js';
+import { SETTINGS_PATH, withPushWithoutAsking } from './settings.js';
 import { compareVersions } from './version.js';
 
 const execFileAsync = promisify(execFile);
@@ -38,8 +40,20 @@ const GITIGNORE_PATH = '.gitignore';
 const IGNORED_WHEN_EMPTY_CHECK: readonly string[] = ['.git', '.DS_Store'];
 
 /** Шаблон .gitattributes: фиксирует LF для текстовых файлов проекта. */
-const GITATTRIBUTES_PATH = '.gitattributes';
 export const GITATTRIBUTES_CONTENT = '* text=auto eol=lf\n*.md text eol=lf\n*.json text eol=lf\n*.yml text eol=lf\n*.yaml text eol=lf\n';
+
+/**
+ * Материалы человека git хранит байт в байт: `-text` во вложенном `.gitattributes`
+ * перекрывает корневые правила, и свежий клон отдаёт исходные переносы строк.
+ * Отдельный файл, а не строка в корневом: корневой проект мог дописать, и тогда upgrade встал бы.
+ */
+export const INBOX_GITATTRIBUTES_CONTENT = '* -text\n';
+
+/** Managed-файлы, содержимое которых задаёт код, а не шаблон: без подстановок, побайтово. */
+export const CODE_MANAGED_SOURCES: Readonly<Record<string, string>> = {
+  '.gitattributes': GITATTRIBUTES_CONTENT,
+  'maestro/inbox/.gitattributes': INBOX_GITATTRIBUTES_CONTENT,
+};
 
 export interface InitOptions {
   target: string;
@@ -50,6 +64,8 @@ export interface InitOptions {
   depth?: ProjectDepth;
   /** Параметры, которые человек указал явно: для готового проекта о них стоит сказать, а не молчать. */
   requested?: { depth?: ProjectDepth; startingPoint?: StartingPoint };
+  /** Новый проект: обычный `git push` без вопроса (рецепт руководства). Готовый проект не меняется. */
+  pushWithoutAsking?: boolean;
 }
 
 export interface InitResult {
@@ -60,6 +76,10 @@ export interface InitResult {
   preservedFiles: string[];
   mergedFiles: string[];
   warnings: string[];
+  /** Папка уже была проектом Maestro: create его только проверил и дополнил. */
+  existingProject?: boolean;
+  /** Репозиторий Git создал этот запуск, и первый коммит сделан. */
+  gitCreated?: boolean;
   error?: string;
 }
 
@@ -159,7 +179,7 @@ async function recoverProjectVars(
 ): Promise<{ projectName?: string; date?: string }> {
   const found: { projectName?: string; date?: string } = {};
   for (const relativePath of TEMPLATE_FILES) {
-    if (relativePath === GITATTRIBUTES_PATH || checksums[relativePath] === undefined) continue;
+    if (relativePath in CODE_MANAGED_SOURCES || checksums[relativePath] === undefined) continue;
     // Шаблоны пакета на Windows могут прийти с CRLF, а файлы проекта всегда пишутся с LF.
     const source = normalizeEol(await readTemplate(relativePath));
     const uses = templateUses(source);
@@ -194,7 +214,7 @@ async function initGitRepository(
   ownedPaths: readonly string[],
   warnings: string[],
   writtenPaths: readonly string[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     const repositoryExisted = existsSync(join(target, '.git'));
 
@@ -219,7 +239,7 @@ async function initGitRepository(
         const shown = writtenPaths.slice(0, 5).map((path) => quotePathArg(path)).join(' ');
         warnings.push(`Репозиторий Git уже существовал: index не изменён и commit не создан. Добавьте записанные файлы сами: git add ${shown}${writtenPaths.length > 5 ? ' …' : ''}`);
       }
-      return;
+      return false;
     }
 
     // Только наши пути в новом репозитории. Пакетами, чтобы не упереться в лимит длины командной строки.
@@ -231,9 +251,11 @@ async function initGitRepository(
     await execFileAsync('git', ['commit', '-m', 'Инициализация проекта Vibe Coding Maestro'], {
       cwd: target,
     });
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     warnings.push(`Git-шаги пропущены: ${message}`);
+    return false;
   }
 }
 
@@ -383,6 +405,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   if (isExistingProject && options.requested?.startingPoint !== undefined && options.requested.startingPoint !== startingPoint) {
     warnings.push(`У проекта исходная точка ${startingPoint}; --start ${options.requested.startingPoint} не применён: create не меняет параметры готового проекта.`);
   }
+  if (isExistingProject && options.pushWithoutAsking === true) {
+    warnings.push('--push-without-asking не применён: create не меняет готовый проект, а `.claude/settings.json` принадлежит проекту. Настройку предложит `/start` — только с вашего «да».');
+  }
 
   const previousChecksums = (await loadChecksums(target))?.files ?? {};
   const nextChecksums: Record<string, string> = {};
@@ -469,21 +494,30 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   }
 
   for (const relativePath of TEMPLATE_FILES) {
-    const source = relativePath === GITATTRIBUTES_PATH ? GITATTRIBUTES_CONTENT : await readTemplate(relativePath);
-    await materialize(relativePath, relativePath === GITATTRIBUTES_PATH ? source : renderTemplate(source, vars));
+    const constant = CODE_MANAGED_SOURCES[relativePath];
+    await materialize(relativePath, constant ?? renderTemplate(await readTemplate(relativePath), vars));
   }
 
   for (const relativePath of CONTENT_OWNED_FILES) {
     managed.push({ path: relativePath, kind: 'generated' });
     const absolutePath = join(target, relativePath);
     if (!existsSync(absolutePath)) {
-      const source = await readTemplate(relativePath);
-      await writeTextFile(absolutePath, renderTemplate(source, vars));
+      const rendered = renderTemplate(await readTemplate(relativePath), vars);
+      const pushRecipe = relativePath === SETTINGS_PATH && options.pushWithoutAsking === true && !isExistingProject;
+      await writeTextFile(absolutePath, pushRecipe ? withPushWithoutAsking(rendered) : rendered);
       createdFiles.push(relativePath);
       ownedPaths.push(relativePath);
     } else {
       preservedFiles.push(relativePath);
     }
+  }
+
+  // README — только в новый проект и только если в корне нет никакого README: удалённый
+  // человеком README повторный create не возвращает, а doctor его не требует.
+  if (!isExistingProject && !(await hasAnyReadme(target))) {
+    await writeTextFile(join(target, README_PATH), renderTemplate(await readTemplate(README_PATH), vars));
+    createdFiles.push(README_PATH);
+    ownedPaths.push(README_PATH);
   }
 
   for (const dir of lazyDirs) {
@@ -529,9 +563,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   await writeManifest(target, manifest);
   await writeChecksums(target, nextChecksums);
 
-  if (options.git === true) {
-    await initGitRepository(target, ownedPaths, warnings, [...createdFiles, ...mergedFiles]);
-  }
+  const gitCreated = options.git === true
+    ? await initGitRepository(target, ownedPaths, warnings, [...createdFiles, ...mergedFiles])
+    : false;
   // Метка снимается последней: убитый на любом шаге, включая Git, create остаётся виден.
   if (!isExistingProject) await rm(join(target, CREATING_MARKER_PATH), { force: true });
 
@@ -543,5 +577,7 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
     preservedFiles,
     mergedFiles,
     warnings,
+    existingProject: isExistingProject,
+    gitCreated,
   };
 }

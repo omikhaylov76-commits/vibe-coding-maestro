@@ -22,7 +22,7 @@ afterEach(cleanupTempDirs);
 describe('этап 7: интерактивный create-vibe-maestro', () => {
   it('в TTY получает максимум три ответа через внедрённый adapter и создаёт проект', async () => {
     const target = `${await makeTempDir()}/new-project`;
-    const prompt = adapter({ action: 'create', target, name: 'Новый проект', startingPoint: 'materials', usedDesktopDefault: false });
+    const prompt = adapter({ action: 'create', target, name: 'Новый проект', startingPoint: 'materials', usedDesktopDefault: false, github: false });
     const c = collect();
 
     const code = await runCreateCli([], c.io, { isTty: true, prompt });
@@ -36,7 +36,7 @@ describe('этап 7: интерактивный create-vibe-maestro', () => {
     const target = await makeTempDir();
     const { writeFile } = await import('node:fs/promises');
     await writeFile(`${target}/app.ts`, 'export {};\n');
-    const prompt = adapter({ action: 'create', target, name: 'Existing', startingPoint: 'code', usedDesktopDefault: false });
+    const prompt = adapter({ action: 'create', target, name: 'Existing', startingPoint: 'code', usedDesktopDefault: false, github: false });
     const c = collect();
 
     const code = await runCreateCli([], c.io, { isTty: true, prompt });
@@ -57,7 +57,7 @@ describe('этап 7: интерактивный create-vibe-maestro', () => {
   });
 
   it('в non-TTY без --yes немедленно ошибается и советует --yes, даже если target передан', async () => {
-    const prompt = adapter({ action: 'create', target: '/never', name: 'never', startingPoint: 'idea', usedDesktopDefault: false });
+    const prompt = adapter({ action: 'create', target: '/never', name: 'never', startingPoint: 'idea', usedDesktopDefault: false, github: false });
     const c = collect();
 
     const code = await runCreateCli(['--target', '/already-supplied'], c.io, { isTty: false, prompt });
@@ -69,7 +69,7 @@ describe('этап 7: интерактивный create-vibe-maestro', () => {
 
   it('--yes сохраняет неинтерактивный режим и не вызывает prompt', async () => {
     const target = `${await makeTempDir()}/yes-project`;
-    const prompt = adapter({ action: 'create', target: '/never', name: 'never', startingPoint: 'idea', usedDesktopDefault: false });
+    const prompt = adapter({ action: 'create', target: '/never', name: 'never', startingPoint: 'idea', usedDesktopDefault: false, github: false });
     const c = collect();
 
     const code = await runCreateCli(['--yes', '--target', target, '--no-git'], c.io, { isTty: true, prompt });

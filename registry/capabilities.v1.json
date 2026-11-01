@@ -260,7 +260,7 @@
     {
       "id": "discovery-before-code",
       "status": "keep",
-      "ownerPath": "protocols/discovery.md",
+      "ownerPath": "protocols/start.md",
       "contractId": "VCM-DISCOVERY",
       "depths": [
         "light",
@@ -324,6 +324,18 @@
         "advanced"
       ],
       "rationale": "Сдача или закрытие проекта идёт по одному чек-листу: критерии, проверки, тег, паспорт, передача, закрытый план."
+    },
+    {
+      "id": "project-start",
+      "status": "keep",
+      "ownerPath": "protocols/start.md",
+      "contractId": "VCM-START",
+      "depths": [
+        "light",
+        "standard",
+        "advanced"
+      ],
+      "rationale": "Первая сессия читает, что уже есть, и по одному вопросу договаривается о задаче и о том, как работаем; записывает только после «да» человека."
     }
   ]
 }

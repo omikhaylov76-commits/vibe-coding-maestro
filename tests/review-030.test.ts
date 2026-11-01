@@ -72,7 +72,8 @@ describe('ревью 0.3.0', () => {
     expect(report.findings).toContainEqual(expect.objectContaining({ code: 'git-managed-untracked', path: '.claude/rules/maestro.md' }));
     await git(root, 'add', '-A');
     await git(root, 'commit', '-q', '-m', 'add new files');
-    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    // Остаётся только info «копии в облаке нет»: у этого репозитория нет remote.
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([expect.objectContaining({ code: 'git-no-remote', level: 'info' })]);
   });
 
   it('смена классификации утверждённого плана закрывает гейт так же, как правка текста', async () => {
@@ -158,7 +159,7 @@ describe('ревью 0.3.0', () => {
     expect(cli.all()).toContain('git add');
     const report = await doctorProject(root);
     expect(report.ok).toBe(true);
-    expect(report.findings.every((item) => item.code === 'git-managed-untracked' && item.level === 'warning')).toBe(true);
+    expect(report.findings.every((item) => (item.code === 'git-managed-untracked' && item.level === 'warning') || (item.code === 'git-no-remote' && item.level === 'info'))).toBe(true);
   });
 
   it('метка .maestro/creating снимается только после стартового коммита', async () => {

@@ -1,13 +1,19 @@
 import { createInterface } from 'node:readline';
 import type { ReadStream, WriteStream } from 'node:tty';
+import { githubReady } from '../core/github.js';
 import type { StartingPoint } from '../core/meta.js';
 import { resolveProjectInput, runtimeDesktopOptions } from './desktop.js';
 import { createRenderer, runtimeRendererOptions, type CliRenderer } from './renderer.js';
 
 export type InteractiveAction = 'create' | 'check';
 export type InteractiveAnswers =
-  | { action: 'create'; target: string; name: string; startingPoint: StartingPoint; usedDesktopDefault: boolean }
+  | { action: 'create'; target: string; name: string; startingPoint: StartingPoint; usedDesktopDefault: boolean; github: boolean }
   | { action: 'check'; target: string };
+
+export interface PromptOptions {
+  /** Есть ли `gh` и вход на GitHub. По умолчанию — настоящая проверка с таймаутом 3 с. */
+  detectGithub?: () => Promise<boolean>;
+}
 
 export interface PromptAdapter {
   ask(): Promise<InteractiveAnswers>;
@@ -216,17 +222,27 @@ export async function askLine(
   }
 }
 
-export function createReadlinePrompt(input: ReadStream = process.stdin as ReadStream, output: WriteStream = process.stdout as WriteStream): PromptAdapter {
+export function createReadlinePrompt(
+  input: ReadStream = process.stdin as ReadStream,
+  output: WriteStream = process.stdout as WriteStream,
+  options: PromptOptions = {},
+): PromptAdapter {
   const renderer = createRenderer((text) => output.write(text), runtimeRendererOptions(output));
   const capabilities = promptCapabilities(output, process.env);
   return {
     renderer,
     async ask(): Promise<InteractiveAnswers> {
+      // Вход в gh проверяется, пока человек читает приветствие; нет ответа за 3 с — варианта нет.
+      const github = (options.detectGithub ?? (() => githubReady()))().catch(() => false);
       renderer.welcome();
-      const action = await selectChoice(input, output, renderer, 'Что вы хотите сделать?', [
+      const choices: { value: InteractiveAction | 'create-github'; label: string }[] = [
         { value: 'create', label: 'Создать новый проект' },
         { value: 'check', label: 'Проверить canonical project' },
-      ], capabilities);
+      ];
+      // Новый вариант — последним: «1 — создать» и «2 — проверить» не меняются.
+      if (await github) choices.push({ value: 'create-github', label: 'Создать новый проект и закрытую копию на GitHub' });
+      const chosen = await selectChoice(input, output, renderer, 'Что вы хотите сделать?', choices, capabilities);
+      const action: InteractiveAction = chosen === 'check' ? 'check' : 'create';
       const question = action === 'create' ? 'Как назовём проект? Можно указать полный путь.' : 'Какой canonical project проверить?';
       const hint = action === 'create' ? 'Например: Мой проект. Тогда папка появится на Рабочем столе.' : 'Перетащите папку сюда или вставьте путь.';
       const raw = await askLine(input, output, renderer, question, hint, capabilities);
@@ -244,7 +260,7 @@ export function createReadlinePrompt(input: ReadStream = process.stdin as ReadSt
       ], capabilities);
       renderer.preview({ action, target: project.target, name: project.name, usedDesktopDefault: project.usedDesktopDefault });
       renderer.progress('Создаём структуру canonical project…');
-      return { action, target: project.target, name: project.name, startingPoint, usedDesktopDefault: project.usedDesktopDefault };
+      return { action, target: project.target, name: project.name, startingPoint, usedDesktopDefault: project.usedDesktopDefault, github: chosen === 'create-github' };
     },
   };
 }

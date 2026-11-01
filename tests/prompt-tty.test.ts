@@ -350,7 +350,7 @@ describe('полный guided-прогон через fake TTY не содерж
 
     const input = new FakeInput();
     const output = new FakeOutput();
-    const prompt = createReadlinePrompt(input as unknown as ReadStream, output as unknown as WriteStream);
+    const prompt = createReadlinePrompt(input as unknown as ReadStream, output as unknown as WriteStream, { detectGithub: async () => false });
     const answer = prompt.ask();
 
     await waitFor(() => output.text().includes('Что вы хотите сделать?'), 'первый вопрос');
@@ -382,7 +382,7 @@ describe('полный guided-прогон через fake TTY не содерж
 
     const input = new FakeInput();
     const output = new FakeOutput();
-    const prompt = createReadlinePrompt(input as unknown as ReadStream, output as unknown as WriteStream);
+    const prompt = createReadlinePrompt(input as unknown as ReadStream, output as unknown as WriteStream, { detectGithub: async () => false });
     const answer = prompt.ask();
 
     await waitFor(() => output.text().includes('Что вы хотите сделать?'), 'первый вопрос');

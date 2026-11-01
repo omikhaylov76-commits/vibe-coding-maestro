@@ -18,7 +18,8 @@ export async function executeDoctorCommand(options: DoctorRunOptions, io: CliIo)
       if (item.level === 'warning' || item.level === 'info') io.out(`- ${item.code}${item.path ? ` (${item.path})` : ''}: ${item.message}`);
     }
   } else {
-    io.err(`Vibe Coding Maestro doctor: найдено проблем — ${report.findings.length}.`);
+    // Пометки info — не проблемы: в числе их нет, но в списке они видны.
+    io.err(`Vibe Coding Maestro doctor: найдено проблем — ${report.findings.filter((item) => item.level !== 'info').length}.`);
     for (const item of report.findings) {
       io.err(`- ${item.code}${item.path ? ` (${item.path})` : ''}: ${item.message}`);
     }

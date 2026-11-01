@@ -74,9 +74,12 @@ describe('Guided First Run renderer', () => {
     expect(text).toContain('OK');
     expect(text).toContain('ПРОЕКТ ГОТОВ');
     expect(text).toContain(target);
-    expect(text).toContain('wiki/hot.md');
+    expect(text).toContain('Claude Code');
     expect(text).toContain('maestro/inbox');
-    expect(text).toContain('cowork-discovery.md');
+    // Один первый шаг везде: создание → /start → /plan.
+    expect(text).toContain('/start спросит путь');
+    expect(text.indexOf('Напишите /start')).toBeGreaterThan(0);
+    expect(text.indexOf('Напишите /start')).toBeLessThan(text.indexOf('/plan'));
   });
 
   it('preview сообщает Desktop-default до записи, а failure не выглядит успехом', () => {

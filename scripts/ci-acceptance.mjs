@@ -179,12 +179,19 @@ try {
   assert.ok(JSON.parse(symlinkDoctor.stdout).findings.some((finding) => finding.code === 'managed-symlink' && finding.path === '.gitignore'), 'packed doctor must report managed-symlink for .gitignore');
 
   const strictProject = './packed standard project';
-  await writeFile(join(installDir, strictProject, 'maestro/inbox/note.txt'), 'todo\n', 'utf8');
+  // Материалы в maestro/inbox/ с 0.4.2 не замечание даже в --strict.
+  await writeFile(join(installDir, strictProject, 'maestro/inbox/note.txt'), 'todo\r\n', 'utf8');
+  const inboxStrict = runResult(process.execPath, [installedMaestro, 'doctor', '--path', strictProject, '--strict', '--json'], installDir);
+  assert.equal(inboxStrict.status, 0, 'packed doctor --strict must accept materials in maestro/inbox/');
+  const strictSettings = join(installDir, strictProject, '.claude/settings.json');
+  const settingsBefore = await readFile(strictSettings, 'utf8');
+  await writeFile(strictSettings, '{ broken', 'utf8');
   const normalWarning = runResult(process.execPath, [installedMaestro, 'doctor', '--path', strictProject, '--json'], installDir);
   assert.equal(normalWarning.status, 0, 'default packed doctor must allow warning');
   const strictWarning = runResult(process.execPath, [installedMaestro, 'doctor', '--path', strictProject, '--strict', '--json'], installDir);
   assert.equal(strictWarning.status, 1, 'packed doctor --strict must block warning');
   assert.equal(JSON.parse(strictWarning.stdout).reportVersion, 1);
+  await writeFile(strictSettings, settingsBefore, 'utf8');
 
   const resolvedAudit = `---
 type: audit

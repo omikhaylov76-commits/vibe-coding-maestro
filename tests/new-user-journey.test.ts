@@ -134,7 +134,11 @@ describe('путь нового пользователя (0.3.0)', () => {
     const editedSettings = { permissions: { deny: settings.permissions.deny, ask: settings.permissions.ask.filter((rule) => rule !== 'Bash(git push *)') } };
     await writeFile(join(root, '.claude/settings.json'), `${JSON.stringify(editedSettings, null, 2)}\n`, 'utf8');
     const doctor = await maestro('doctor', '--path', root, '--strict');
-    expect(doctor.text).toBe('Vibe Coding Maestro doctor: всё сходится.');
+    // С 0.4.2 doctor честно говорит, что копии в облаке нет; это info, а не замечание.
+    const [verdict, ...notes] = doctor.text.split('\n');
+    expect(verdict).toBe('Vibe Coding Maestro doctor: всё сходится.');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatch(/^- git-no-remote: Копии проекта в облаке нет/);
     expect(doctor.code).toBe(0);
 
     // 9. Обновлять нечего; клон под другим именем — тот же проект.

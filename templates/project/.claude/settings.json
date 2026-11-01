@@ -9,6 +9,7 @@
       "Edit(/.claude/commands/wiki.md)",
       "Edit(/.claude/commands/handoff.md)",
       "Edit(/.claude/commands/plan.md)",
+      "Edit(/.claude/commands/start.md)",
       "Edit(/.claude/agents/code-reviewer.md)",
       "Edit(/.claude/agents/explorer.md)",
       "Edit(/maestro/runbooks/cowork-discovery.md)",
@@ -18,6 +19,7 @@
       "Edit(/maestro/templates/adr.md)",
       "Edit(/maestro/templates/progress.md)",
       "Edit(/maestro/inbox/README.md)",
+      "Edit(/maestro/inbox/.gitattributes)",
       "Edit(/wiki/plans/README.md)",
       "Edit(/wiki/plans/TEMPLATE.md)"
     ],

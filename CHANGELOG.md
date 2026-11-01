@@ -4,6 +4,43 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
+## 0.4.2 — 2026-11-01
+
+The third part of 0.4: starting a project. One first step everywhere — create → `/start` → `/plan`; materials in one place, kept byte for byte; a private copy in the cloud from day one. The set of project files changes; `vibe-maestro upgrade` migrates projects from 0.4.1, 0.4.0, 0.3.1, 0.3.0, 0.3.0-beta.1 – beta.4 and 0.2.0-beta.1.
+
+### Added
+
+- **`/start` with its own protocol `protocols/start.md`** (managed, command `.claude/commands/start.md`). The first session reads what already exists — the starting point from `create --start`, materials in `maestro/inbox/` (large files through the `explorer` subagent), what the human said, code in another folder only read-only through `sources`, asking for the path. Then it asks one question at a time, in plain words: seven about the task (what we make; for whom; who gets the result — kept or handed to a customer, team, employer; what «done» means; what else exists; what we do not do; constraints — laws, platform rules, other people's personal data) and six about how we work (who decides and on whose behalf the agent may write; what only after a separate «да»; code right after plan approval or on «начинай»; how to talk; how to hand over keys; where the copy lives and how to restore), each with the agent's proposal as the default. Deadlines and budget are not asked; if named, they are written down. Found answers are shown with their source and a «верно?»; «не знаю» is recorded as UNKNOWN. A draft is kept in the project, so the human can stop and continue; `/start` can be run again to revise one agreement. A one-screen summary with the rhythm of slices, then writing only after «да»: the task to `wiki/concepts/discovery.md`, how we work to the «Как работаем» section of `.claude/rules/project.md` (other sections untouched), the copy and restore to `wiki/restore.md`, the cloud address to the passport. Protections in `settings.json` change only on a separate «да». `protocols/discovery.md` now points to the start; the capabilities `discovery-before-code` and new `project-start` live in `start.md`.
+- **Start flag** `start:` in the `wiki/concepts/discovery.md` header: `not_started` → `in_progress` → `done`; `skipped` when the human declines. `protocols/plan.md` Stage A reads the start answers and does not ask again; if the start is not done it offers it once, and after a refusal asks only what the plan needs.
+- **`wiki/restore.md`** (belongs to the project): what is in the cloud (address in the passport), what is not (`.env`, key values, personal settings), what to install, how to get the project, how to check it.
+- **`README.md`** for a new project, only when the folder has no README of any name; it says the file is read first, also by the recipient, and asks to rewrite it. It is not in the inventory `doctor` checks and may be deleted.
+- **A copy in the cloud from day one.** The wizard offers «Создать новый проект и закрытую копию на GitHub» as the last option of its first question, only when the GitHub CLI `gh` is installed and logged in (checked while the welcome is shown, 3 s timeout); still three decisions. For scripts: `create --github`. After the first commit: `gh repo create <name> --private --source <folder> --remote origin --push`; the name is Latin from the folder name (Cyrillic transliterated, empty → `project-YYYYMMDD`). Any `gh` failure is a warning with the command for later; the project stays and the exit code is 0. `--github` with `--no-git` is an error before writing.
+- **`create --push-without-asking`** for new projects: `settings.json` gets the guide recipe — plain `git push` allowed; force pushes (`--force`, `-f`, `+branch`) and deleting in the cloud (`--delete`, `-d`, `--mirror`, `--prune`) still ask; one `ask` key. `.claude/rules/maestro.md` names this exception to «push only after a separate „да“».
+- `doctor` `info` findings from local Git data only, no network: `git-no-remote`, `git-no-upstream`, `git-unpushed`. They do not fail `--strict` or `preflight`.
+- `maestro/inbox/.gitattributes` (managed, `* -text`, written by code like the root `.gitattributes`): Git keeps materials byte for byte, a fresh clone returns the original bytes on any `core.autocrlf`.
+- Rules for everyone in `.claude/rules/maestro.md`: check a person's proposal against what already exists and say so if it is not needed or done; plain words, a technical term only with its meaning. «Выбор навыков» in `protocols/plan.md`: installed, GitHub and official Anthropic catalogs; compare several, check `SKILL.md`, `allowed-tools`, hooks; pick the best; install only after «да». Maestro installs nothing itself.
+
+### Changed
+
+- One first step in five places — the create screen, `wiki/hot.md`, `wiki/plans/0001-starter.md`, `.claude/rules/maestro.md`, the README — and in the user guide: create → `/start` → `/plan`. Section names of `wiki/hot.md` are unchanged.
+- **Materials without a red check.** `inbox-not-empty` is removed: files in `maestro/inbox/` are not a finding, even with `--strict`. `source-hashes-missing` (still critical) now says that `maestro/sources/` holds only `sources --write` snapshots and points to `maestro/inbox/`. The create screen, `maestro/inbox/README.md` and `protocols/plan.md` say the same.
+- `maestro/runbooks/cowork-discovery.md` no longer says Claude Code does not rewrite discovery: Cowork prepares material for `maestro/inbox/`, `/start` writes the answers.
+- The passport template says it goes to the recipient in `HANDOVER.md` and should be written for them.
+- The `vibe-maestro` companion package (0.1.6) depends on exactly `create-vibe-maestro@0.4.2`.
+- Upgrade tests use projects generated by the real published 0.4.1 package.
+
+### For those who create projects with their own scripts
+
+- **Place for materials** — `maestro/inbox/`. Files there no longer give `inbox-not-empty` (it is gone). `maestro/sources/` is only for `vibe-maestro sources --write` snapshots; your own files there are still critical (`source-hashes-missing`).
+- **The `-text` rule.** `create` and `upgrade` write `maestro/inbox/.gitattributes` with `* -text`: Git does not change line endings, a fresh clone returns the original bytes. Your own folder for other people's files — put the same `.gitattributes` there. Materials that were committed before the rule are not re-read by Git on their own: run `git add --renormalize maestro/inbox` and commit (checked on Git 2.54: a file Git has already seen is not shown as modified after the rule appears). If a file was already normalized (for example, taken from a fresh clone on another computer), the original bytes exist only in its source.
+- **The start flag** — `start: done` in the `wiki/concepts/discovery.md` header. Set it right after `create`, and `/plan` will not offer the start. Values: `not_started`, `in_progress`, `done`, `skipped`. No field = not done.
+- **Section names of `wiki/hot.md` do not change:** «Сейчас в работе», «Открытые вопросы», «Следующий шаг». Only the text inside changes for new projects.
+- **`create --yes` creates no repository.** A private GitHub repository only with `--github`; push without asking only with `--push-without-asking`. Neither flag acts on a repeated `create` of an existing project.
+- **New project files:** `protocols/start.md`, `.claude/commands/start.md`, `maestro/inbox/.gitattributes` (Maestro); `wiki/restore.md` (project). `README.md` only when the root has no README; `doctor` does not require it.
+- **`doctor`:** new findings `git-no-remote`, `git-no-upstream`, `git-unpushed` are `info` and block neither `--strict` nor `preflight`.
+- **Your own `.claude/commands/start.md`** stops `upgrade` with a clear message: rename it (for example, to `my-start.md`) and run again.
+- **Projects before 0.4.2:** `.claude/settings.json` belongs to the project and `upgrade` does not change it — add `Edit(/.claude/commands/start.md)` and `Edit(/maestro/inbox/.gitattributes)` to `deny` if you want the same protection.
+
 ## 0.4.1 — 2026-10-31
 
 The second part of 0.4: packing a project for the customer and measuring the session. The set of project files is unchanged; `upgrade` from 0.4.0 rewrites the pinned version, `.claude/rules/maestro.md`, `protocols/handoff.md` and `protocols/completion.md`.

@@ -17,6 +17,8 @@ export interface SuccessModel {
   target: string;
   name?: string;
   doctorOk: boolean;
+  /** Адрес закрытой копии в облаке; null или нет поля — копии нет. */
+  cloud?: string | null;
 }
 
 export interface CliRenderer {
@@ -149,12 +151,13 @@ export function createRenderer(write: Write, options: RendererOptions): CliRende
         model.name ? `Название: ${model.name}` : '',
         'Проект находится здесь:',
         model.target,
+        model.cloud ? `Копия в облаке: ${model.cloud}` : 'Копии в облаке нет — завести её поможет /start.',
         '',
         'Что делать дальше:',
-        '1. Откройте папку проекта.',
-        '2. Добавьте заметки и файлы в maestro/inbox/.',
-        '3. Начните с wiki/hot.md.',
-        '4. Для discovery откройте maestro/runbooks/cowork-discovery.md.',
+        '1. Откройте папку проекта в Claude Code.',
+        '2. Материалы, если есть, положите в maestro/inbox/. Готовый код оставьте, где лежит: /start спросит путь.',
+        '3. Напишите /start — знакомство с задачей.',
+        '4. Потом /plan — план до кода.',
         '',
         'Проверка пройдена: структура проекта в порядке.',
       ].filter((line, index, all) => line !== '' || (index > 0 && all[index - 1] !== '')), 'success');

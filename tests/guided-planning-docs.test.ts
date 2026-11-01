@@ -99,8 +99,8 @@ function localLinks(markdown: string): { target: string; anchor: string | null }
 }
 
 describe('Phase 5: версия публикуется одинаково везде', () => {
-  it('package, lock, runtime и документация называют одну версию 0.4.1', async () => {
-    const expected = '0.4.1';
+  it('package, lock, runtime и документация называют одну версию 0.4.2', async () => {
+    const expected = '0.4.2';
     const pkg = JSON.parse(await doc('package.json')) as { version: string };
     const lock = JSON.parse(await doc('package-lock.json')) as { version: string; packages: Record<string, { version: string }> };
     expect(pkg.version).toBe(expected);
@@ -168,9 +168,10 @@ describe('Phase 5: команды документации совпадают с
 });
 
 describe('Phase 5: главный путь новичка объявлен и упорядочен', () => {
-  it('README ведёт по одному маршруту от идеи до handoff', async () => {
+  it('README ведёт по одному маршруту от старта до handoff', async () => {
     const readme = await doc(README);
-    const order = ['Обсудите идею', '/plan', 'классификаци', 'draft', 'план утверждаю', 'preflight', '/build', 'doctor', '/handoff'];
+    // С 0.4.2 первый шаг один: создание → /start → /plan.
+    const order = ['Напишите `/start`', '/plan', 'классификаци', 'draft', 'план утверждаю', 'preflight', '/build', 'doctor', '/handoff'];
     let cursor = -1;
     for (const anchor of order) {
       const index = readme.indexOf(anchor, cursor + 1);

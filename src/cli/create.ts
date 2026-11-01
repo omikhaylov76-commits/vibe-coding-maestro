@@ -2,6 +2,7 @@ import { CREATE_COMMAND, isStartingPoint, PRODUCT_NAME, serviceInvocation, START
 import type { StartingPoint } from '../core/meta.js';
 import { DEPTHS } from '../core/manifest.js';
 import type { ProjectDepth } from '../core/manifest.js';
+import type { GhRunner } from '../core/github.js';
 import { CliIo, EXIT_OK, EXIT_USAGE, processIo } from './io.js';
 import type { PromptAdapter } from './prompt.js';
 
@@ -12,12 +13,15 @@ interface CreateOptions {
   git: boolean;
   json: boolean;
   depth: ProjectDepth;
+  github: boolean;
   explicit: { depth?: boolean; startingPoint?: boolean };
 }
 
 export interface CreateCliRuntime {
   isTty: boolean;
   prompt?: PromptAdapter;
+  /** Запуск GitHub CLI; по умолчанию — настоящий `gh` из PATH. */
+  gh?: GhRunner;
 }
 
 type ParseResult =
@@ -37,6 +41,8 @@ const HELP = `${PRODUCT_NAME} — подготовка проекта одной
   --start <состояние> исходное состояние идеи: ${STARTING_POINTS.join(' | ')} (по умолчанию idea)
   --depth <глубина>   canonical depth: ${DEPTHS.join(' | ')} (по умолчанию standard)
   --no-git            не выполнять git init и стартовый commit
+  --github            после первого коммита завести закрытую копию на GitHub
+                      (нужны GitHub CLI gh и выполненный вход; без флага --yes её не заводит)
   --yes, -y           неинтерактивный режим (все ответы взяты из флагов)
   --json              машиночитаемый отчёт
   --help, -h          эта справка
@@ -52,6 +58,7 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
     git: true,
     json: false,
     depth: 'standard',
+    github: false,
     explicit: {},
   };
 
@@ -66,6 +73,9 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
         return { kind: 'help' };
       case '--no-git':
         options.git = false;
+        break;
+      case '--github':
+        options.github = true;
         break;
       case '--yes':
       case '-y':
@@ -112,6 +122,13 @@ export function parseCreateArgs(argv: readonly string[]): ParseResult {
         }
         return { kind: 'error', message: `Лишний аргумент: ${arg}` };
     }
+  }
+
+  if (options.github && !options.git) {
+    return {
+      kind: 'error',
+      message: 'Флаг --github отправляет на GitHub первый коммит, а --no-git отключает Git: оставьте один из них. Проект не создан.',
+    };
   }
 
   if (options.target === '') {
@@ -175,9 +192,11 @@ export async function runCreateCli(
             git: true,
             json: false,
             depth: 'standard',
+            github: answers.github,
           },
           io,
           prompt.renderer,
+          runtime.gh,
         );
       } catch (error) {
         io.err(error instanceof Error ? error.message : 'Интерактивный ввод прерван.');
@@ -190,5 +209,5 @@ export async function runCreateCli(
   }
 
   const { executeCreate } = await import('./create-run.js');
-  return executeCreate(parsed.options, io);
+  return executeCreate(parsed.options, io, undefined, runtime.gh);
 }

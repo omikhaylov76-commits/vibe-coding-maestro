@@ -17,6 +17,8 @@ export interface SuccessModel {
   target: string;
   name?: string;
   doctorOk: boolean;
+  /** Адрес закрытой копии в облаке; null или нет поля — копии нет. */
+  cloud?: string | null;
 }
 
 export interface CliRenderer {
@@ -149,6 +151,7 @@ export function createRenderer(write: Write, options: RendererOptions): CliRende
         model.name ? `Название: ${model.name}` : '',
         'Проект находится здесь:',
         model.target,
+        model.cloud ? `Копия в облаке: ${model.cloud}` : 'Копии в облаке нет — завести её поможет /start.',
         '',
         'Что делать дальше:',
         '1. Откройте папку проекта в Claude Code.',

@@ -73,6 +73,10 @@ export interface InitResult {
   preservedFiles: string[];
   mergedFiles: string[];
   warnings: string[];
+  /** Папка уже была проектом Maestro: create его только проверил и дополнил. */
+  existingProject?: boolean;
+  /** Репозиторий Git создал этот запуск, и первый коммит сделан. */
+  gitCreated?: boolean;
   error?: string;
 }
 
@@ -207,7 +211,7 @@ async function initGitRepository(
   ownedPaths: readonly string[],
   warnings: string[],
   writtenPaths: readonly string[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     const repositoryExisted = existsSync(join(target, '.git'));
 
@@ -232,7 +236,7 @@ async function initGitRepository(
         const shown = writtenPaths.slice(0, 5).map((path) => quotePathArg(path)).join(' ');
         warnings.push(`Репозиторий Git уже существовал: index не изменён и commit не создан. Добавьте записанные файлы сами: git add ${shown}${writtenPaths.length > 5 ? ' …' : ''}`);
       }
-      return;
+      return false;
     }
 
     // Только наши пути в новом репозитории. Пакетами, чтобы не упереться в лимит длины командной строки.
@@ -244,9 +248,11 @@ async function initGitRepository(
     await execFileAsync('git', ['commit', '-m', 'Инициализация проекта Vibe Coding Maestro'], {
       cwd: target,
     });
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     warnings.push(`Git-шаги пропущены: ${message}`);
+    return false;
   }
 }
 
@@ -550,9 +556,9 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
   await writeManifest(target, manifest);
   await writeChecksums(target, nextChecksums);
 
-  if (options.git === true) {
-    await initGitRepository(target, ownedPaths, warnings, [...createdFiles, ...mergedFiles]);
-  }
+  const gitCreated = options.git === true
+    ? await initGitRepository(target, ownedPaths, warnings, [...createdFiles, ...mergedFiles])
+    : false;
   // Метка снимается последней: убитый на любом шаге, включая Git, create остаётся виден.
   if (!isExistingProject) await rm(join(target, CREATING_MARKER_PATH), { force: true });
 
@@ -564,5 +570,7 @@ async function initProjectAt(target: string, options: InitOptions, progress: Wri
     preservedFiles,
     mergedFiles,
     warnings,
+    existingProject: isExistingProject,
+    gitCreated,
   };
 }

@@ -1,4 +1,4 @@
-import { lstat, readFile } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { absolutePathHasSymlink, pathHasSymlink } from '../doctor/fs-utils.js';
 import { mergeGitignore } from '../gitignore.js';
@@ -20,6 +20,7 @@ import {
 import type { Manifest, ProjectDepth } from '../manifest.js';
 import { CREATE_COMMAND, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson, packageRoot, templatesDir } from '../paths.js';
+import { hasAnyReadme, README_PATH } from '../readme.js';
 import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
 import { renderTemplate } from '../template.js';
 import type { TemplateVars } from '../template.js';
@@ -29,6 +30,13 @@ import type { Release } from './releases.js';
 import { recoverTemplateVars, templateUses } from '../template-recover.js';
 
 const GITIGNORE_PATH = '.gitignore';
+
+/** Папка материалов человека и правило «байт в байт» для неё (0.4.2). */
+const INBOX_DIR = 'maestro/inbox';
+const INBOX_GITATTRIBUTES_PATH = `${INBOX_DIR}/.gitattributes`;
+
+/** Версия, с которой README проекта кладут create и upgrade; с неё и дальше удалённый README не возвращается. */
+const README_SINCE = '0.4.2';
 
 /** Каталог транзакции. Внутри `.maestro`, чтобы не появляться в дереве проекта. */
 export const STAGING_DIR = '.maestro/upgrade-staging';
@@ -63,6 +71,8 @@ export interface UpgradeAnalysis {
   /** Пути, которые переходят от Maestro к проекту: checksum снимается, дальше файл принадлежит проекту. */
   handedOver: string[];
   metadata: string[];
+  /** Что человеку стоит знать до и после применения: простыми словами, без блокировки. */
+  notes: string[];
   blockers: UpgradeBlocker[];
 }
 
@@ -94,6 +104,7 @@ function analysis(root: string, status: UpgradeStatus, fromVersion: string | nul
     preserves: [],
     handedOver: [],
     metadata: [],
+    notes: [],
     blockers,
   };
 }
@@ -383,6 +394,8 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
   const writes: UpgradePlan['writes'] = [];
   const creates: UpgradeChange[] = [];
   const keptExisting: string[] = [];
+  /** Новый managed-путь, который уже лежит побайтово таким, как его записал бы Maestro: принимается как есть. */
+  const adopted: string[] = [];
 
   for (const path of newPaths.sort()) {
     const ownership = current[path] as CanonicalOwnership;
@@ -394,6 +407,18 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       // Файл проекта, который проект завёл сам раньше Maestro, остаётся как есть.
       if (ownership === 'project-owned' && await isRegularFile(join(root, path))) {
         keptExisting.push(path);
+        continue;
+      }
+      if (path === INBOX_GITATTRIBUTES_PATH && await isRegularFile(join(root, path))) {
+        if ((await readFile(join(root, path))).equals(Buffer.from(CODE_MANAGED_SOURCES[path] as string, 'utf8'))) {
+          adopted.push(path);
+          continue;
+        }
+        blockers.push(blocker(
+          'upgrade-inbox-gitattributes-foreign',
+          'В maestro/inbox/ уже лежит свой .gitattributes. Upgrade кладёт сюда файл Maestro с правилом `* -text` (git хранит материалы байт в байт) и чужой не перезаписывает: уберите или переименуйте свой файл — нужные правила перенесите в корневой .gitattributes, — затем повторите.',
+          path,
+        ));
         continue;
       }
       blockers.push(blocker('upgrade-path-collision', 'Добавляемый путь уже занят: upgrade не перезаписывает существующее содержимое.', path));
@@ -419,6 +444,17 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     }
     creates.push({ path, ownership });
     writes.push({ path, content, action: 'create' });
+  }
+
+  // README проекта — не в каноне: только переход на 0.4.2 кладёт его, и только если в корне нет
+  // никакого README. Позже удалённый человеком README upgrade не возвращает.
+  if ((compareVersions(fromVersion, README_SINCE) ?? 0) < 0 && !await hasAnyReadme(root)) {
+    const source = await readTemplate(README_PATH);
+    const templateVars = renderVars(source);
+    if (templateVars !== null) {
+      creates.push({ path: README_PATH, ownership: 'project-owned' });
+      writes.push({ path: README_PATH, content: renderTemplate(source, templateVars), action: 'create' });
+    }
   }
 
   // 3. Обновления managed-файлов с доказанным preimage.
@@ -483,11 +519,17 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       nextChecksums[write.path] = contentChecksum(write.path, write.content);
     }
   }
+  for (const path of adopted) nextChecksums[path] = contentChecksum(path, await currentSource(path));
 
   const result = analysis(root, 'upgradable', fromVersion, [], release.id);
   result.creates = creates;
   result.updates = updates;
-  result.unchanged = unchanged.sort();
+  result.unchanged = [...unchanged, ...adopted].sort();
+  if (creates.some((item) => item.path === INBOX_GITATTRIBUTES_PATH) && await hasMaterials(root)) {
+    // Опыт (git 2.54): файл, который git уже видел, после нового правила изменённым не показывается —
+    // git не перечитывает его, пока файл не тронут. Переписать его в git байт в байт можно только явно.
+    result.notes.push('Материалы, которые уже лежат в maestro/inbox/, git сам не перепишет. Чтобы он хранил их байт в байт, после обновления выполните `git add --renormalize maestro/inbox` и закоммитьте вместе с обновлением. Если файл уже был нормализован (например, взят из свежего клона на другом компьютере), исходные байты есть только в его источнике.');
+  }
   result.metadata = [MANIFEST_PATH, CHECKSUMS_PATH];
   result.preserves = [
     ...Object.entries(baseline).filter(([path, ownership]) => ownership === 'project-owned' && path in current).map(([path]) => path),
@@ -504,6 +546,15 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       { path: CHECKSUMS_PATH, content: serializeJson({ files: sortKeys(nextChecksums) }), action: 'update' },
     ],
   };
+}
+
+/** Есть ли в maestro/inbox/ что-то, кроме файлов самого Maestro. */
+async function hasMaterials(root: string): Promise<boolean> {
+  try {
+    return (await readdir(join(root, INBOX_DIR))).some((name) => !['README.md', '.gitkeep', '.gitattributes'].includes(name));
+  } catch {
+    return false;
+  }
 }
 
 /** Ключи сортируются так же, как в init: повторный запуск даёт побайтово тот же файл. */

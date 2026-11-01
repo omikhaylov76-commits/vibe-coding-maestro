@@ -53,6 +53,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
     const keptAsIs = analysis.handedOver.filter((path) => !result.updatedFiles.includes(path));
     if (keptAsIs.length > 0) io.out(`Вы меняли эти файлы, поэтому они переданы как есть: ${keptAsIs.join(', ')}. Если в них осталась команда Maestro старой версии, обновите её — актуальная лежит в .claude/rules/maestro.md (doctor напомнит).`);
     list('Сохранено без изменений', analysis.preserves);
+    for (const note of analysis.notes) io.out(`Важно: ${note}`);
     // До коммита doctor честно покажет git-managed-dirty: сначала diff и коммит, потом проверка.
     io.out('Добавьте в Git все изменения, включая новые файлы (git add -A), просмотрите их (git diff --cached) и закоммитьте: до коммита doctor покажет git-managed-dirty и git-managed-untracked.');
     // Та же версия, что применила обновление: doctor проверяет ровно её канон.
@@ -67,6 +68,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
   list('Уже совпадает', analysis.unchanged);
   list('Останется без изменений', analysis.preserves);
   list('Служебные файлы', analysis.metadata);
+  for (const note of analysis.notes) io.out(`Важно: ${note}`);
   // Применять обязана та же версия, что показала это предложение, а не новая @latest.
   io.out(`Применить: ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(options.path)} --apply`);
   return EXIT_OK;

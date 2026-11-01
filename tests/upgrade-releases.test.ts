@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { doctorProject } from '../src/core/doctor.js';
@@ -19,6 +21,8 @@ import { canonicalManagedSource, makeLegacy02Project } from './legacy-0.2.js';
 
 afterEach(cleanupTempDirs);
 
+const execFileAsync = promisify(execFile);
+
 const DEPTHS: readonly ProjectDepth[] = ['light', 'standard', 'advanced'];
 
 /** Файлы, в которых после upgrade стоит закреплённая версия вместо `@latest`. */
@@ -27,8 +31,8 @@ const PINNED_PATHS = ['.claude/commands/build.md', '.claude/rules/maestro.md', '
 /** Новые пути канона 0.4.0 относительно 0.3.0 и 0.3.1. */
 const NEW_IN_040 = ['protocols/completion.md', 'wiki/passport.md'];
 
-/** Новые пути канона 0.4.2: старт проекта и страница восстановления. */
-const NEW_IN_042 = ['.claude/commands/start.md', 'maestro/inbox/.gitattributes', 'protocols/start.md', 'wiki/restore.md'];
+/** Новые пути 0.4.2: старт проекта, правило для материалов, страница восстановления и README (его нет ни в одной фикстуре). */
+const NEW_IN_042 = ['.claude/commands/start.md', 'README.md', 'maestro/inbox/.gitattributes', 'protocols/start.md', 'wiki/restore.md'];
 
 /** Файлы Maestro, которые 0.4.2 переписывает на нетронутом проекте любой прошлой версии 0.3 и новее. */
 const UPDATED_IN_042 = ['.claude/commands/plan.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/discovery.md', 'protocols/plan.md'];
@@ -39,7 +43,7 @@ const union = (...lists: readonly string[][]): string[] => [...new Set(lists.fla
 const NEW_SINCE_BETA = ['.claude/agents/explorer.md', '.claude/rules/maestro.md', '.claude/rules/project.md', '.claude/settings.json', 'maestro/templates/adr.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', ...NEW_IN_040, ...NEW_IN_042].sort();
 
 /** Новые пути, которыми владеет проект: контрольной суммы Maestro у них нет. */
-const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md'];
+const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'README.md', 'wiki/passport.md', 'wiki/restore.md'];
 
 /** Строки, которые 0.4.0 дописывает в `.gitignore` проекта. */
 const GITIGNORE_APPENDS = ['.claude/worktrees/', '.claude/settings.local.json'];
@@ -71,8 +75,11 @@ const FIXTURES = ['0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-s
 /** Проекты опубликованных 0.3.0 и 0.3.1: после них состав файлов поменялся в 0.4.0. */
 const FIXTURES_03X = ['0.3.0-standard', '0.3.1-light', '0.3.1-standard', '0.3.1-advanced'];
 
-/** Проекты опубликованного 0.4.0: тот же состав файлов, что у текущей версии. */
+/** Проекты опубликованного 0.4.0. */
 const FIXTURES_040 = ['0.4.0-light', '0.4.0-standard', '0.4.0-advanced'];
+
+/** Проекты опубликованного 0.4.1: после них 0.4.2 добавил старт проекта. */
+const FIXTURES_041 = ['0.4.1-light', '0.4.1-standard', '0.4.1-advanced'];
 
 /** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
 const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
@@ -174,12 +181,12 @@ describe('реестр опубликованных канонов', () => {
     }
   });
 
-  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
     const data = await fixture(id);
     const release = findRelease(data.version);
     expect(release).toBeDefined();
     if (release === undefined) return;
-    const manifest = JSON.parse(data.files[MANIFEST_PATH] as string) as { inventory: { path: string; ownership: string }[] };
+    const manifest = JSON.parse(data.files[MANIFEST_PATH] as string) as { inventory: { path: string; ownership: string }[]; project: { createdAt: string } };
     expect(Object.fromEntries(manifest.inventory.map((entry) => [entry.path, entry.ownership]))).toEqual(release.inventory(data.depth));
 
     const copies = new Map(release.templates.map((template) => [template.path, template.source]));
@@ -190,7 +197,7 @@ describe('реестр опубликованных канонов', () => {
         : (await readFile(join(packageRoot(), copy), 'utf8')).replace(/\r\n/g, '\n');
       const rendered = path === '.gitattributes'
         ? source
-        : renderTemplate(source, { projectName: 'Проект фикстуры', date: '2026-10-31', startingPoint: 'idea', version: data.version });
+        : renderTemplate(source, { projectName: 'Проект фикстуры', date: manifest.project.createdAt.slice(0, 10), startingPoint: 'idea', version: data.version });
       expect(data.files[path], `${id}: ${path}`).toBe(rendered);
     }
   });
@@ -583,5 +590,132 @@ describe('находки независимого ревью beta.4', () => {
     expect(report.findings.map((item) => item.code)).not.toContain('manifest-canonical-mismatch');
     const { analysis } = await analyzeUpgrade(shouted);
     expect(analysis.blockers.map((item) => item.code)).not.toContain('upgrade-manifest-not-native');
+  });
+});
+
+describe('upgrade с опубликованного 0.4.1 на текущую версию', () => {
+  /** Всё, что upgrade с 0.4.1 переписывает на нетронутом проекте: закреплённая версия и тексты старта. */
+  const UPDATED_FROM_041 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_042);
+
+  it.each(FIXTURES_041)('%s: dry-run ни байта не пишет и называет старт, правило для материалов, restore и README', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.fromVersion).toBe('0.4.1');
+    expect(analysis.creates.map((item) => item.path).sort()).toEqual(NEW_IN_042);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_041);
+    for (const path of ['wiki/hot.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md']) {
+      expect(analysis.preserves, path).toContain(path);
+    }
+    expect(analysis.notes).toEqual([]);
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it.each(FIXTURES_041)('%s: --apply даёт канон текущей версии, файлы проекта не тронуты, doctor --strict зелёный', async (id) => {
+    const { root, data } = await materialize(id);
+    const owned = ['wiki/hot.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md'];
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.error).toBeUndefined();
+    expect(result.applied).toBe(true);
+    for (const path of owned) expect(await readUtf8(root, path), path).toBe(data.files[path]);
+    expect(await readUtf8(root, 'maestro/inbox/.gitattributes')).toBe('* -text\n');
+    expect(await readUtf8(root, 'protocols/start.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro sources`);
+    expect(await readUtf8(root, 'wiki/restore.md')).toContain('# Как восстановить проект на новом компьютере');
+    expect(await readUtf8(root, 'README.md')).toContain('Этот файл видят первым');
+    // Канон текущей версии: тот же manifest и те же суммы, что у нового проекта этой глубины.
+    const fresh = join(await makeTempDir('fresh-041-'), data.folder);
+    expect((await initProject({ target: fresh, name: 'Проект фикстуры', startingPoint: 'idea', depth: data.depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect((await loadManifest(root)).inventory).toEqual((await loadManifest(fresh)).inventory);
+    // Суммы — тот же набор путей; содержимое с датой создания проекта у фикстуры своё.
+    expect(Object.keys((await loadChecksums(root))?.files ?? {}).sort()).toEqual(Object.keys((await loadChecksums(fresh))?.files ?? {}).sort());
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await analyzeUpgrade(root)).analysis.status).toBe('current');
+  });
+
+  it.each(['README.md', 'readme.md', 'README.rst', 'Readme'])('свой %s: второй README не появляется, свой — байт в байт', async (name) => {
+    const { root } = await materialize('0.4.1-standard');
+    const own = Buffer.from('# Мой проект\r\nСвой текст без перевода строки в конце', 'utf8');
+    await writeFile(join(root, name), own);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.creates.map((item) => item.path)).not.toContain('README.md');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    const { readdir } = await import('node:fs/promises');
+    expect((await readdir(root)).filter((entry) => /^readme/i.test(entry))).toEqual([name]);
+    expect((await readFile(join(root, name))).equals(own)).toBe(true);
+  });
+
+  it('свой wiki/restore.md остаётся байт в байт', async () => {
+    const { root } = await materialize('0.4.1-standard');
+    const own = Buffer.from('# Восстановление\r\nУ нас свой порядок.\r\n', 'utf8');
+    await writeFile(join(root, 'wiki/restore.md'), own);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.creates.map((item) => item.path)).not.toContain('wiki/restore.md');
+    expect(analysis.preserves).toContain('wiki/restore.md');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await readFile(join(root, 'wiki/restore.md'))).equals(own)).toBe(true);
+  });
+
+  it('материалы в maestro/inbox/ не мешают обновлению, остаются на месте, а предложение предупреждает о переносах строк', async () => {
+    const { root } = await materialize('0.4.1-standard');
+    const brief = Buffer.from('Бриф\r\nзаказчика\r\n', 'utf8');
+    await writeFile(join(root, 'maestro/inbox/бриф.txt'), brief);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.notes.join('\n')).toContain('git add --renormalize maestro/inbox');
+    const cli = collect();
+    expect(await runMaestroCli(['upgrade', '--path', root], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('Важно: Материалы, которые уже лежат в maestro/inbox/, git сам не перепишет');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await readFile(join(root, 'maestro/inbox/бриф.txt'))).equals(brief)).toBe(true);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+  });
+
+  it('уже лежащий maestro/inbox/.gitattributes, побайтово как у Maestro, принимается; чужой — понятная остановка', async () => {
+    const { root } = await materialize('0.4.1-standard');
+    await writeFile(join(root, 'maestro/inbox/.gitattributes'), '* -text\n', 'utf8');
+    const same = await analyzeUpgrade(root);
+    expect(same.analysis.blockers).toEqual([]);
+    expect(same.analysis.creates.map((item) => item.path)).not.toContain('maestro/inbox/.gitattributes');
+    expect(same.analysis.unchanged).toContain('maestro/inbox/.gitattributes');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await loadChecksums(root))?.files['maestro/inbox/.gitattributes']).toMatch(/^[0-9a-f]{64}$/);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+
+    const { root: other } = await materialize('0.4.1-standard');
+    await writeFile(join(other, 'maestro/inbox/.gitattributes'), '*.pdf binary\n', 'utf8');
+    const before = await snapshotTree(other);
+    const foreign = await upgradeProject(other, { apply: true });
+    expect(foreign.ok).toBe(false);
+    expect(foreign.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-inbox-gitattributes-foreign', path: 'maestro/inbox/.gitattributes' })]);
+    expect(foreign.analysis.blockers[0]?.message).toContain('уберите или переименуйте');
+    expect(await snapshotTree(other)).toEqual(before);
+  });
+
+  it('удалённый после 0.4.2 README следующий upgrade не возвращает', async () => {
+    const target = join(await makeTempDir('readme-gone-'), 'проект');
+    expect((await initProject({ target, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    await rm(join(target, 'README.md'));
+    expect((await analyzeUpgrade(target)).analysis.status).toBe('current');
+    expect((await doctorProject(target, { strict: true })).findings).toEqual([]);
+  });
+
+  it('настоящий git: после upgrade и git add --renormalize свежий клон отдаёт исходные байты материала', async () => {
+    const { root } = await materialize('0.4.1-standard');
+    const run = async (cwd: string, ...args: string[]): Promise<string> => (await execFileAsync('git', ['-c', 'core.autocrlf=false', '-c', 'user.name=T', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8' })).stdout;
+    await run(root, 'init', '-q', '-b', 'main');
+    const brief = Buffer.from('строка один\r\nстрока два\r\n', 'utf8');
+    await writeFile(join(root, 'maestro/inbox/бриф.txt'), brief);
+    await run(root, 'add', '-A');
+    await run(root, 'commit', '-q', '-m', '0.4.1 с материалом');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    // Совет из предложения upgrade: git переписывает уже известный файл по новому правилу только явно.
+    await run(root, 'add', '--renormalize', 'maestro/inbox');
+    expect(await run(root, 'diff', '--cached', '--name-only', '-z', '--', 'maestro/inbox/')).toContain('.txt');
+    await run(root, 'add', '-A');
+    await run(root, 'commit', '-q', '-m', 'Maestro 0.4.2');
+    const clone = join(await makeTempDir('clone-'), 'клон');
+    await run(root, 'clone', '-q', root, clone);
+    expect((await readFile(join(clone, 'maestro/inbox/бриф.txt'))).equals(brief)).toBe(true);
   });
 });

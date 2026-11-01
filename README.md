@@ -327,7 +327,7 @@ Not available yet:
 - automatic installation or execution of third-party skills;
 - a guarantee that an AI agent will not make mistakes.
 
-What comes next — a `handoff` command, tracked closed slices, a code map, archiving of old plan deltas and audits — is listed in the [roadmap](docs/ROADMAP.md).
+What comes next — the `/start` command for the first session, checks with a cutoff, and project memory that does not grow — is listed in the [roadmap](docs/ROADMAP.md).
 
 ## Documentation
 

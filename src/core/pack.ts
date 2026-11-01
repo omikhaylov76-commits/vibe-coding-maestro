@@ -345,8 +345,10 @@ function contentHighlights(text: string, home: string, root: string): { reason: 
       if (!found.has(rule.reason) && rule.test(line)) found.set(rule.reason, index + 1);
     }
   });
-  // Путь проекта лежит внутри домашней папки: одну и ту же строку называем точнее.
-  if (found.get('путь домашней папки') === found.get('путь папки проекта')) found.delete('путь домашней папки');
+  // Путь проекта лежит внутри домашней или временной папки: одну и ту же строку называем точнее.
+  for (const wider of ['путь домашней папки', 'временная папка']) {
+    if (found.has(wider) && found.get(wider) === found.get('путь папки проекта')) found.delete(wider);
+  }
   return rules.flatMap((rule) => (found.has(rule.reason) ? [{ reason: rule.reason, line: found.get(rule.reason) as number }] : []));
 }
 

@@ -447,8 +447,8 @@ describe('0.4.3: маленькая задача, метки, новая сес�
   it('settings.json шаблона: защиты с вопросом (ask) — как в 0.4.2; в deny добавлена только защита образца отчёта', async () => {
     type Settings = { permissions: { deny: string[]; ask: string[] } };
     const now = JSON.parse(await template('.claude/settings.json')) as Settings;
-    const { execFileSync } = await import('node:child_process');
-    const before = JSON.parse(execFileSync('git', ['show', 'v0.4.2:templates/project/.claude/settings.json'], { encoding: 'utf8' })) as Settings;
+    // Опора — проект, записанный настоящим опубликованным 0.4.2 (в CI нет меток git).
+    const before = JSON.parse((await materializePublished('0.4.2-standard')).data.files['.claude/settings.json'] as string) as Settings;
     expect(now.permissions.ask).toEqual(before.permissions.ask);
     expect(now.permissions.deny.filter((rule) => !before.permissions.deny.includes(rule))).toEqual(['Edit(/maestro/templates/audit.md)']);
     expect(before.permissions.deny.filter((rule) => !now.permissions.deny.includes(rule))).toEqual([]);
@@ -552,9 +552,10 @@ describe('0.4.3: галочки не сбивают отпечаток утве�
 
   it('план, утверждённый отпечатком 0.4.2, без правок — зелёный; с [x] при утверждении и без правок — тоже', async () => {
     const { legacyPlanBodyDigest } = await import('../src/core/plan.js');
-    // Опора: отпечаток 0.4.2 — это ровно прежний способ счёта (sha256 классификации и текста как есть).
-    const { execFileSync } = await import('node:child_process');
-    expect(execFileSync('git', ['show', 'v0.4.2:src/core/plan.ts'], { encoding: 'utf8' })).toContain("return createHash('sha256').update(`${classification}\\n---\\n${body}`).digest('hex');");
+    // Опора: этот отпечаток посчитан кодом настоящего опубликованного create-vibe-maestro@0.4.2
+    // (`dist/core/plan.js`, planBodyDigest) на том же тексте; в CI меток git нет.
+    const sample = ['---', 'type: plan', 'id: PLAN-0002', 'kind: mini', 'status: approved', 'scale: quick', 'mode: extension', 'governance: standard', 'risk: low', 'profiles: []', 'sources: []', 'supersedes: null', '---', '', '# Вход', '', '## Как проверим', '', '- [x] тест входа зелёный', '- [ ] doctor зелёный', ''].join('\n');
+    expect(legacyPlanBodyDigest(sample)).toBe('36833b4c708a75ff4ab79c00474166729f88407366a7fa7fbcd40598ea44bc83');
     expect(await gate(await approved(ITEMS, legacyPlanBodyDigest))).toEqual({ preflight: 0, doctor: [] });
     const ticked = ITEMS.replace('- [ ] тест входа', '- [x] тест входа');
     expect(await gate(await approved(ticked, legacyPlanBodyDigest))).toEqual({ preflight: 0, doctor: [] });
@@ -684,6 +685,11 @@ describe('0.4.3: pack — папка, состав до упаковки, под
     expect(reasons('index.html')).toEqual([]);
     // Строка, где найдено, названа.
     expect(result.highlights).toContainEqual({ path: 'src/tmp.js', reason: 'временная папка', line: 1 });
+
+    // Проект во временной папке (так в CI на Linux): строка с путём проекта называется один раз.
+    const { packHighlights } = await import('../src/core/pack.js');
+    expect(packHighlights('src/x.js', Buffer.from('const p = "/tmp/proj/a";\n'), { home: '/home/u', root: '/tmp/proj' }).map((item) => item.reason)).toEqual(['путь папки проекта']);
+    expect(packHighlights('src/y.js', Buffer.from('const t = "/tmp/cache";\n'), { home: '/home/u', root: '/tmp/proj' }).map((item) => item.reason)).toEqual(['временная папка']);
 
     // Путь самого проекта называется точнее, чем «домашняя папка».
     const own = await delivered({ 'src/where.js': '' });

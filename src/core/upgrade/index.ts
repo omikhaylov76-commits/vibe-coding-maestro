@@ -1,11 +1,13 @@
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { diffText } from '../text-diff.js';
+import type { TextDiff } from '../text-diff.js';
 import { analyzeUpgrade, STAGING_DIR } from './analyze.js';
 import type { UpgradeAnalysis, UpgradePlan } from './analyze.js';
 
 export { analyzeUpgrade, STAGING_DIR } from './analyze.js';
-export type { UpgradeAnalysis, UpgradeBlocker, UpgradeChange, UpgradeStatus } from './analyze.js';
+export type { UpgradeAnalysis, UpgradeBlocker, UpgradeChange, UpgradePlan, UpgradeStatus } from './analyze.js';
 export { BASELINE_ID } from './baseline.js';
 
 export interface UpgradeHooks {
@@ -29,8 +31,11 @@ export interface UpgradeResult {
   analysis: UpgradeAnalysis;
   createdFiles: string[];
   updatedFiles: string[];
+  removedFiles: string[];
   rolledBack: boolean;
   error?: string;
+  /** Точное содержимое предложения — для показа правок. В отчёт `--json` не входит. */
+  plan: UpgradePlan;
 }
 
 const result = (plan: UpgradePlan, patch: Partial<UpgradeResult> = {}): UpgradeResult => ({
@@ -39,9 +44,43 @@ const result = (plan: UpgradePlan, patch: Partial<UpgradeResult> = {}): UpgradeR
   analysis: plan.analysis,
   createdFiles: [],
   updatedFiles: [],
+  removedFiles: [],
   rolledBack: false,
+  plan,
   ...patch,
 });
+
+export interface UpgradeFileDiff {
+  path: string;
+  action: 'create' | 'update' | 'remove';
+  diff: TextDiff;
+}
+
+/**
+ * Правки предложения по каждому файлу, кроме служебных manifest и checksums:
+ * что добавится, что изменится строка за строкой, что удалится. Только чтение.
+ */
+export async function upgradeDiffs(plan: UpgradePlan): Promise<UpgradeFileDiff[]> {
+  const diffs: UpgradeFileDiff[] = [];
+  for (const write of plan.writes) {
+    if (plan.analysis.metadata.includes(write.path)) continue;
+    // Дописанный .gitignore хранится байтами (latin1); показывается как UTF-8, как его видит человек.
+    const after = write.encoding === 'latin1' ? Buffer.from(write.content, 'latin1').toString('utf8') : write.content;
+    const before = write.action === 'create' ? '' : await readFile(join(plan.root, write.path), 'utf8');
+    diffs.push({ path: write.path, action: write.action, diff: diffText(before, write.action === 'remove' ? '' : after) });
+  }
+  return diffs;
+}
+
+/** Папки удалённых файлов, от глубоких к верхним: убираются, только если опустели. */
+function parentDirs(paths: readonly string[]): string[] {
+  const dirs = new Set<string>();
+  for (const path of paths) {
+    const parts = path.split('/').slice(0, -1);
+    for (let i = parts.length; i > 0; i -= 1) dirs.add(parts.slice(0, i).join('/'));
+  }
+  return [...dirs].sort((a, b) => b.split('/').length - a.split('/').length || a.localeCompare(b));
+}
 
 /** Каталоги, которых ещё нет: только их можно удалить при откате. */
 function missingDirs(root: string, relativePath: string): string[] {
@@ -69,7 +108,7 @@ async function writeStaged(absolute: string, content: string, encoding?: 'latin1
  * - без `apply` не записывается ни один байт;
  * - любое сомнение — блокировка целиком, а не частичное применение;
  * - всё содержимое готовится в staging до того, как затронут первый файл проекта;
- * - сбой публикации откатывает уже переименованные пути из backup;
+ * - сбой публикации откатывает уже переименованные и удалённые пути из backup;
  * - файлы, которыми владеет проект, и Git-история не изменяются.
  */
 export async function upgradeProject(rootInput: string, options: UpgradeOptions = {}): Promise<UpgradeResult> {
@@ -90,9 +129,9 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
   try {
     await mkdir(staging, { recursive: false });
     for (const write of writes) {
-      await writeStaged(join(newDir, write.path), write.content, write.encoding);
-      if (write.action === 'update') {
-        // Backup — точная копия байтов: откат возвращает файл таким, каким он был.
+      if (write.action !== 'remove') await writeStaged(join(newDir, write.path), write.content, write.encoding);
+      if (write.action !== 'create') {
+        // Backup — точная копия байтов: откат возвращает обновлённый или удалённый файл таким, каким он был.
         await mkdir(dirname(join(backupDir, write.path)), { recursive: true });
         await copyFile(join(root, write.path), join(backupDir, write.path));
       }
@@ -110,8 +149,12 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
     for (const write of writes) {
       if (options.hooks?.beforeCommit !== undefined) await options.hooks.beforeCommit(write.path);
       const target = join(root, write.path);
-      await mkdir(dirname(target), { recursive: true });
-      await rename(join(newDir, write.path), target);
+      if (write.action === 'remove') {
+        await rm(target);
+      } else {
+        await mkdir(dirname(target), { recursive: true });
+        await rename(join(newDir, write.path), target);
+      }
       committed.push(write);
     }
   } catch (cause) {
@@ -120,8 +163,12 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
     for (const write of [...committed].reverse()) {
       const target = join(root, write.path);
       try {
-        if (write.action === 'update') await rename(join(backupDir, write.path), target);
-        else await rm(target, { force: true });
+        if (write.action === 'create') {
+          await rm(target, { force: true });
+        } else {
+          await mkdir(dirname(target), { recursive: true });
+          await rename(join(backupDir, write.path), target);
+        }
       } catch {
         unrestored.push(write.path);
       }
@@ -144,11 +191,15 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
     });
   }
 
+  const removedFiles = writes.filter((write) => write.action === 'remove').map((write) => write.path);
+  // Папка, которую опустошило удаление (например, protocols/build/), уходит вместе с файлами.
+  for (const dir of parentDirs(removedFiles)) await rmdir(join(root, dir)).catch(() => undefined);
   await rm(staging, { recursive: true, force: true });
   return result(plan, {
     ok: true,
     applied: true,
     createdFiles: writes.filter((write) => write.action === 'create').map((write) => write.path),
     updatedFiles: writes.filter((write) => write.action === 'update').map((write) => write.path),
+    removedFiles,
   });
 }

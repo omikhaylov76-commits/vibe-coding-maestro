@@ -9,7 +9,9 @@
  * Как выпускать новую версию:
  * - шаблоны и inventory не менялись — допишите версию в `versions` последней записи;
  * - изменились — заведите новую запись для новой версии, а в прошлой положите
- *   в `templates` копии изменённых исходников (`registry/baseline/<id>/project/…`).
+ *   в `templates` копии изменённых исходников (`registry/baseline/<id>/project/…`);
+ * - файл Maestro ушёл из состава — внесите его в `REMOVED_PATHS`, а копию его
+ *   исходника положите в `templates` каждой прошлой записи.
  * Тест `tests/upgrade-releases.test.ts` не даст забыть ни то, ни другое.
  */
 
@@ -373,6 +375,15 @@ const V042_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/plan.md': '43cd0f436b5baa3e9f2642719c27b2fd42972e5677897f0bb360a4ad0c984ffc',
   'protocols/start.md': '567024859e702424348fb5e4e72c1d09895e34f2d7e25ee2ccf7139369cdb022',
 };
+
+/**
+ * Файлы Maestro, которые ушли из состава: путь → версия, в которой ушёл.
+ *
+ * Upgrade удаляет такой файл, только если он не тронут: исходник прошлой версии
+ * (копия в её `templates`) и контрольная сумма совпали. Путь, которого здесь нет,
+ * по-прежнему останавливает upgrade: незнакомое удаление не выполняется.
+ */
+export const REMOVED_PATHS: Readonly<Record<string, string>> = {};
 
 export const RELEASES: readonly Release[] = [
   {

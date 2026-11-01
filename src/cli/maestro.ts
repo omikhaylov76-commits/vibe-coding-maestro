@@ -33,6 +33,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 
 Опции upgrade:
   --apply             выполнить обновление; без флага это только dry-run
+  --diff              показать сами правки построчно (только просмотр, ни байта не пишет)
 
 Опции pack:
   --tag <тег>         тег сдачи (обязательно)
@@ -58,6 +59,7 @@ export interface CommandOptions {
   json: boolean;
   strict?: boolean;
   apply?: boolean;
+  diff?: boolean;
   scale?: PlanScale;
   quickCriteria?: string[];
   sources?: string[];
@@ -108,6 +110,12 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         const message = only(arg, 'upgrade');
         if (message !== null) return { kind: 'error', message };
         options.apply = true;
+        break;
+      }
+      case '--diff': {
+        const message = only(arg, 'upgrade');
+        if (message !== null) return { kind: 'error', message };
+        options.diff = true;
         break;
       }
       case '--scale': {
@@ -209,6 +217,11 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         if (arg.startsWith('-')) return { kind: 'error', message: `Неизвестный аргумент: ${arg}` };
         return { kind: 'error', message: `Лишний аргумент: ${arg}` };
     }
+  }
+  if (first === 'upgrade' && options.diff === true) {
+    if (options.apply === true) return { kind: 'error', message: 'Флаг --diff только показывает правки и не сочетается с --apply: сначала посмотрите, затем примените отдельной командой.' };
+    // Отчёт --json по договору не содержит текста файлов.
+    if (options.json) return { kind: 'error', message: 'Флаг --diff показывает правки текстом и не сочетается с --json: отчёт --json содержимого файлов не содержит.' };
   }
   if (first === 'pack' && options.tag === undefined) {
     return { kind: 'error', message: 'Команда pack требует --tag <тег сдачи>.' };

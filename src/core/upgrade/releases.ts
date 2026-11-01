@@ -402,6 +402,7 @@ const CHANGED_IN_043: readonly string[] = [
   'protocols/handoff.md',
   'protocols/plan.md',
   'protocols/wiki.md',
+  'wiki/plans/README.md',
   'wiki/plans/TEMPLATE.md',
 ];
 
@@ -441,7 +442,8 @@ const V043_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/handoff.md': '279b6bddfa6ecd226522815ddc92c39d376013057348a69ee54a2e82b6a2f493',
   'protocols/plan.md': '7acbfbf24bcf5e63419448038a6a27d60e24912827dfbbde93bd5f0199b48597',
   'protocols/wiki.md': '980eb9c5e1013fc3d7c45fd5a30a1c5075f5e575d35b1b17d4bbdd7c50013194',
-  'wiki/plans/TEMPLATE.md': 'db9eeaef71d2c41e1d9094ca99d240d2ff37cd5ac1cd2175bf496347544c97fc',
+  'wiki/plans/README.md': '7eb755a0d523d3136acb2c1657fa79a264cee4daad35456d7666a86dfb78566d',
+  'wiki/plans/TEMPLATE.md': '0bf6d7a70945871cb074d3f6df110a4f1b4cc455ebcceee4a5fcfc93e433b19f',
 };
 
 /**

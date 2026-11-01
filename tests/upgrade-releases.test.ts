@@ -51,8 +51,8 @@ const UPDATED_IN_043 = union([
   '.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md',
 ], UPDATED_IN_042);
 
-/** То же для проектов 0.3.0 и новее: у них уже есть правила Maestro, образец передачи и шаблон плана. */
-const UPDATED_IN_043_SINCE_030 = union(UPDATED_IN_043, ['.claude/rules/maestro.md', 'maestro/templates/handoff.md', 'wiki/plans/TEMPLATE.md']);
+/** То же для проектов 0.3.0 и новее: у них уже есть правила Maestro, образец передачи и README и шаблон планов. */
+const UPDATED_IN_043_SINCE_030 = union(UPDATED_IN_043, ['.claude/rules/maestro.md', 'maestro/templates/handoff.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md']);
 
 /** Новые пути 0.4.3: образец отчёта проверки (Maestro) и Icebox (проект). */
 const NEW_IN_043 = ['maestro/templates/audit.md', 'wiki/icebox.md'];

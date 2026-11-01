@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ACTIVE_PLAN_NONE, APPROVAL_REQUIRED_STATUSES, isExternalSourceRef, isWikiRelativePlanRef, planBodyDigest, validatePlanFrontmatter } from '../plan.js';
+import { ACTIVE_PLAN_NONE, APPROVAL_REQUIRED_STATUSES, isExternalSourceRef, isWikiRelativePlanRef, planDigestMatches, validatePlanFrontmatter } from '../plan.js';
 import type { PlanDocument } from '../plan.js';
 import { frontmatter } from './text.js';
 import { error } from './types.js';
@@ -42,7 +42,7 @@ export function checkPlans(root: string, decoded: ReadonlyMap<string, string>, f
     for (const item of issues) findings.push(error(item.code, item.message, path));
     if (plan === null) continue;
     plans.set(path, plan);
-    if (APPROVAL_REQUIRED_STATUSES.includes(plan.status) && plan.approvedDigest !== null && plan.approvedDigest !== planBodyDigest(text)) {
+    if (APPROVAL_REQUIRED_STATUSES.includes(plan.status) && plan.approvedDigest !== null && !planDigestMatches(plan.approvedDigest, text)) {
       findings.push(error('plan-changed-after-approval', 'Текст утверждённого плана изменился после утверждения (approved_digest не совпадает). Покажите изменения человеку; после повторного «план утверждаю» запишите новый отпечаток из вывода preflight.', path));
     }
   }

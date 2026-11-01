@@ -483,3 +483,78 @@ describe('0.4.3: маленькая задача, метки, новая сес�
     expect(analysis.preserves).toContain('wiki/icebox.md');
   });
 });
+
+describe('0.4.3: галочки не сбивают отпечаток утверждения', () => {
+  const PLAN = 'wiki/plans/0002-quick.md';
+  const ITEMS = '## Как проверим\n\n- [ ] тест входа зелёный\n- [ ] doctor зелёный\n';
+
+  /** Утверждённый объявленный мини-план; `digestOf` — каким способом посчитан отпечаток. */
+  async function approved(body: string, digestOf: (text: string) => string): Promise<string> {
+    const { initProject } = await import('../src/core/init.js');
+    const { FIXED_NOW, makeTempDir, readUtf8 } = await import('./helpers.js');
+    const { writeFile } = await import('node:fs/promises');
+    const root = join(await makeTempDir('release-043-plan-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    let text = [
+      '---', 'type: plan', 'title: Вход', 'id: PLAN-0002', 'kind: mini', 'status: approved', 'scale: quick', 'mode: extension',
+      'governance: standard', 'risk: low', 'profiles: []', 'created: 2026-11-01', 'updated: 2026-11-01', 'sources: []',
+      'supersedes: null', 'approved_by: Человек', 'approved_at: 2026-11-01', 'active_phase: null', 'blocking_questions: 0',
+      'spec_delta: none', 'current_slice: 01-vhod', '---', '', '# Вход', '', body,
+    ].join('\n');
+    text = text.replace(/^(approved_at: .*)$/m, `$1\napproved_digest: ${digestOf(text)}`);
+    await writeFile(join(root, PLAN), text, 'utf8');
+    await writeFile(join(root, 'wiki/hot.md'), (await readUtf8(root, 'wiki/hot.md')).replace(/^active_plan: .*$/m, 'active_plan: plans/0002-quick.md'), 'utf8');
+    return root;
+  }
+
+  async function gate(root: string): Promise<{ preflight: number; doctor: string[] }> {
+    const cli = collectIo();
+    return {
+      preflight: await runMaestroCli(['preflight', '--path', root], cli.io),
+      doctor: (await doctorProject(root)).findings.map((item) => item.code),
+    };
+  }
+
+  async function edit(root: string, from: string, to: string): Promise<void> {
+    const { writeFile } = await import('node:fs/promises');
+    const text = await readFile(join(root, PLAN), 'utf8');
+    expect(text).toContain(from);
+    await writeFile(join(root, PLAN), text.replace(from, to), 'utf8');
+  }
+
+  it('отметка [x] после утверждения: preflight разрешает, doctor зелёный; правка текста пункта закрывает гейт', async () => {
+    const { planBodyDigest } = await import('../src/core/plan.js');
+    const root = await approved(ITEMS, planBodyDigest);
+    expect(await gate(root)).toEqual({ preflight: 0, doctor: [] });
+    await edit(root, '- [ ] тест входа зелёный', '- [x] тест входа зелёный');
+    await edit(root, '- [ ] doctor зелёный', '- [X] doctor зелёный');
+    expect(await gate(root)).toEqual({ preflight: 0, doctor: [] });
+    await edit(root, '- [x] тест входа зелёный', '- [x] тест входа и выхода зелёный');
+    const changed = await gate(root);
+    expect(changed.preflight).not.toBe(0);
+    expect(changed.doctor).toContain('plan-changed-after-approval');
+  });
+
+  it('[x] вне пункта списка — текст плана: его правка по-прежнему закрывает гейт', async () => {
+    const { planBodyDigest } = await import('../src/core/plan.js');
+    const root = await approved(`${ITEMS}\nОбозначение [ ] в тексте.\n`, planBodyDigest);
+    await edit(root, 'Обозначение [ ] в тексте.', 'Обозначение [x] в тексте.');
+    expect((await gate(root)).doctor).toContain('plan-changed-after-approval');
+  });
+
+  it('план, утверждённый отпечатком 0.4.2, без правок — зелёный; с [x] при утверждении и без правок — тоже', async () => {
+    const { legacyPlanBodyDigest } = await import('../src/core/plan.js');
+    // Опора: отпечаток 0.4.2 — это ровно прежний способ счёта (sha256 классификации и текста как есть).
+    const { execFileSync } = await import('node:child_process');
+    expect(execFileSync('git', ['show', 'v0.4.2:src/core/plan.ts'], { encoding: 'utf8' })).toContain("return createHash('sha256').update(`${classification}\\n---\\n${body}`).digest('hex');");
+    expect(await gate(await approved(ITEMS, legacyPlanBodyDigest))).toEqual({ preflight: 0, doctor: [] });
+    const ticked = ITEMS.replace('- [ ] тест входа', '- [x] тест входа');
+    expect(await gate(await approved(ticked, legacyPlanBodyDigest))).toEqual({ preflight: 0, doctor: [] });
+  });
+
+  it('шаблон плана: критерии «готово» — списком с [ ]; README планов говорит, что отметки не входят в отпечаток', async () => {
+    const template = await packageText('templates/project/wiki/plans/TEMPLATE.md');
+    expect(template.slice(template.indexOf('## Как проверим'), template.indexOf('## Где правим'))).toMatch(/\n- \[ \] /);
+    expect(await packageText('templates/project/wiki/plans/README.md')).toContain('Отметки `[x]` в пунктах списка тоже не входят');
+  });
+});

@@ -30,7 +30,7 @@ export function windowForModel(model: string): number | null {
   // `[1m]` — так Claude Code называет модель с явно включённым окном 1 000 000.
   if (/\[1m\]$/i.test(model.trim())) return LARGE_WINDOW;
   const name = model.trim().toLowerCase()
-    .replace(/^(?:[a-z]{2,4}\.)?anthropic\./, '')
+    .replace(/^(?:[a-z]+\.)?anthropic\./, '')
     .replace(/@\d{8}$/, '')
     .replace(/-\d{8}(?:-v\d+:\d+)?$/, '');
   if (/^claude-3(?:-\d)?-(?:opus|sonnet|haiku)$/.test(name)) return DEFAULT_BUDGET;
@@ -178,6 +178,8 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
   const seen = new Set<string>();
   let last: Usage | null = null;
   let lastModel: string | undefined;
+  /** Самый большой контекст у каждой модели: после смены модели окно судится по ней одной. */
+  const largestByModel = new Map<string, number>();
   let totalInput = 0;
   let largest = 0;
   let recordedSession: string | undefined;
@@ -200,6 +202,7 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     last = usage;
     lastModel = typeof entry.message?.model === 'string' ? entry.message.model : undefined;
     largest = Math.max(largest, size);
+    largestByModel.set(lastModel ?? '', Math.max(largestByModel.get(lastModel ?? '') ?? 0, size));
     if (seen.has(id)) continue;
     seen.add(id);
     totalInput += count(usage.input_tokens) + count(usage.cache_read_input_tokens) + count(usage.cache_creation_input_tokens);
@@ -215,7 +218,8 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     windowSource = byModel === null ? 'unknown-model' : 'model';
     budget = byModel ?? DEFAULT_BUDGET;
     // Сессия больше 200 000 у модели «на 200 000» значит, что у неё включено окно 1 000 000.
-    if (largest > budget) budget = LARGE_WINDOW;
+    // Смотрится только эта модель: прежняя модель с большим окном не раздувает окно новой.
+    if ((byModel === null ? largest : largestByModel.get(lastModel ?? '') ?? 0) > budget) budget = LARGE_WINDOW;
   }
   const share = contextTokens / budget;
   return {

@@ -307,6 +307,12 @@ export function findSecrets(path: string, data: Buffer): PackFinding[] {
   return found;
 }
 
+/** Корневые файлы Maestro в архиве: подсвечиваются с пометкой «оставьте», содержимое не разбирается. */
+const MAESTRO_ROOT_FILES: Readonly<Record<string, string>> = {
+  '.gitattributes': 'служебный файл Maestro — оставьте: его проверяет doctor, заказчику он не мешает',
+  '.gitignore': 'служебный файл — оставьте: он не пускает в git секреты и лишнее',
+};
+
 /** Служебные файлы разработки: заказчику обычно не нужны. */
 const SERVICE_FILE = /(^|\/)(?:\.gitignore|\.gitattributes|\.DS_Store)$|(^|\/)(?:\.vscode|\.idea|\.github)\/|\.log$/;
 
@@ -323,8 +329,10 @@ function contentHighlights(text: string, home: string, root: string): { reason: 
     },
     { reason: 'временная папка', test: (line) => /(?:^|[^\w.-])(?:\/tmp\/|\/private\/var\/)/.test(line) },
     { reason: 'имя Maestro', test: (line) => /Vibe Coding Maestro|vibe-maestro/i.test(line) },
-    { reason: 'внутренняя папка', test: (line) => /(?<![\w.-])(?:wiki|maestro|protocols)\/|(?<![\w-])\.claude\//.test(line) },
-    { reason: 'номер плана', test: (line) => /\bPLAN-\d{4}\b|(?<!\p{L})план\s+\d{4}(?!\d)/iu.test(line) },
+    // После `/` — часть адреса (`…/wiki/…` в ссылке), а не внутренняя папка проекта.
+    { reason: 'внутренняя папка', test: (line) => /(?<![\w./-])(?:wiki|maestro|protocols)\/|(?<![\w/-])\.claude\//.test(line) },
+    // «план 0002», «по плану 0002»; год («план 2026 года») — не номер плана.
+    { reason: 'номер плана', test: (line) => /\bPLAN-\d{4}\b|(?<!\p{L})план(?:а|е|у|ы|ом)?\s+(?!(?:19|20)\d\d(?!\d))\d{4}(?!\d)/iu.test(line) },
   ];
   const found = new Map<string, number>();
   text.split('\n').forEach((line, index) => {
@@ -342,6 +350,9 @@ function contentHighlights(text: string, home: string, root: string): { reason: 
  * внутренние папки, номера планов. Это повод посмотреть, а не отказ: упаковка не запрещается.
  */
 export function packHighlights(path: string, data: Buffer, context: { home: string; root: string }): PackHighlight[] {
+  // Корневые файлы, которые кладёт Maestro: о них стоит знать, но убирать их не нужно — они безвредны.
+  const kept = MAESTRO_ROOT_FILES[path];
+  if (kept !== undefined) return [{ path, reason: kept }];
   const highlights: PackHighlight[] = [];
   if (SERVICE_FILE.test(path)) highlights.push({ path, reason: 'служебный файл' });
   if (data.length > MAX_SCAN_BYTES) return highlights;

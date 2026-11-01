@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { quotePathArg, serviceInvocation, VERSION } from '../core/meta.js';
 import { formatHunk } from '../core/text-diff.js';
 import type { TextDiff } from '../core/text-diff.js';
@@ -65,7 +67,8 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
     io.out(`Обновление применено: ${analysis.fromVersion ?? analysis.baselineId} → ${analysis.toVersion}.`);
     list('Добавлено', result.createdFiles);
     list('Обновлено', result.updatedFiles);
-    list('Удалено (файлы Maestro, которых больше нет в составе; прежний текст — в истории Git)', result.removedFiles);
+    // Без Git удалённый текст остаётся только в пакете Maestro прошлой версии.
+    list(`Удалено (файлы Maestro, которых больше нет в составе; прежний текст — ${existsSync(join(analysis.root, '.git')) ? 'в истории Git' : 'в пакете Maestro прошлой версии'})`, result.removedFiles);
     list('Передано проекту (дальше файл ваш, Maestro его не проверяет и не перезаписывает)', analysis.handedOver);
     const keptAsIs = analysis.handedOver.filter((path) => !result.updatedFiles.includes(path));
     if (keptAsIs.length > 0) io.out(`Вы меняли эти файлы, поэтому они переданы как есть: ${keptAsIs.join(', ')}. Если в них осталась команда Maestro старой версии, обновите её — актуальная лежит в .claude/rules/maestro.md (doctor напомнит).`);
@@ -108,7 +111,7 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
   list('Останется без изменений', analysis.preserves);
   list('Служебные файлы', analysis.metadata);
   for (const note of analysis.notes) io.out(`Важно: ${note}`);
-  io.out(`Сами правки построчно: ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(options.path)} --diff (полный показ — сотни строк).`);
+  io.out(`Сами правки построчно: ${serviceInvocation(VERSION)} upgrade --path ${quotePathArg(options.path)} --diff (полный показ — сотни строк). Их читает агент и пересказывает человеку простыми словами, что изменится для него.`);
   // Применять обязана та же версия, что показала это предложение, а не новая @latest.
   io.out(apply);
   return EXIT_OK;

@@ -130,7 +130,8 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
     const result = await upgradeProject(root, { apply: true });
     expect(result.ok).toBe(false);
     expect(result.analysis.blockers).toEqual([expect.objectContaining({ code: 'upgrade-removed-modified', path: RETIRED[0] })]);
-    expect(result.analysis.blockers[0]?.message).toContain('Верните файл к исходному виду или перенесите свои правки в собственный файл проекта');
+    expect(result.analysis.blockers[0]?.message).toContain('Перенесите свои правки в собственный файл проекта и удалите этот');
+    expect(result.analysis.blockers[0]?.message).toContain(`git log -p -- ${RETIRED[0]}`);
     expect(result.analysis.blockers[0]?.message).toContain('9.9.9');
     expect(await snapshotTree(root)).toEqual(before);
   });

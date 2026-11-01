@@ -640,7 +640,8 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
     for (const path of ['wiki/hot.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md']) {
       expect(analysis.preserves, path).toContain(path);
     }
-    expect(analysis.notes).toEqual([]);
+    // Каталог памяти проекта upgrade не правит, но о новой странице icebox.md напоминает.
+    expect(analysis.notes).toEqual([expect.stringContaining('wiki/icebox.md')]);
     expect(await snapshotTree(root)).toEqual(before);
   });
 

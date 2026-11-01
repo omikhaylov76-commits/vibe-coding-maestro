@@ -35,6 +35,10 @@ const GITIGNORE_PATH = '.gitignore';
 const INBOX_DIR = 'maestro/inbox';
 const INBOX_GITATTRIBUTES_PATH = `${INBOX_DIR}/.gitattributes`;
 
+/** Страница отложенных идей (0.4.3) и каталог памяти, в котором о ней стоит строка. */
+const ICEBOX_PATH = 'wiki/icebox.md';
+const WIKI_INDEX_PATH = 'wiki/index.md';
+
 /** Версия, с которой README проекта кладут create и upgrade; с неё и дальше удалённый README не возвращается. */
 const README_SINCE = '0.4.2';
 
@@ -406,7 +410,7 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     if (recovered === null) {
       blockers.push(blocker(
         'upgrade-removed-modified',
-        `В версии ${REMOVED_PATHS[path]} этот файл Maestro убран из состава, и upgrade удалил бы его, но файл изменён вручную относительно версии ${fromVersion}. Верните файл к исходному виду или перенесите свои правки в собственный файл проекта, затем повторите.`,
+        `В версии ${REMOVED_PATHS[path]} этот файл Maestro убран из состава, и upgrade удалил бы его, но файл изменён вручную относительно версии ${fromVersion}. Перенесите свои правки в собственный файл проекта и удалите этот (или верните его исходный вид — прежний текст покажет \`git log -p -- ${path}\`), затем повторите.`,
         path,
       ));
       continue;
@@ -601,6 +605,10 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     // Опыт (git 2.54): файл, который git уже видел, после нового правила изменённым не показывается —
     // git не перечитывает его, пока файл не тронут. Переписать его в git байт в байт можно только явно.
     result.notes.push('Материалы, которые уже лежат в maestro/inbox/, git сам не перепишет. Чтобы он хранил их байт в байт, после обновления выполните `git add --renormalize maestro/inbox` и закоммитьте вместе с обновлением. Если файл уже был нормализован (например, взят из свежего клона на другом компьютере), исходные байты есть только в его источнике.');
+  }
+  // Каталог памяти принадлежит проекту: upgrade его не правит, но о новой странице напоминает.
+  if (creates.some((item) => item.path === ICEBOX_PATH) && !(await readFile(join(root, WIKI_INDEX_PATH), 'utf8').catch(() => '')).includes('icebox.md')) {
+    result.notes.push('Появилась страница отложенных идей wiki/icebox.md. Каталог wiki/index.md принадлежит проекту, и upgrade его не правит: допишите в него строку со ссылкой на icebox.md.');
   }
   result.metadata = [MANIFEST_PATH, CHECKSUMS_PATH];
   result.preserves = [

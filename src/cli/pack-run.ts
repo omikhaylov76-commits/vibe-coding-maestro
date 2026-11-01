@@ -59,13 +59,17 @@ export async function executePackCommand(options: PackRunOptions, io: CliIo): Pr
       : `Состав архива тега ${result.tag} (ничего не записано): файлов — ${result.files}.`);
     for (const path of result.entries ?? []) io.out(`  ${path}${marks.has(path) ? `  ← ${(marks.get(path) ?? []).join('; ')}` : ''}`);
     for (const note of result.notes ?? []) io.out(note);
-    io.out(highlights.length === 0
-      ? 'Подсвечивать нечего.'
-      : `Подсвечено — ${highlights.length}: проверьте и уберите внутреннее до упаковки (правка, коммит, новый тег). Подсветка — предупреждение, упаковку она не запрещает.`);
+    const toCheck = highlights.filter((item) => !item.reason.includes('оставьте')).length;
+    io.out(toCheck === 0
+      ? `Убирать нечего${highlights.length > 0 ? ': подсвечены только файлы с пометкой «оставьте»' : ''}.`
+      : `Подсвечено к проверке — ${toCheck}: внутреннее уберите до упаковки (правка, коммит${result.untagged === true ? '' : ', новый тег'}); помеченное «оставьте» не трогайте. Подсветка — предупреждение, упаковку она не запрещает.`);
     io.out(result.noAccess === true
       ? 'HANDOVER.md: доступов не было — в паспорте все разделы о доступах «не применимо», менять заказчику нечего.'
       : 'HANDOVER.md: первым делом заказчик меняет все пароли и ключи — в разделах паспорта о доступах есть записи. «Доступов не было» пишется, только если в каждом из них ровно «не применимо», без пояснений.');
-    io.out(`Упаковать: ${serviceInvocation(VERSION)} pack --path ${quotePathArg(options.path)} --tag ${options.tag}${options.out === undefined ? '' : ` --out ${quotePathArg(options.out)}`} — только после «да» человека.`);
+    const packCommand = `${serviceInvocation(VERSION)} pack --path ${quotePathArg(options.path)} --tag ${options.tag}${options.out === undefined ? '' : ` --out ${quotePathArg(options.out)}`}`;
+    io.out(result.untagged === true
+      ? `Дальше: имя метки ${options.tag} — в паспорт, коммит; метка (git tag -a ${options.tag}) — после «да» человека; затем упаковать: ${packCommand} — тоже после «да».`
+      : `Упаковать: ${packCommand} — только после «да» человека.`);
     return EXIT_OK;
   }
   io.out(result.reused === true

@@ -274,7 +274,13 @@ describe('0.4.3: проверки без лишнего круга — когд�
     expect(stageD).toContain('опытом');
     expect(stageD).toContain('«Что известно»');
     expect(stageD).toContain('`OPEN_QUESTION`, а не правка');
-    expect(stageD).toContain('подход, состав или порядок порций, границы, данные, безопасность, deployment');
+    expect(stageD).toContain('подход, состав или порядок порций, границы, классификация, данные, безопасность, deployment');
+    // Один список «нового риска» везде (ревью 0.4.3, L6), и маленькая правка посреди плана им не считается (M1).
+    const risk = 'подход, состав или порядок порций, границы, классификация, данные, безопасность, deployment';
+    expect(await template('protocols/audit.md')).toContain(risk);
+    expect(plan.slice(plan.indexOf('## Stage E'), plan.indexOf('## Stage F'))).toContain(risk);
+    expect(await template('protocols/audit.md')).toContain('Маленькая правка посреди плана ([plan](plan.md), Stage C) новым риском не считается');
+    expect(plan).toContain('Сначала проверь новую порцию по углам (Stage D), затем спроси человека его словами');
     expect(plan).not.toContain('Один полный зелёный проход достаточен');
   });
 
@@ -422,7 +428,9 @@ describe('0.4.3: маленькая задача, метки, новая сес�
     const config = parseYamlSubset(yaml) as Record<string, any>;
     expect(config.concurrency['cancel-in-progress']).toBe('true');
     expect(config.concurrency.group).toBe('${{ github.workflow }}-${{ github.ref }}');
-    expect(config.on.push['branches-ignore']).toEqual(['main']);
+    // Проекты Maestro часто работают прямо в main: быстрый прогон — на каждую отправку (ревью 0.4.3, M4).
+    expect(config.on.push['branches-ignore']).toBeUndefined();
+    expect(config.on.push.branches).toBeUndefined();
     expect(config.on.pull_request.branches).toEqual(['main']);
     for (const event of ['push', 'pull_request']) expect(config.on[event]['paths-ignore']).toEqual(['wiki/**', 'maestro/**', 'docs/**', '**/*.md']);
     expect(config.jobs.quick.if).toBe("github.event_name == 'push'");
@@ -667,8 +675,11 @@ describe('0.4.3: pack — папка, состав до упаковки, под
     for (const path of ['.vscode/settings.json', '.idea/workspace.xml', '.github/workflows/ci.yml', 'debug.log']) {
       expect(reasons(path), path).toEqual(['служебный файл']);
     }
-    // Файлы, которые кладёт сам Maestro, тоже служебные (в .gitignore ещё и строки про .claude/).
-    for (const path of ['.gitignore', '.gitattributes']) expect(reasons(path), path).toContain('служебный файл');
+    // Корневые файлы Maestro подсвечены с пометкой «оставьте», их содержимое не разбирается (ревью 0.4.3, M3).
+    for (const path of ['.gitignore', '.gitattributes']) {
+      expect(reasons(path), path).toHaveLength(1);
+      expect(reasons(path)[0], path).toContain('оставьте');
+    }
     expect(reasons('src/clean.js')).toEqual([]);
     expect(reasons('index.html')).toEqual([]);
     // Строка, где найдено, названа.
@@ -730,6 +741,9 @@ describe('0.4.3: pack — папка, состав до упаковки, под
     const cli = collectIo();
     expect(await runMaestroCli(['pack', '--path', root, '--tag', 'v2.0.0', '--dry-run'], cli.io)).toBe(0);
     expect(cli.stdout()).toContain('Метки v2.0.0 ещё нет: показан состав последнего коммита');
+    // Ревью 0.4.3, L10: без метки — «правка, коммит» и порядок: паспорт, метка, упаковка.
+    expect(cli.stdout()).toContain('Дальше: имя метки v2.0.0 — в паспорт, коммит; метка (git tag -a v2.0.0) — после «да» человека');
+    expect(cli.stdout()).not.toContain('новый тег');
     expect((await packProject({ root, tag: 'v2.0.0', out })).findings.map((item) => item.code)).toEqual(['pack-tag-missing']);
     await execGit(root, 'tag', '-a', 'v2.0.0', '-m', 'Сдача');
     const real = await packProject({ root, tag: 'v2.0.0', out });
@@ -826,5 +840,57 @@ describe('0.4.3: context — окно по модели из журнала', ()
       if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev;
       if (prevSession !== undefined) process.env.CLAUDE_CODE_SESSION_ID = prevSession;
     }
+  });
+});
+
+describe('0.4.3: исправления по независимому ревью', () => {
+  const template = (path: string): Promise<string> => packageText(`templates/project/${path}`);
+
+  it('M2: удаление обычным коммитом — правка, «да» — на то, чего не вернуть', async () => {
+    expect(await template('.claude/rules/maestro.md')).toContain('удаление того, чего нет в истории git и копиях');
+    expect(await template('protocols/build.md')).toContain('Удалить или переписать файл обычным коммитом — правка, а не разрушительное действие');
+  });
+
+  it('L4: подсветка не путает адрес и год с внутренней папкой и номером плана, но ловит «по плану 0002»', async () => {
+    const { packHighlights } = await import('../src/core/pack.js');
+    const reasons = (text: string): string[] => packHighlights('docs/a.md', Buffer.from(text), { home: '/Users/x', root: '/Users/x/p' }).map((item) => item.reason);
+    expect(reasons('См. https://ru.wikipedia.org/wiki/Чаевые\n')).toEqual([]);
+    expect(reasons('Бизнес-план 2026 года\n')).toEqual([]);
+    expect(reasons('Сделано по плану 0002\n')).toEqual(['номер плана']);
+    expect(reasons('Пункт плана 0002\n')).toEqual(['номер плана']);
+    expect(reasons('Подробности — в wiki/plans\n')).toEqual(['внутренняя папка']);
+  });
+
+  it('L5: префикс Bedrock global. распознан; после смены модели окно судится по текущей', async () => {
+    const { windowForModel, measureContext, projectLogDirName } = await import('../src/core/context.js');
+    expect(windowForModel('global.anthropic.claude-sonnet-4-5-20250929-v1:0')).toBe(200_000);
+    const { makeTempDir } = await import('./helpers.js');
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const claudeDir = await makeTempDir('claude-');
+    const root = join(await makeTempDir('proj-'), 'app');
+    await mkdir(root);
+    const answer = (id: string, size: number, model: string) => ({ type: 'assistant', message: { id, model, usage: { input_tokens: 0, cache_read_input_tokens: size, cache_creation_input_tokens: 0, output_tokens: 0 } } });
+    const dir = join(claudeDir, 'projects', projectLogDirName(root));
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'session-1.jsonl'), `${[answer('a', 400_000, 'claude-opus-5-5'), answer('b', 100_000, 'claude-haiku-4-5')].map((line) => JSON.stringify(line)).join('\n')}\n`);
+    const report = await measureContext({ root, claudeDir, sessionId: 'session-1' });
+    expect([report.model, report.budget, report.percent]).toEqual(['claude-haiku-4-5', 200_000, 50]);
+  });
+
+  it('L1, L8, L9: тексты upgrade — проект без git, совет пересказать --diff, напоминание про icebox в каталоге', async () => {
+    const { root } = await materializePublished('0.4.1-standard');
+    const dry = collectIo();
+    expect(await runMaestroCli(['upgrade', '--path', root], dry.io)).toBe(0);
+    expect(dry.stdout()).toContain('Их читает агент и пересказывает человеку простыми словами');
+    expect(dry.stdout()).toContain('Важно: Появилась страница отложенных идей wiki/icebox.md');
+    const applied = collectIo();
+    expect(await runMaestroCli(['upgrade', '--path', root, '--apply'], applied.io)).toBe(0);
+    expect(applied.stdout()).toContain('прежний текст — в пакете Maestro прошлой версии');
+    expect(applied.stdout()).not.toContain('прежний текст — в истории Git');
+  });
+
+  it('L7: стартовый мини-план нового проекта — в форме QUICK', async () => {
+    const starter = await template('wiki/plans/0001-starter.md');
+    for (const part of ['## Цель', '## Как проверим', '## Где правим', '## Риски и откат', '## Стоп-гейт', '(`OPEN_QUESTION`)', '- [ ] ']) expect(starter, part).toContain(part);
   });
 });

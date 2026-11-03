@@ -60,11 +60,14 @@ const CHECKED_ITEM_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm;
  * с `[x]`. Другой текст ссылки, другая папка, второй хвост, хвост у `[ ]` или на строке
  * продолжения пункта — это уже текст плана.
  */
-const RESULT_LINE_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)(\[[xX]\])(.*?)[ \t]* → \[итог\]\(\.\.\/handoffs\/[^\s()/]+\.md\)$/gm;
+const RESULT_LINE_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)(\[[xX]\])(.*?) → \[итог\]\(\.\.\/handoffs\/[^\s()/]+\.md\)$/gm;
 
 const clearMarks = (body: string): string => body.replace(CHECKED_ITEM_RE, '$1[ ]');
-const dropResults = (body: string): string => body.replace(RESULT_LINE_RE, '$1$2$3');
-const reopenResults = (body: string): string => body.replace(RESULT_LINE_RE, '$1[ ]$3');
+/** Пробелы перед хвостом — конец строки пункта, а его пробелы в отпечаток не входят. */
+const withoutResult = (body: string, mark: (checked: string) => string): string =>
+  body.replace(RESULT_LINE_RE, (_line, lead: string, checked: string, item: string) => `${lead}${mark(checked)}${item.replace(/[ \t]+$/, '')}`);
+const dropResults = (body: string): string => withoutResult(body, (checked) => checked);
+const reopenResults = (body: string): string => withoutResult(body, () => '[ ]');
 
 /**
  * sha256 утверждённого: классификация из frontmatter плюс текст плана (LF, без хвостовых

@@ -10,11 +10,11 @@ import type { MarkdownLink } from '../wiki-links.js';
 export type LinkLocator = (from: string, decoded: string) => string | undefined;
 
 /** Часть адреса: скобки ломают разбор ссылки, а `encodeURIComponent` их не кодирует. */
-const percent = (char: string): string => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`;
+const percent = (char: string): string => (char === '(' ? '%28' : char === ')' ? '%29' : encodeURIComponent(char));
 const encodePart = (part: string): string => encodeURIComponent(part).replace(/[()]/g, percent);
 
 /** Имя файла в адресе, который пишет archive: кириллица как есть, то, что сломало бы ссылку, — кодами. */
-export const linkName = (name: string): string => name.replace(/[\s%()<>]/g, percent);
+export const linkName = (name: string): string => name.replace(/[\s%()<>#]/g, percent);
 
 interface LocalLink {
   link: MarkdownLink;

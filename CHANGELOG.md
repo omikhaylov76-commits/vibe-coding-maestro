@@ -10,7 +10,7 @@ The fifth part of 0.4: project memory stops growing. A slice result goes to its 
 
 ### Added
 
-- **`vibe-maestro archive`** moves old memory into an archive inside the project in one transaction with a backup and rollback. Without `--apply` it only shows what it would move, with sizes; `--json` reports what moved, what stayed and why. It works only on a project of its own version (otherwise «first `upgrade`»), and refuses on a symbolic link on its paths, on a leftover staging folder of its own or of `upgrade`, on a destination that git ignores, and on a destination that already exists under a name differing only in case or Unicode form.
+- **`vibe-maestro archive`** moves old memory into an archive inside the project in one transaction with a backup and rollback. Without `--apply` it only shows what it would move, with sizes; `--json` reports what moved, what stayed and why. It works only on a project of its own version (otherwise «first `upgrade`»), and refuses on a symbolic link on its paths, on a leftover staging folder of its own or of `upgrade`, and on a destination that git ignores. It never overwrites a file whose name differs only in case or Unicode form: a report stays with the reason, anything else is refused.
   - **Log:** `wiki/log.md` over 20 000 characters — the last entries worth 10 000 characters stay (at least one), older ones go to `wiki/log/YYYY-MM.md` in their order. A pointer line is added to the log header once.
   - **Check reports:** closed ones (`status: resolved`, all findings resolved) go to `wiki/audits/archive/`. Open reports, reports `doctor` cannot read and reports named in a plan's `sources` stay, with the reason.
   - **Plan edits:** `--section "<heading start>"` (repeatable) moves a closed edit of the active plan to `wiki/plans/archive/<plan>.md`; the heading and a line «В архиве: …» stay in the plan. Only sections below «Правки после утверждения» or «Изменения после утверждения» can move; the main part of the plan, the collection itself, «Утверждение» and a section with the current slice in a heading are refused. A wrong name is refused with a list, not a byte written.
@@ -32,7 +32,7 @@ The fifth part of 0.4: project memory stops growing. A slice result goes to its 
 
 ### For those who create projects with their own scripts
 
-- **New command `vibe-maestro archive`:** without `--apply` it writes nothing; `--json` gives the report (what moved, what stayed and why); a refusal is exit code 1 with not a byte written. Works only on a project of its own version.
+- **New command `vibe-maestro archive`:** without `--apply` it writes nothing; `--json` gives the report (what moved, what stayed and why; `logNote` says why a long log has nothing to move, `partial: true` means a rollback failed and the project is changed in part); a refusal is exit code 1 with not a byte written. Works only on a project of its own version.
 - **Log:** entries over the limit go to `wiki/log/YYYY-MM.md`; `wiki/log.md` stays the main file, with a line about months in the header. If a script reads the log, it should read `wiki/log/` too.
 - **Check reports:** closed ones (`status: resolved`) go to `wiki/audits/archive/`; open ones stay in `wiki/audits/`; `doctor` checks both folders.
 - **Plan archive** is `wiki/plans/archive/<plan>.md`, not a plan; the heading and a line with a link stay in the plan; `archive` rewrites `approved_digest` only for an unchanged approved plan.

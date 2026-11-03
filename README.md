@@ -294,7 +294,7 @@ npx --package create-vibe-maestro@latest vibe-maestro archive --path .
 
 `preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources`, `upgrade` and `archive` write nothing at all unless you add `--write` or `--apply`.
 
-The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1 and 0.4.2. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1, 0.4.2 and 0.4.3. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
 ## Current scope
 

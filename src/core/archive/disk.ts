@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { LinkLocator } from './links.js';
 
 /**
@@ -20,6 +20,9 @@ function identity(absolute: string): string | null {
   }
 }
 
+/** Номер файла верен не на любом диске, поэтому тот же файл — это ещё и то же имя с точностью до регистра и формы букв. */
+const sameName = (left: string, right: string): boolean => basename(left).normalize('NFC').toLowerCase() === basename(right).normalize('NFC').toLowerCase();
+
 /** `tracked` — файлы, которые адрес должен находить под их настоящим именем, как бы он ни был записан. */
 export function projectDisk(root: string, tracked: readonly string[]): ProjectDisk {
   const known = new Map<string, string>();
@@ -36,7 +39,8 @@ export function projectDisk(root: string, tracked: readonly string[]): ProjectDi
       const id = identity(absolute);
       const inside = relative(root, absolute);
       const outside = inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside);
-      const path = (id === null ? undefined : known.get(id)) ?? (outside ? undefined : inside.split(sep).join('/'));
+      const same = id === null ? undefined : known.get(id);
+      const path = (same !== undefined && sameName(same, absolute) ? same : undefined) ?? (outside ? undefined : inside.split(sep).join('/'));
       located.set(absolute, path);
       return path;
     },

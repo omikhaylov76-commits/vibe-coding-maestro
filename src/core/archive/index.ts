@@ -124,7 +124,7 @@ async function readWiki(root: string, blockers: ArchiveBlocker[]): Promise<Map<s
   return files;
 }
 
-/** Путь, который git игнорирует, не попадёт в копию в облаке. Вне репозитория проверки нет; репозиторий может быть и выше проекта. */
+/** Путь игнорируется git. Вне репозитория проверки нет; репозиторий может быть и выше проекта. */
 async function ignoredByGit(root: string, path: string): Promise<boolean> {
   try {
     await execFileAsync('git', ['check-ignore', '-q', '--', path], { cwd: root });
@@ -199,6 +199,15 @@ async function preconditions(root: string, rootInput: string): Promise<ArchiveBl
  */
 export async function archiveProject(rootInput: string, options: ArchiveOptions = {}): Promise<ArchiveReport> {
   const root = await canonicalizeSystemTempPrefix(resolve(rootInput));
+  try {
+    return await archiveMemory(root, rootInput, options);
+  } catch (cause) {
+    // Транзакция свои сбои возвращает сама: здесь — только чтение, до первой записи.
+    return report(root, { blockers: [blocker('archive-unreadable', `Папку или файл проекта не прочитать, ничего не записано: ${cause instanceof Error ? cause.message : String(cause)}`)] });
+  }
+}
+
+async function archiveMemory(root: string, rootInput: string, options: ArchiveOptions): Promise<ArchiveReport> {
   const before = await preconditions(root, rootInput);
   if (before.length > 0) return report(root, { blockers: before });
 
@@ -304,11 +313,13 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
   for (const from of moved.keys()) contents.set(from, { action: 'remove', text: '' });
 
   const writes = [...contents.entries()].map(([path, value]) => ({ path, action: value.action })).sort((a, b) => a.path.localeCompare(b.path));
+  // Вся память вне git (папка проекта игнорируется целиком) — это выбор проекта, а не потеря при переносе.
+  const memoryInGit = destinations.size > 0 && !await ignoredByGit(root, HOT_PATH);
   for (const write of writes) {
     if (await pathHasSymlink(root, write.path)) blockers.push(blocker('archive-symlink', 'Путь переноса содержит symbolic link: запись ушла бы за пределы проекта.', write.path));
     else if (write.action === 'create' && disk.exists(write.path)) {
       blockers.push(blocker('archive-destination-exists', 'На этом месте уже есть файл: его имя отличается только регистром или формой букв. archive его не перезаписывает: приведите имена к одному виду и запустите снова.', write.path));
-    } else if (destinations.has(write.path) && await ignoredByGit(root, write.path)) {
+    } else if (memoryInGit && destinations.has(write.path) && await ignoredByGit(root, write.path)) {
       blockers.push(blocker('archive-destination-ignored', 'Git игнорирует этот путь (.gitignore): перенесённое не попадёт в копию в облаке, а ссылки на свежем клоне станут битыми. Уберите правило из .gitignore и запустите снова.', write.path));
     }
   }

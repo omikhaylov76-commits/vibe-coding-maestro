@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { chmod, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { executeArchiveCommand } from '../src/cli/archive-run.js';
@@ -696,6 +696,56 @@ describe('0.4.4 archive: находки ревью', () => {
       const again = await archiveProject(named, { sections: ['Порция 01'] });
       expect(again.sections.map((item) => item.status), name).toEqual(['already']);
     }
+  });
+
+  it('файл с тем же номером, но другим именем — не перенесённый отчёт: ссылка на него не меняется', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    await link(join(root, 'wiki/audits/AUD-1.md'), join(root, 'wiki/handoffs/copy.md'));
+    const text = 'Копия: [файл](copy.md).\n';
+    await put(root, 'wiki/handoffs/2026-11-01-a.md', text);
+    await archiveProject(root, { apply: true });
+    expect(await readUtf8(root, 'wiki/handoffs/2026-11-01-a.md')).toBe(text);
+    await expectDoctorClean(root);
+  });
+
+  it('вся папка проекта вне git у родительского репозитория: это выбор проекта, перенос работает', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const outer = await makeTempDir('outer-');
+    const nested = join(outer, 'app');
+    expect((await initProject({ target: nested, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    await put(nested, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    execFileSync('git', ['init', '-q'], { cwd: outer });
+    await put(outer, '.gitignore', 'app/\n');
+    expect((await archiveProject(nested, { apply: true })).audits.moved).toHaveLength(1);
+  });
+
+  it('правка, заголовок которой начинается как сборник, переносится: сборник — только первый и точные названия', async () => {
+    const root = await project();
+    await withPlan(root, '# План\n\n## Изменения после утверждения\n\n### Изменения после утверждения: замена API (2026-10-02)\n\nТекст.\n\n## Утверждение\n\nДа.\n', { digest: null });
+    expect((await archiveProject(root, { sections: ['Изменения после утверждения: замена API'] })).ok).toBe(true);
+  });
+
+  it('имя плана с неразрывным пробелом, решёткой и квадратными скобками: ссылка рабочая, повтор — «уже в архиве»', async () => {
+    for (const name of ['0002\u00A0demo.md', '0002#1.md', '0002[v2].md']) {
+      const root = await project();
+      await withPlan(root, HUB, { digest: null });
+      await rename(join(root, PLAN), join(root, 'wiki/plans', name));
+      await put(root, 'wiki/hot.md', (await readUtf8(root, 'wiki/hot.md')).replace('active_plan: plans/0002-work.md', `active_plan: plans/${name}`));
+      expect((await archiveProject(root, { apply: true, sections: ['Порция 01'] })).applied, name).toBe(true);
+      await expectDoctorClean(root);
+      expect((await archiveProject(root, { sections: ['Порция 01'] })).sections.map((item) => item.status), name).toEqual(['already']);
+    }
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('папка без прав: отказ в отчёте, а не падение', async () => {
+    const root = await project();
+    await mkdir(join(root, 'wiki/secret'));
+    await chmod(join(root, 'wiki/secret'), 0o000);
+    const json = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root, '--json'], json.io)).toBe(1);
+    expect(JSON.parse(json.stdout())).toMatchObject({ ok: false, blockers: [{ code: 'archive-unreadable' }] });
+    await chmod(join(root, 'wiki/secret'), 0o755);
   });
 
   it('вложенный заголовок «Утверждение правки 1» не мешает; вложенный ровно «Утверждение» — отказ', async () => {

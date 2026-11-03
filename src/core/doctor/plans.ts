@@ -19,7 +19,7 @@ const NON_PLAN_FILES: ReadonlySet<string> = new Set(['README.md', 'TEMPLATE.md']
  * ту же границу держит `isWikiRelativePlanRef`, поэтому preflight не может счесть
  * доказанным план, невидимый здесь.
  */
-function planFileName(path: string): string | null {
+export function planFileName(path: string): string | null {
   const match = /^wiki\/plans\/([^/]+\.md)$/.exec(path);
   const name = match?.[1];
   return name === undefined || NON_PLAN_FILES.has(name) ? null : name;

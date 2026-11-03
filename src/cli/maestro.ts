@@ -44,6 +44,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
 
 Опции archive:
   --apply             перенести; без флага только показывает, что перенесёт
+  --section <начало>  закрытая правка активного плана по началу заголовка; флаг можно повторять
 
 Опции context:
   --window <токены>   окно модели в токенах (по умолчанию — по модели из журнала сессии)
@@ -76,6 +77,7 @@ export interface CommandOptions {
   allow?: string[];
   dryRun?: boolean;
   window?: number;
+  sections?: string[];
 }
 
 type ParseResult =
@@ -115,6 +117,15 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
       case '--apply': {
         if (first !== 'upgrade' && first !== 'archive') return { kind: 'error', message: `Флаг ${arg} доступен только для upgrade и archive.` };
         options.apply = true;
+        break;
+      }
+      case '--section': {
+        const message = only(arg, 'archive');
+        if (message !== null) return { kind: 'error', message };
+        const section = value();
+        if (section === undefined || section.trim() === '') return { kind: 'error', message: `Флаг ${arg} требует значение: начало заголовка раздела.` };
+        options.sections = [...(options.sections ?? []), section];
+        i += 1;
         break;
       }
       case '--diff': {

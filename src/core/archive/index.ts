@@ -1,18 +1,29 @@
 import { execFile } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { absolutePathHasSymlink, pathHasSymlink } from '../doctor/fs-utils.js';
+import { absolutePathHasSymlink, markdownFiles, pathHasSymlink } from '../doctor/fs-utils.js';
 import { loadManifest, MANIFEST_PATH } from '../manifest.js';
 import { CREATE_COMMAND, quotePathArg, serviceInvocation, VERSION } from '../meta.js';
 import { readPackageJson } from '../paths.js';
+import { planBodyDigest } from '../plan.js';
 import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
 import { applyTransaction, ARCHIVE_STAGING_DIR, STAGING_DIRS } from '../transaction.js';
 import type { FileAction, FileOperation, TransactionHooks } from '../transaction.js';
 import { compareVersions } from '../version.js';
+import { AUDITS_ARCHIVE_DIR, selectAudits } from './audits.js';
+import type { KeptAudit } from './audits.js';
 import { LOG_KEEP, LOG_LIMIT } from './limits.js';
-import { appendToMonth, eolOf, LOG_PATH, rotateLog } from './log.js';
+import { rebaseLinks } from './links.js';
+import { appendToMonth, LOG_PATH, rotateLog } from './log.js';
+import { eolOf, withoutBom } from './markdown.js';
+import { appendToPlanArchive, cutSections, digestLine, planArchivePath, planFiles, resolveSections, sectionChars, writeDigest } from './plan.js';
+import type { SectionChoice } from './plan.js';
+import { blocker } from './types.js';
+import type { ArchiveBlocker } from './types.js';
+
+export type { ArchiveBlocker } from './types.js';
 
 /**
  * Перенос старой памяти проекта в архив внутри проекта: ничего не удаляется,
@@ -23,12 +34,6 @@ import { appendToMonth, eolOf, LOG_PATH, rotateLog } from './log.js';
 
 const execFileAsync = promisify(execFile);
 
-export interface ArchiveBlocker {
-  code: string;
-  message: string;
-  path?: string;
-}
-
 export interface ArchiveLogReport {
   chars: number;
   limit: number;
@@ -36,6 +41,21 @@ export interface ArchiveLogReport {
   movedEntries: number;
   keptEntries: number;
   months: { path: string; entries: number }[];
+}
+
+export interface ArchiveAuditsReport {
+  moved: { from: string; to: string }[];
+  /** Закрытые и открытые отчёты, которые остаются, с причиной. */
+  kept: KeptAudit[];
+}
+
+export interface ArchiveSectionReport {
+  heading: string;
+  /** `moved` — переносится; `already` — от раздела осталась только строка «В архиве: …». */
+  status: 'moved' | 'already';
+  chars: number;
+  nested: { heading: string; chars: number }[];
+  warnings: string[];
 }
 
 export interface ArchiveReport {
@@ -48,6 +68,16 @@ export interface ArchiveReport {
   blockers: ArchiveBlocker[];
   /** Журнал: `null` — переносить нечего. */
   log: ArchiveLogReport | null;
+  audits: ArchiveAuditsReport;
+  /** План, из которого переносятся разделы; `null` — `--section` не задан. */
+  plan: string | null;
+  /** Куда переносятся разделы. */
+  planArchive: string | null;
+  sections: ArchiveSectionReport[];
+  /** Планы, у которых записан новый отпечаток. */
+  digests: { plan: string; before: string; after: string }[];
+  /** Файлы, где изменились только адреса ссылок. */
+  relinked: string[];
   /** Что запишется (или записано) в проекте. */
   writes: { path: string; action: FileAction }[];
 }
@@ -55,10 +85,12 @@ export interface ArchiveReport {
 export interface ArchiveOptions {
   /** Запись выполняется только по явному apply; по умолчанию это пробный запуск. */
   apply?: boolean;
+  /** Начала заголовков закрытых правок активного плана. */
+  sections?: readonly string[];
+  /** Дата для строки об отпечатке; по умолчанию сегодня. */
+  now?: Date;
   hooks?: TransactionHooks;
 }
-
-const blocker = (code: string, message: string, path?: string): ArchiveBlocker => ({ code, message, ...(path === undefined ? {} : { path }) });
 
 /** Строгий UTF-8 с сохранением BOM: перенос — байт в байт. */
 function decodeExact(buffer: Buffer): string | null {
@@ -69,10 +101,16 @@ function decodeExact(buffer: Buffer): string | null {
   }
 }
 
-async function readText(root: string, path: string): Promise<string | null | undefined> {
-  const absolute = join(root, path);
-  if (!existsSync(absolute)) return undefined;
-  return decodeExact(await readFile(absolute));
+/** Все документы wiki как на диске; папку-ссылку и файл-ссылку обходит, как doctor. */
+async function readWiki(root: string, blockers: ArchiveBlocker[]): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  for (const absolute of await markdownFiles(join(root, 'wiki'))) {
+    const path = relative(root, absolute).split(sep).join('/');
+    const text = decodeExact(await readFile(absolute));
+    if (text === null) blockers.push(blocker('archive-invalid-utf8', 'Файл должен быть корректным UTF-8: archive переносит текст байт в байт и правит адреса ссылок.', path));
+    else files.set(path, text);
+  }
+  return files;
 }
 
 /** Путь, который git игнорирует, не попадёт в копию в облаке. Проект без git — проверки нет. */
@@ -89,7 +127,10 @@ async function ignoredByGit(root: string, path: string): Promise<boolean> {
 
 function report(root: string, patch: Partial<ArchiveReport>): ArchiveReport {
   const blockers = patch.blockers ?? [];
-  return { reportVersion: 1, ok: blockers.length === 0, applied: false, rolledBack: false, root, blockers, log: null, writes: [], ...patch };
+  return {
+    reportVersion: 1, ok: blockers.length === 0, applied: false, rolledBack: false, root, blockers,
+    log: null, audits: { moved: [], kept: [] }, plan: null, planArchive: null, sections: [], digests: [], relinked: [], writes: [], ...patch,
+  };
 }
 
 async function preconditions(root: string, rootInput: string): Promise<ArchiveBlocker[]> {
@@ -139,34 +180,88 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
   if (before.length > 0) return report(root, { blockers: before });
 
   const blockers: ArchiveBlocker[] = [];
-  const contents = new Map<string, { action: FileAction; text: string }>();
+  const files = await readWiki(root, blockers);
+  if (blockers.length > 0) return report(root, { blockers });
 
-  const logText = await readText(root, LOG_PATH);
+  const plans = planFiles(files);
+  // Отпечаток сверяется здесь один раз, до всех правок: после переноса сверять уже нечего.
+  const wanted = options.sections ?? [];
+  const resolution = wanted.length > 0 ? resolveSections(files, plans, wanted) : { plan: null, chosen: [] as SectionChoice[], blockers: [] };
+  blockers.push(...resolution.blockers);
+  const sectionPlan = resolution.plan;
+  const sections = sectionPlan === null ? [] : resolution.chosen.map((choice): ArchiveSectionReport => ({
+    heading: choice.heading.title,
+    status: choice.already ? 'already' : 'moved',
+    chars: sectionChars(sectionPlan.text, choice.heading),
+    nested: choice.nested.map((heading) => ({ heading: heading.title, chars: sectionChars(sectionPlan.text, heading) })),
+    warnings: choice.warnings,
+  }));
+
+  const { moved, kept } = selectAudits(files, plans);
+  const audits: ArchiveAuditsReport = { moved: [...moved].map(([from, to]) => ({ from, to })), kept };
+
+  // Адреса считаются от конечных мест всех файлов сразу: сначала все правят ссылки, потом переносы.
+  const next = new Map<string, string>();
+  for (const [path, text] of files) next.set(path, rebaseLinks(text, path, path, moved));
+  for (const [from, to] of moved) {
+    next.delete(from);
+    next.set(to, rebaseLinks(files.get(from)!, from, to, moved));
+  }
+
+  const touched = new Set<string>();
   let log: ArchiveLogReport | null = null;
-  if (logText === null) blockers.push(blocker('archive-invalid-utf8', 'Файл должен быть корректным UTF-8: archive переносит текст байт в байт.', LOG_PATH));
-  else if (logText !== undefined) {
-    const rotation = rotateLog(logText);
-    if (rotation !== null) {
-      const eol = eolOf(logText);
-      contents.set(LOG_PATH, { action: 'update', text: rotation.log });
-      for (const month of rotation.months) {
-        const existing = await readText(root, month.path);
-        if (existing === null) { blockers.push(blocker('archive-invalid-utf8', 'Файл должен быть корректным UTF-8: archive дописывает в него записи.', month.path)); continue; }
-        contents.set(month.path, {
-          action: existing === undefined ? 'create' : 'update',
-          text: appendToMonth(existing ?? null, month.path.slice(-10, -3), month.appended, eol),
-        });
+  const logText = files.get(LOG_PATH);
+  const rotation = logText === undefined ? null : rotateLog(logText, moved);
+  if (rotation !== null) {
+    const eol = eolOf(logText!);
+    next.set(LOG_PATH, rotation.log);
+    touched.add(LOG_PATH);
+    for (const month of rotation.months) {
+      next.set(month.path, appendToMonth(next.get(month.path) ?? null, month.path.slice(-10, -3), month.appended, eol));
+      touched.add(month.path);
+    }
+    log = {
+      chars: rotation.chars,
+      limit: LOG_LIMIT,
+      keep: LOG_KEEP,
+      movedEntries: rotation.months.reduce((sum, month) => sum + month.entries, 0),
+      keptEntries: rotation.keptEntries,
+      months: rotation.months.map(({ path, entries }) => ({ path, entries })),
+    };
+  }
+
+  const date = (options.now ?? new Date()).toISOString().slice(0, 10);
+  const digests: ArchiveReport['digests'] = [];
+  for (const plan of plans) {
+    const eol = eolOf(plan.text);
+    const archivePath = planArchivePath(plan.path);
+    const cut = plan === sectionPlan ? cutSections(plan.text, resolution.chosen, archivePath, eol) : null;
+    let text = rebaseLinks(cut?.remaining ?? plan.text, plan.path, plan.path, moved);
+    if (text === plan.text) continue;
+    const blocks = (cut?.sections ?? []).map((section) => rebaseLinks(section, plan.path, archivePath, moved));
+    if (plan.digest !== null && (plan.guarded || cut !== null)) {
+      const after = planBodyDigest(withoutBom(text));
+      if (after !== plan.digest) {
+        text = writeDigest(text, after);
+        digests.push({ plan: plan.path, before: plan.digest, after });
+        blocks.push(digestLine(date, plan.digest, after, eol));
       }
-      log = {
-        chars: rotation.chars,
-        limit: LOG_LIMIT,
-        keep: LOG_KEEP,
-        movedEntries: rotation.months.reduce((sum, month) => sum + month.entries, 0),
-        keptEntries: rotation.keptEntries,
-        months: rotation.months.map(({ path, entries }) => ({ path, entries })),
-      };
+    }
+    next.set(plan.path, text);
+    if (cut !== null) touched.add(plan.path);
+    if (blocks.length > 0) {
+      next.set(archivePath, appendToPlanArchive(next.get(archivePath) ?? null, plan, blocks, eol));
+      touched.add(archivePath);
     }
   }
+
+  const contents = new Map<string, { action: FileAction; text: string }>();
+  for (const [path, text] of next) {
+    const before = files.get(path);
+    if (before === undefined) contents.set(path, { action: 'create', text });
+    else if (before !== text) contents.set(path, { action: 'update', text });
+  }
+  for (const from of moved.keys()) contents.set(from, { action: 'remove', text: '' });
 
   const writes = [...contents.entries()].map(([path, value]) => ({ path, action: value.action })).sort((a, b) => a.path.localeCompare(b.path));
   for (const write of writes) {
@@ -175,20 +270,24 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
       blockers.push(blocker('archive-destination-ignored', 'Git игнорирует этот путь (.gitignore): перенесённое не попадёт в копию в облаке, а ссылки на свежем клоне станут битыми. Уберите правило из .gitignore и запустите снова.', write.path));
     }
   }
-  if (blockers.length > 0) return report(root, { blockers, log });
-  if (options.apply !== true || writes.length === 0) return report(root, { log, writes });
+  const relinked = writes.filter((write) => write.action === 'update' && !touched.has(write.path)).map((write) => write.path);
+  const details = { log, audits, plan: sectionPlan?.path ?? null, planArchive: sectionPlan === null ? null : planArchivePath(sectionPlan.path), sections, digests, relinked };
+  if (blockers.length > 0) return report(root, { blockers, ...details });
+  if (options.apply !== true || writes.length === 0) return report(root, { ...details, writes });
 
-  const operations: FileOperation[] = writes.map((write) => ({ path: write.path, action: write.action, bytes: Buffer.from(contents.get(write.path)!.text, 'utf8') }));
+  const operations: FileOperation[] = writes.map((write) => (write.action === 'remove'
+    ? { path: write.path, action: write.action }
+    : { path: write.path, action: write.action, bytes: Buffer.from(contents.get(write.path)!.text, 'utf8') }));
   const outcome = await applyTransaction(root, ARCHIVE_STAGING_DIR, operations, options.hooks);
-  if (outcome.ok) return report(root, { applied: true, log, writes });
-  if (outcome.stage === 'prepare') return report(root, { ok: false, log, writes, error: `Подготовка переноса не удалась, проект не изменён: ${outcome.reason}` });
+  if (outcome.ok) return report(root, { applied: true, ...details, writes });
+  if (outcome.stage === 'prepare') return report(root, { ok: false, ...details, writes, error: `Подготовка переноса не удалась, проект не изменён: ${outcome.reason}` });
   if (!outcome.rolledBack) {
     return report(root, {
       ok: false,
-      log,
+      ...details,
       writes,
       error: `Перенос прерван (${outcome.reason}), и откатить удалось не всё: ${outcome.unrestored.join(', ')}. Прежние версии файлов оставлены в ${ARCHIVE_STAGING_DIR}/backup/ — верните их вручную, затем удалите ${ARCHIVE_STAGING_DIR}.`,
     });
   }
-  return report(root, { ok: false, rolledBack: true, log, writes, error: `Перенос прерван и откачен: ${outcome.reason}` });
+  return report(root, { ok: false, rolledBack: true, ...details, writes, error: `Перенос прерван и откачен: ${outcome.reason}` });
 }

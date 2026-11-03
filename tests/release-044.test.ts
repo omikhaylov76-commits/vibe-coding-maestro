@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
+import { HANDOFF_LIMIT, HOT_LIMIT, LOG_LIMIT, PLAN_LIMIT } from '../src/core/archive/limits.js';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
 import { legacyPlanBodyDigest, planBodyDigest, planDigestMatches } from '../src/core/plan.js';
@@ -156,5 +157,87 @@ describe('0.4.4: строка итога у закрытой порции не �
     const digest043 = (text: string): string => legacyPlanBodyDigest(text.replace(/^1\. \[x\]/m, '1. [ ]').replace('- [x]', '- [ ]'));
     expect(await gate(await approved(withResult, digest043))).toEqual(OPEN);
     expect(await gate(await approved(withResult, legacyPlanBodyDigest))).toEqual(OPEN);
+  });
+});
+
+describe('0.4.4: doctor сообщает о длине памяти, ничего не блокируя', () => {
+  async function project(): Promise<string> {
+    const root = join(await makeTempDir('memory-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    return root;
+  }
+
+  /** Дописывает к файлу строк до размера ровно `size` знаков (перевод строки — один знак). */
+  async function grow(root: string, path: string, size: number, eol = '\n'): Promise<void> {
+    const text = (await readUtf8(root, path).catch(() => '# Текст\n')).replace(/\r\n/g, '\n');
+    const missing = size - Array.from(text).length;
+    expect(missing).toBeGreaterThan(0);
+    await writeFile(join(root, path), `${text}${'я'.repeat(missing - 1)}\n`.replace(/\n/g, eol), 'utf8');
+  }
+
+  async function memory(root: string): Promise<{ code: string; level: string; path?: string; message: string }[]> {
+    return (await doctorProject(root)).findings.filter((item) => item.code.startsWith('memory-'));
+  }
+
+  it('ниже порога и на самом пороге — ничего; выше — одна info с числом знаков, ориентиром и что делать', async () => {
+    const root = await project();
+    await grow(root, 'wiki/log.md', LOG_LIMIT);
+    await grow(root, 'wiki/hot.md', HOT_LIMIT);
+    expect(await memory(root)).toEqual([]);
+
+    await grow(root, 'wiki/log.md', LOG_LIMIT + 1);
+    await grow(root, 'wiki/hot.md', HOT_LIMIT + 1);
+    const found = await memory(root);
+    expect(found.map((item) => [item.code, item.level, item.path])).toEqual([
+      ['memory-hot-long', 'info', 'wiki/hot.md'],
+      ['memory-log-long', 'info', 'wiki/log.md'],
+    ]);
+    expect(found[0]?.message).toContain('6 001 знаков при ориентире 6 000');
+    expect(found[0]?.message).toContain('перепишите его коротко');
+    expect(found[1]?.message).toContain('20 001 знаков при ориентире 20 000');
+    expect(found[1]?.message).toContain('archive --path');
+  });
+
+  it('--strict и preflight не падают от длинной памяти', async () => {
+    const root = await project();
+    await grow(root, 'wiki/log.md', LOG_LIMIT + 1);
+    expect((await doctorProject(root, { strict: true })).ok).toBe(true);
+    const cli = collectIo();
+    expect(await runMaestroCli(['doctor', '--path', root, '--strict'], cli.io)).toBe(0);
+  });
+
+  it('план — только объявленный; сообщение называет archive --section', async () => {
+    const root = await project();
+    const text = ['---', 'type: plan', 'title: Вход', 'id: PLAN-0002', 'kind: mini', 'status: approved', 'scale: quick', 'mode: extension',
+      'governance: standard', 'risk: low', 'profiles: []', 'created: 2026-11-01', 'updated: 2026-11-01', 'sources: []',
+      'supersedes: null', 'approved_by: Человек', 'approved_at: 2026-11-01', 'active_phase: null', '---', '', '# Вход', ''].join('\n');
+    await writeFile(join(root, 'wiki/plans/0002-quick.md'), text, 'utf8');
+    await grow(root, 'wiki/plans/0002-quick.md', PLAN_LIMIT + 1);
+    expect(await memory(root)).toEqual([]);
+
+    await writeFile(join(root, 'wiki/hot.md'), (await readUtf8(root, 'wiki/hot.md')).replace(/^active_plan: .*$/m, 'active_plan: plans/0002-quick.md'), 'utf8');
+    const found = await memory(root);
+    expect(found.map((item) => [item.code, item.path])).toEqual([['memory-plan-long', 'wiki/plans/0002-quick.md']]);
+    expect(found[0]?.message).toContain('archive --path');
+    expect(found[0]?.message).toContain('--section "<начало заголовка>"');
+  });
+
+  it('передачи: только с самой поздней датой в имени (несколько в один день — все); прочие имена не проверяются', async () => {
+    const root = await project();
+    const long = 'я'.repeat(HANDOFF_LIMIT + 1);
+    for (const name of ['2026-10-30-old.md', '2026-11-02-a.md', '2026-11-02-b.md', 'черновик.md', '2026-11-40-bad.md']) await writeFile(join(root, 'wiki/handoffs', name), long, 'utf8');
+    await writeFile(join(root, 'wiki/handoffs/2026-11-02-short.md'), 'коротко', 'utf8');
+    expect((await memory(root)).map((item) => [item.code, item.path])).toEqual([
+      ['memory-handoff-long', 'wiki/handoffs/2026-11-02-a.md'],
+      ['memory-handoff-long', 'wiki/handoffs/2026-11-02-b.md'],
+    ]);
+  });
+
+  it('CRLF не меняет счёт', async () => {
+    const root = await project();
+    await grow(root, 'wiki/log.md', LOG_LIMIT, '\r\n');
+    expect(await memory(root)).toEqual([]);
+    await grow(root, 'wiki/log.md', LOG_LIMIT + 1, '\r\n');
+    expect((await memory(root)).map((item) => item.code)).toEqual(['memory-log-long']);
   });
 });

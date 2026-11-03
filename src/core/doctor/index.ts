@@ -11,6 +11,7 @@ import { checkProjectEntries } from './entries.js';
 import { checkGit } from './git.js';
 import { checkInbox } from './inbox.js';
 import { checkInventory, checkManagedFiles } from './managed.js';
+import { checkMemory } from './memory.js';
 import { checkPlans } from './plans.js';
 import { checkProtocols } from './protocols.js';
 import { checkSources } from './sources.js';
@@ -125,7 +126,9 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   const { managedDocs, managedFiles } = await checkManagedFiles(root, manifest, checksums, findings);
 
   await checkProtocols(root, findings);
-  checkPlans(root, await checkWiki(root, findings), findings);
+  const wiki = await checkWiki(root, findings);
+  checkPlans(root, wiki, findings);
+  checkMemory(rootInput, wiki, findings);
   await checkGit(root, managedDocs, findings, managedFiles);
   await checkInbox(root, findings);
   await checkSources(root, findings);

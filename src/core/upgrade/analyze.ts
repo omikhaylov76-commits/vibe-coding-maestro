@@ -24,6 +24,7 @@ import { hasAnyReadme, README_PATH } from '../readme.js';
 import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
 import { renderTemplate } from '../template.js';
 import type { TemplateVars } from '../template.js';
+import { ARCHIVE_STAGING_DIR, UPGRADE_STAGING_DIR } from '../transaction.js';
 import { compareVersions } from '../version.js';
 import { findRelease, REMOVED_PATHS, supportedVersions } from './releases.js';
 import type { Release } from './releases.js';
@@ -43,7 +44,8 @@ const WIKI_INDEX_PATH = 'wiki/index.md';
 const README_SINCE = '0.4.2';
 
 /** Каталог транзакции. Внутри `.maestro`, чтобы не появляться в дереве проекта. */
-export const STAGING_DIR = '.maestro/upgrade-staging';
+/** Папка транзакции upgrade; общий список папок транзакций — в `core/transaction.ts`. */
+export const STAGING_DIR = UPGRADE_STAGING_DIR;
 
 export type UpgradeStatus = 'current' | 'upgradable' | 'blocked';
 
@@ -311,6 +313,13 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
       'upgrade-staging-present',
       'Каталог транзакции уже существует: прошлый запуск был прерван. В его подпапке backup/ лежат прежние версии файлов. Сверьте проект (git status, git diff), верните нужное из backup/ и только потом удалите каталог.',
       STAGING_DIR,
+    )]);
+  }
+  if (await exists(join(root, ARCHIVE_STAGING_DIR))) {
+    return blockedAt(root, release, fromVersion, [blocker(
+      'upgrade-archive-staging-present',
+      'Каталог транзакции archive уже существует: перенос в архив был прерван. В его подпапке backup/ лежат прежние версии файлов. Сверьте проект (git status, git diff), верните нужное из backup/, удалите каталог и только потом обновляйте.',
+      ARCHIVE_STAGING_DIR,
     )]);
   }
 

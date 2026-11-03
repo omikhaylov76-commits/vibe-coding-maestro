@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { isExternalLink, linkPath, markdownLinks } from '../wiki-links.js';
 import { markdownFiles, pathHasSymlink } from './fs-utils.js';
 import { decodeUtf8, frontmatter, hasFrontmatterBlock } from './text.js';
 import { critical, error } from './types.js';
@@ -32,9 +33,9 @@ export async function checkWiki(root: string, findings: DoctorFinding[]): Promis
           ? 'Этот файл wiki должен начинаться frontmatter: строки key: value между ---.'
           : 'Frontmatter не разобран: допустимы строки key: value, комментарии # и списки «- item» под ключом.', path));
       }
-      for (const match of text.matchAll(/\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+['"][^'"]*['"])?\)/g)) {
-        const destination = (match[1] ?? match[2] ?? '').split('#')[0]?.trim();
-        if (!destination || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(destination)) continue;
+      for (const link of markdownLinks(text)) {
+        const destination = linkPath(link.destination);
+        if (!destination || isExternalLink(destination)) continue;
         let raw: string;
         try { raw = decodeURIComponent(destination); } catch { findings.push(error('wiki-link-broken', 'Ссылка содержит неверное URL-кодирование.', path)); continue; }
         const target = resolve(dirname(absolute), raw);

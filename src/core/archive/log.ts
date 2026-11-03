@@ -1,4 +1,5 @@
 import { rebaseLinks } from './links.js';
+import type { LinkLocator } from './links.js';
 import { countChars, LOG_KEEP, LOG_LIMIT } from './limits.js';
 import { eolOf, markdownLines } from './markdown.js';
 
@@ -63,7 +64,7 @@ export function monthHeader(month: string, eol: string): string {
  * последние записи на `LOG_KEEP` знаков (минимум одна), старые уходят в файлы
  * месяцев. Нечего переносить — `null`.
  */
-export function rotateLog(text: string, moved: ReadonlyMap<string, string> = new Map()): LogRotation | null {
+export function rotateLog(text: string, moved: ReadonlyMap<string, string> = new Map(), locate?: LinkLocator): LogRotation | null {
   const chars = countChars(text);
   if (chars <= LOG_LIMIT) return null;
   const { preamble, entries } = parseLog(text);
@@ -84,14 +85,14 @@ export function rotateLog(text: string, moved: ReadonlyMap<string, string> = new
     const path = `${LOG_DIR}/${entry.month}.md`;
     const current = months.get(path) ?? { entries: 0, appended: '' };
     current.entries += 1;
-    current.appended += rebaseLinks(entry.text, LOG_PATH, path, moved);
+    current.appended += rebaseLinks(entry.text, LOG_PATH, path, moved, locate);
     months.set(path, current);
   }
-  const start = rebaseLinks(preamble, LOG_PATH, LOG_PATH, moved);
+  const start = rebaseLinks(preamble, LOG_PATH, LOG_PATH, moved, locate);
   const head = start.includes(LOG_POINTER)
     ? start
     : `${start.replace(/(?:\r?\n)+$/, '')}${start.trim() === '' ? '' : `${eol}${eol}`}${LOG_POINTER}${eol}${eol}`;
-  const rest = entries.slice(entries.length - kept).map((entry) => rebaseLinks(entry.text, LOG_PATH, LOG_PATH, moved)).join('');
+  const rest = entries.slice(entries.length - kept).map((entry) => rebaseLinks(entry.text, LOG_PATH, LOG_PATH, moved, locate)).join('');
   return {
     chars,
     keptEntries: kept,

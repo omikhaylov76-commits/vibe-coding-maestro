@@ -60,7 +60,7 @@ const CHECKED_ITEM_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm;
  * с `[x]`. Другой текст ссылки, другая папка, второй хвост, хвост у `[ ]` или на строке
  * продолжения пункта — это уже текст плана.
  */
-const RESULT_LINE_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)(\[[xX]\])(.*?) → \[итог\]\(\.\.\/handoffs\/[^\s()/]+\.md\)$/gm;
+const RESULT_LINE_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)(\[[xX]\])(.*?)[ \t]* → \[итог\]\(\.\.\/handoffs\/[^\s()/]+\.md\)$/gm;
 
 const clearMarks = (body: string): string => body.replace(CHECKED_ITEM_RE, '$1[ ]');
 const dropResults = (body: string): string => body.replace(RESULT_LINE_RE, '$1$2$3');

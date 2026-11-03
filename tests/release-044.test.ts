@@ -119,6 +119,12 @@ describe('0.4.4: строка итога у закрытой порции не �
     expect(planDigestMatches(/approved_digest: (\S+)/.exec(text)?.[1] ?? '', text.replace(/\n/g, '\r\n'))).toBe(true);
   });
 
+  it('пункт с двумя пробелами в конце (перенос Markdown): хвост после них гейт не закрывает', async () => {
+    const root = await approved(WORK.replace('1. [ ] Порция один — вход.', '1. [ ] Порция один — вход.  '));
+    await edit(root, '1. [ ] Порция один — вход.  ', `1. [x] Порция один — вход.  ${RESULT}`);
+    expect(await gate(root)).toEqual(OPEN);
+  });
+
   it('опора: на тексте без хвостов отпечатки равны посчитанным кодом настоящих 0.4.3 и 0.4.2', () => {
     const sample = ['---', 'type: plan', 'id: PLAN-0002', 'kind: mini', 'status: approved', 'scale: quick', 'mode: extension', 'governance: standard', 'risk: low', 'profiles: []', 'sources: []', 'supersedes: null', '---', '', '# Вход', '', '## Как проверим', '', '- [x] тест входа зелёный', '- [ ] doctor зелёный', ''].join('\n');
     // Посчитано `dist/core/plan.js` опубликованных create-vibe-maestro@0.4.3 и @0.4.2; в CI меток git нет.

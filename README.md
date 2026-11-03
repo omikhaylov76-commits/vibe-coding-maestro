@@ -78,7 +78,7 @@ Vibe Coding Maestro doctor: всё сходится.
 The second line is `info` (from local Git data only; it never fails `doctor`, `--strict` or `preflight`) and disappears once the project has a copy in the cloud. `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2, 0.4.3). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -289,10 +289,10 @@ npx --package create-vibe-maestro@latest vibe-maestro doctor --path . --strict
 npx --package create-vibe-maestro@latest vibe-maestro skills --path .
 npx --package create-vibe-maestro@latest vibe-maestro preflight --path . --json
 npx --package create-vibe-maestro@latest vibe-maestro sources --path . --source "../durak" --source "../dice-poker"
-npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
+npx --package create-vibe-maestro@latest vibe-maestro archive --path .
 ```
 
-`preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources` and `upgrade` write nothing at all unless you add `--write` or `--apply`.
+`preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources`, `upgrade` and `archive` write nothing at all unless you add `--write` or `--apply`.
 
 The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1 and 0.4.2. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 

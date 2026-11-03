@@ -12,13 +12,16 @@ import { canonicalizeSystemTempPrefix } from '../platform-paths.js';
 import { applyTransaction, ARCHIVE_STAGING_DIR, STAGING_DIRS } from '../transaction.js';
 import type { FileAction, FileOperation, TransactionHooks } from '../transaction.js';
 import { compareVersions } from '../version.js';
-import { AUDITS_ARCHIVE_DIR, selectAudits } from './audits.js';
+import { HOT_PATH } from '../doctor/plans.js';
+import { ACTIVE_PLAN_NONE, isWikiRelativePlanRef } from '../plan.js';
+import { AUDIT_FILE_RE, AUDITS_ARCHIVE_DIR, selectAudits } from './audits.js';
 import type { KeptAudit } from './audits.js';
-import { LOG_KEEP, LOG_LIMIT } from './limits.js';
+import { projectDisk } from './disk.js';
+import { countChars, formatChars, LOG_KEEP, LOG_LIMIT } from './limits.js';
 import { rebaseLinks } from './links.js';
-import { appendToMonth, LOG_PATH, rotateLog } from './log.js';
+import { appendToMonth, LOG_DIR, LOG_PATH, parseLog, rotateLog } from './log.js';
 import { eolOf, withoutBom } from './markdown.js';
-import { appendToPlanArchive, cutSections, digestLine, planArchivePath, planFiles, resolveSections, sectionChars, writeDigest } from './plan.js';
+import { appendToPlanArchive, cutSections, declaredPlan, digestLine, planArchivePath, planFiles, PLANS_ARCHIVE_DIR, resolveSections, sectionChars, writeDigest } from './plan.js';
 import type { SectionChoice } from './plan.js';
 import { blocker } from './types.js';
 import type { ArchiveBlocker } from './types.js';
@@ -63,11 +66,15 @@ export interface ArchiveReport {
   ok: boolean;
   applied: boolean;
   rolledBack: boolean;
+  /** Откат не удался: проект изменён частично. */
+  partial: boolean;
   error?: string;
   root: string;
   blockers: ArchiveBlocker[];
   /** Журнал: `null` — переносить нечего. */
   log: ArchiveLogReport | null;
+  /** Журнал больше порога, а переносить нечего: почему. */
+  logNote: string | null;
   audits: ArchiveAuditsReport;
   /** План, из которого переносятся разделы; `null` — `--section` не задан. */
   plan: string | null;
@@ -106,16 +113,19 @@ async function readWiki(root: string, blockers: ArchiveBlocker[]): Promise<Map<s
   const files = new Map<string, string>();
   for (const absolute of await markdownFiles(join(root, 'wiki'))) {
     const path = relative(root, absolute).split(sep).join('/');
-    const text = decodeExact(await readFile(absolute));
-    if (text === null) blockers.push(blocker('archive-invalid-utf8', 'Файл должен быть корректным UTF-8: archive переносит текст байт в байт и правит адреса ссылок.', path));
-    else files.set(path, text);
+    try {
+      const text = decodeExact(await readFile(absolute));
+      if (text === null) blockers.push(blocker('archive-invalid-utf8', 'Файл должен быть корректным UTF-8: archive переносит текст байт в байт и правит адреса ссылок.', path));
+      else files.set(path, text);
+    } catch (cause) {
+      blockers.push(blocker('archive-unreadable', `Файл не прочитать: ${cause instanceof Error ? cause.message : String(cause)}`, path));
+    }
   }
   return files;
 }
 
-/** Путь, который git игнорирует, не попадёт в копию в облаке. Проект без git — проверки нет. */
+/** Путь, который git игнорирует, не попадёт в копию в облаке. Вне репозитория проверки нет; репозиторий может быть и выше проекта. */
 async function ignoredByGit(root: string, path: string): Promise<boolean> {
-  if (!existsSync(join(root, '.git'))) return false;
   try {
     await execFileAsync('git', ['check-ignore', '-q', '--', path], { cwd: root });
     return true;
@@ -128,10 +138,14 @@ async function ignoredByGit(root: string, path: string): Promise<boolean> {
 function report(root: string, patch: Partial<ArchiveReport>): ArchiveReport {
   const blockers = patch.blockers ?? [];
   return {
-    reportVersion: 1, ok: blockers.length === 0, applied: false, rolledBack: false, root, blockers,
-    log: null, audits: { moved: [], kept: [] }, plan: null, planArchive: null, sections: [], digests: [], relinked: [], writes: [], ...patch,
+    reportVersion: 1, ok: blockers.length === 0, applied: false, rolledBack: false, partial: false, root, blockers,
+    log: null, logNote: null, audits: { moved: [], kept: [] }, plan: null, planArchive: null, sections: [], digests: [], relinked: [], writes: [], ...patch,
   };
 }
+
+const ARCHIVE_DIRS: readonly string[] = [LOG_DIR, AUDITS_ARCHIVE_DIR, PLANS_ARCHIVE_DIR];
+/** Пути, с которыми работает archive: если один из них symbolic link, запись или чтение ушли бы не туда. */
+const MEMORY_PATHS: readonly string[] = [HOT_PATH, LOG_PATH, 'wiki/audits', 'wiki/plans', ...ARCHIVE_DIRS, ARCHIVE_STAGING_DIR];
 
 async function preconditions(root: string, rootInput: string): Promise<ArchiveBlocker[]> {
   if (!existsSync(root)) return [blocker('archive-path-missing', `Папка не найдена: ${root}. Проверьте путь; путь с пробелами возьмите в кавычки.`)];
@@ -161,7 +175,16 @@ async function preconditions(root: string, rootInput: string): Promise<ArchiveBl
       found.push(blocker('archive-staging-present', 'Каталог транзакции уже существует: прошлый запуск upgrade или archive был прерван. В его подпапке backup/ лежат прежние версии файлов. Сверьте проект (git status, git diff), верните нужное из backup/ и только потом удалите каталог.', staging));
     }
   }
-  if (await pathHasSymlink(root, 'wiki')) found.push(blocker('archive-symlink', 'Путь wiki не должен содержать symbolic link.', 'wiki'));
+  if (await pathHasSymlink(root, 'wiki')) {
+    found.push(blocker('archive-symlink', 'Путь wiki не должен содержать symbolic link.', 'wiki'));
+    return found;
+  }
+  for (const path of MEMORY_PATHS) {
+    if (await pathHasSymlink(root, path)) found.push(blocker('archive-symlink', 'Путь памяти проекта содержит symbolic link: archive с такими путями не работает.', path));
+  }
+  for (const path of ARCHIVE_DIRS) {
+    if (existsSync(join(root, path)) && !statSync(join(root, path)).isDirectory()) found.push(blocker('archive-not-directory', 'На этом месте должна быть папка архива, а лежит файл: переименуйте файл и запустите снова.', path));
+  }
   return found;
 }
 
@@ -183,9 +206,14 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
   const files = await readWiki(root, blockers);
   if (blockers.length > 0) return report(root, { blockers });
 
+  const wanted = options.sections ?? [];
+  const declared = declaredPlan(files);
+  if (wanted.length > 0 && declared !== ACTIVE_PLAN_NONE && isWikiRelativePlanRef(declared) && await pathHasSymlink(root, `wiki/${declared}`)) {
+    return report(root, { blockers: [blocker('archive-symlink', 'Активный план — symbolic link: archive с такими путями не работает.', `wiki/${declared}`)] });
+  }
+
   const plans = planFiles(files);
   // Отпечаток сверяется здесь один раз, до всех правок: после переноса сверять уже нечего.
-  const wanted = options.sections ?? [];
   const resolution = wanted.length > 0 ? resolveSections(files, plans, wanted) : { plan: null, chosen: [] as SectionChoice[], blockers: [] };
   blockers.push(...resolution.blockers);
   const sectionPlan = resolution.plan;
@@ -197,21 +225,24 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
     warnings: choice.warnings,
   }));
 
-  const { moved, kept } = selectAudits(files, plans);
+  const disk = projectDisk(root, [...files.keys()].filter((path) => AUDIT_FILE_RE.test(path)));
+  const { moved, kept } = selectAudits(files, plans, disk);
   const audits: ArchiveAuditsReport = { moved: [...moved].map(([from, to]) => ({ from, to })), kept };
 
   // Адреса считаются от конечных мест всех файлов сразу: сначала все правят ссылки, потом переносы.
   const next = new Map<string, string>();
-  for (const [path, text] of files) next.set(path, rebaseLinks(text, path, path, moved));
+  for (const [path, text] of files) next.set(path, rebaseLinks(text, path, path, moved, disk.locate));
   for (const [from, to] of moved) {
     next.delete(from);
-    next.set(to, rebaseLinks(files.get(from)!, from, to, moved));
+    next.set(to, rebaseLinks(files.get(from)!, from, to, moved, disk.locate));
   }
 
   const touched = new Set<string>();
+  /** Файлы, куда приходит перенесённый текст: они обязаны быть в git. */
+  const destinations = new Set<string>(moved.values());
   let log: ArchiveLogReport | null = null;
   const logText = files.get(LOG_PATH);
-  const rotation = logText === undefined ? null : rotateLog(logText, moved);
+  const rotation = logText === undefined ? null : rotateLog(logText, moved, disk.locate);
   if (rotation !== null) {
     const eol = eolOf(logText!);
     next.set(LOG_PATH, rotation.log);
@@ -219,6 +250,7 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
     for (const month of rotation.months) {
       next.set(month.path, appendToMonth(next.get(month.path) ?? null, month.path.slice(-10, -3), month.appended, eol));
       touched.add(month.path);
+      destinations.add(month.path);
     }
     log = {
       chars: rotation.chars,
@@ -229,6 +261,13 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
       months: rotation.months.map(({ path, entries }) => ({ path, entries })),
     };
   }
+  let logNote: string | null = null;
+  if (logText !== undefined && rotation === null && countChars(logText) > LOG_LIMIT) {
+    const size = `${formatChars(countChars(logText))} знаков при пороге ${formatChars(LOG_LIMIT)}`;
+    logNote = parseLog(logText).entries.length === 0
+      ? `Журнал wiki/log.md: ${size}, но нет записей с датой в начале заголовка («## ГГГГ-ММ-ДД — …»): переносить нечего.`
+      : `Журнал wiki/log.md: ${size}, но все записи с датой входят в последние ${formatChars(LOG_KEEP)} знаков или запись одна: переносить нечего, сократите шапку или длинную запись.`;
+  }
 
   const date = (options.now ?? new Date()).toISOString().slice(0, 10);
   const digests: ArchiveReport['digests'] = [];
@@ -236,9 +275,9 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
     const eol = eolOf(plan.text);
     const archivePath = planArchivePath(plan.path);
     const cut = plan === sectionPlan ? cutSections(plan.text, resolution.chosen, archivePath, eol) : null;
-    let text = rebaseLinks(cut?.remaining ?? plan.text, plan.path, plan.path, moved);
+    let text = rebaseLinks(cut?.remaining ?? plan.text, plan.path, plan.path, moved, disk.locate);
     if (text === plan.text) continue;
-    const blocks = (cut?.sections ?? []).map((section) => rebaseLinks(section, plan.path, archivePath, moved));
+    const blocks = (cut?.sections ?? []).map((section) => rebaseLinks(section, plan.path, archivePath, moved, disk.locate));
     if (plan.digest !== null && (plan.guarded || cut !== null)) {
       const after = planBodyDigest(withoutBom(text));
       if (after !== plan.digest) {
@@ -252,6 +291,7 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
     if (blocks.length > 0) {
       next.set(archivePath, appendToPlanArchive(next.get(archivePath) ?? null, plan, blocks, eol));
       touched.add(archivePath);
+      destinations.add(archivePath);
     }
   }
 
@@ -266,12 +306,14 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
   const writes = [...contents.entries()].map(([path, value]) => ({ path, action: value.action })).sort((a, b) => a.path.localeCompare(b.path));
   for (const write of writes) {
     if (await pathHasSymlink(root, write.path)) blockers.push(blocker('archive-symlink', 'Путь переноса содержит symbolic link: запись ушла бы за пределы проекта.', write.path));
-    else if (write.action === 'create' && await ignoredByGit(root, write.path)) {
+    else if (write.action === 'create' && disk.exists(write.path)) {
+      blockers.push(blocker('archive-destination-exists', 'На этом месте уже есть файл: его имя отличается только регистром или формой букв. archive его не перезаписывает: приведите имена к одному виду и запустите снова.', write.path));
+    } else if (destinations.has(write.path) && await ignoredByGit(root, write.path)) {
       blockers.push(blocker('archive-destination-ignored', 'Git игнорирует этот путь (.gitignore): перенесённое не попадёт в копию в облаке, а ссылки на свежем клоне станут битыми. Уберите правило из .gitignore и запустите снова.', write.path));
     }
   }
   const relinked = writes.filter((write) => write.action === 'update' && !touched.has(write.path)).map((write) => write.path);
-  const details = { log, audits, plan: sectionPlan?.path ?? null, planArchive: sectionPlan === null ? null : planArchivePath(sectionPlan.path), sections, digests, relinked };
+  const details = { log, logNote, audits, plan: sectionPlan?.path ?? null, planArchive: sectionPlan === null ? null : planArchivePath(sectionPlan.path), sections, digests, relinked };
   if (blockers.length > 0) return report(root, { blockers, ...details });
   if (options.apply !== true || writes.length === 0) return report(root, { ...details, writes });
 
@@ -284,6 +326,7 @@ export async function archiveProject(rootInput: string, options: ArchiveOptions 
   if (!outcome.rolledBack) {
     return report(root, {
       ok: false,
+      partial: true,
       ...details,
       writes,
       error: `Перенос прерван (${outcome.reason}), и откатить удалось не всё: ${outcome.unrestored.join(', ')}. Прежние версии файлов оставлены в ${ARCHIVE_STAGING_DIR}/backup/ — верните их вручную, затем удалите ${ARCHIVE_STAGING_DIR}.`,

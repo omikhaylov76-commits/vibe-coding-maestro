@@ -1,14 +1,17 @@
 import { posix } from 'node:path';
 import { frontmatter } from '../doctor/text.js';
 import { HOT_PATH, planFileName } from '../doctor/plans.js';
-import { ACTIVE_PLAN_NONE, APPROVAL_REQUIRED_STATUSES, isWikiRelativePlanRef, PLAN_APPROVAL_DIGEST_KEY, PLAN_NULL, planDigestMatches } from '../plan.js';
-import type { PlanStatus } from '../plan.js';
+import { ACTIVE_PLAN_NONE, isWikiRelativePlanRef, PLAN_APPROVAL_DIGEST_KEY, PLAN_NULL, planDigestMatches } from '../plan.js';
 import { countChars, formatChars } from './limits.js';
+import { linkName } from './links.js';
 import { markdownLines, withoutBom } from './markdown.js';
 import { blocker } from './types.js';
 import type { ArchiveBlocker } from './types.js';
 
 export const PLANS_ARCHIVE_DIR = 'wiki/plans/archive';
+
+/** Законченные планы: к ним не возвращаются, их отпечаток никто не сверит. `blocked` — пауза, он сюда не входит. */
+const FINISHED_STATUSES: readonly string[] = ['completed', 'rejected', 'superseded'];
 
 export interface PlanFile {
   path: string;
@@ -17,7 +20,7 @@ export interface PlanFile {
   meta: Record<string, string> | null;
   /** Записанный отпечаток; null — не записан. */
   digest: string | null;
-  /** Отпечаток сверяют doctor и preflight: план утверждён и отпечаток записан. */
+  /** Отпечаток сверят doctor и preflight, сейчас или после паузы: план не закончен и отпечаток записан. */
   guarded: boolean;
   /** Текст совпадает с отпечатком; без отпечатка сверять нечего. */
   intact: boolean;
@@ -36,7 +39,7 @@ export function planFiles(files: ReadonlyMap<string, string>): PlanFile[] {
       text,
       meta,
       digest,
-      guarded: digest !== null && APPROVAL_REQUIRED_STATUSES.includes(meta?.status as PlanStatus),
+      guarded: digest !== null && !FINISHED_STATUSES.includes(meta?.status ?? ''),
       intact: digest === null || planDigestMatches(digest, plain),
     });
   }
@@ -51,7 +54,7 @@ function planArchiveHeader(plan: PlanFile, eol: string): string {
   return [
     '---', 'type: plan-archive', `plan: ${plan.meta?.id ?? name.slice(0, -3)}`, `source: ${plan.path}`, '---', '',
     `# Архив плана: ${name.slice(0, -3)}`, '',
-    `Закрытые правки, перенесённые из [плана](../${name}) командой \`vibe-maestro archive\`: текст прежний, поправлены только адреса ссылок. Это история: читайте поиском, руками не правьте и обратно в план не копируйте.`, '', '',
+    `Закрытые правки, перенесённые из [плана](../${linkName(name)}) командой \`vibe-maestro archive\`: текст прежний, поправлены только адреса ссылок. Это история: читайте поиском, руками не правьте и обратно в план не копируйте.`, '', '',
   ].join(eol);
 }
 
@@ -100,6 +103,7 @@ export function plainTitle(value: string): string {
 }
 
 const startsWithWord = (title: string, wanted: string): boolean => title.startsWith(wanted) && !WORD_RE.test(title.slice(wanted.length));
+const isCollection = (title: string): boolean => COLLECTIONS.some((name) => startsWithWord(title, name));
 
 function mentionsSlice(text: string, slice: string): boolean {
   const escaped = slice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -148,13 +152,14 @@ function chooseSection(text: string, plan: PlanFile, argument: string, headings:
   if (found.length > 1) return { blocker: blocker('archive-section-ambiguous', `«${argument}» подходит к разделам: ${listed(found)}. Уточните начало заголовка; одинаковые заголовки так не перенести.`, plan.path) };
   const heading = found[0]!;
   const title = `«${heading.title}»`;
-  if (heading === collection) return { blocker: blocker('archive-section-collection', `${title} — сборник правок: внутри могут быть и открытые. Называйте закрытые правки по одной.`, plan.path) };
+  if (isCollection(heading.title)) return { blocker: blocker('archive-section-collection', `${title} — сборник правок: внутри могут быть и открытые. Называйте закрытые правки по одной.`, plan.path) };
   if (heading.start < collection.start) return { blocker: blocker('archive-section-main-part', `${title} — основная часть плана, она в архив не переносится. Переносить можно только разделы ниже «${collection.title}».`, plan.path) };
   const nested = headings.filter((other) => other.start > heading.start && other.start < heading.end);
   const slice = plan.meta?.current_slice;
   const declaredSlice = slice === undefined || slice === PLAN_NULL ? null : slice;
   for (const part of [heading, ...nested]) {
-    if (startsWithWord(part.title, APPROVAL)) return { blocker: blocker('archive-section-approval', `«${part.title}» — запись об утверждении плана, она остаётся в плане.`, plan.path) };
+    if (isCollection(part.title)) return { blocker: blocker('archive-section-collection', `Внутри ${title} стоит сборник правок «${part.title}»: внутри него могут быть и открытые.`, plan.path) };
+    if (part === heading ? startsWithWord(part.title, APPROVAL) : part.title === APPROVAL) return { blocker: blocker('archive-section-approval', `«${part.title}» — запись об утверждении плана, она остаётся в плане.`, plan.path) };
     if (declaredSlice !== null && mentionsSlice(part.title, declaredSlice)) return { blocker: blocker('archive-section-current-slice', `В заголовке «${part.title}» стоит текущая порция ${declaredSlice}: открытое в архив не переносится.`, plan.path) };
   }
   const section = text.slice(heading.start, heading.end);
@@ -166,11 +171,16 @@ function chooseSection(text: string, plan: PlanFile, argument: string, headings:
   return { choice: { heading, nested, already: POINTER_RE.test(rest.trim()), warnings } };
 }
 
+/** `active_plan` из `wiki/hot.md`. */
+export function declaredPlan(files: ReadonlyMap<string, string>): string {
+  const hot = files.get(HOT_PATH);
+  return (hot === undefined ? null : frontmatter(withoutBom(hot)))?.active_plan ?? ACTIVE_PLAN_NONE;
+}
+
 /** Находит названные разделы активного плана; ничего не меняет. */
 export function resolveSections(files: ReadonlyMap<string, string>, plans: readonly PlanFile[], wanted: readonly string[]): SectionsResolution {
   const refuse = (item: ArchiveBlocker, plan: PlanFile | null = null): SectionsResolution => ({ plan, chosen: [], blockers: [item] });
-  const hot = files.get(HOT_PATH);
-  const declared = (hot === undefined ? null : frontmatter(withoutBom(hot)))?.active_plan ?? ACTIVE_PLAN_NONE;
+  const declared = declaredPlan(files);
   if (declared === ACTIVE_PLAN_NONE) return refuse(blocker('archive-section-no-plan', 'Активного плана нет (active_plan: none): --section работает только в активном плане.', HOT_PATH));
   const plan = isWikiRelativePlanRef(declared) ? plans.find((item) => item.path === `wiki/${declared}`) : undefined;
   if (plan === undefined) return refuse(blocker('archive-section-plan-missing', `Объявленный активный план не найден: ${declared}.`, HOT_PATH));
@@ -178,7 +188,7 @@ export function resolveSections(files: ReadonlyMap<string, string>, plans: reado
   if (!plan.intact) return refuse(blocker('archive-plan-changed', 'Текст плана изменился после утверждения (approved_digest не совпадает): перенос записал бы новый отпечаток поверх неутверждённой правки. Покажите изменения человеку; после его «да» запишите отпечаток из вывода preflight и повторите.', plan.path), plan);
 
   const headings = planHeadings(plan.text);
-  const collection = headings.find((heading) => (heading.level === 2 || heading.level === 3) && COLLECTIONS.some((name) => startsWithWord(heading.title, name)));
+  const collection = headings.find((heading) => (heading.level === 2 || heading.level === 3) && isCollection(heading.title));
   if (collection === undefined) return refuse(blocker('archive-section-no-collection', `В плане нет раздела «${COLLECTIONS[0]}» или «${COLLECTIONS[1]}»: переносить можно только правки, которые стоят ниже него.`, plan.path), plan);
 
   const chosen: SectionChoice[] = [];
@@ -211,7 +221,7 @@ export function cutSections(text: string, chosen: readonly SectionChoice[], arch
   for (const { heading } of [...chosen].filter((item) => !item.already).sort((left, right) => left.heading.start - right.heading.start)) {
     sections.push(text.slice(heading.start, heading.end));
     const line = /\n$/.test(heading.line) ? heading.line : `${heading.line}${eol}`;
-    remaining += `${text.slice(cursor, heading.start)}${line}${eol}В архиве: [${name}](archive/${name}).${eol}${eol}`;
+    remaining += `${text.slice(cursor, heading.start)}${line}${eol}В архиве: [${name}](archive/${linkName(name)}).${eol}${eol}`;
     cursor = heading.end;
   }
   return { remaining: remaining + text.slice(cursor), sections };

@@ -4,13 +4,13 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
-## 0.4.4 — 2026-11-03
+## 0.4.4 — 2026-11-04
 
 The fifth part of 0.4: project memory stops growing. A slice result goes to its handoff and the plan keeps one line; old log entries, closed check reports and closed plan edits move to an archive inside the project, and the agent reads the archive by search; `doctor` says when memory gets long. Nothing is deleted: the moved text stays byte for byte, only link addresses change.
 
 ### Added
 
-- **`vibe-maestro archive`** moves old memory into an archive inside the project in one transaction with a backup and rollback. Without `--apply` it only shows what it would move, with sizes; `--json` reports what moved, what stayed and why. It works only on a project of its own version (otherwise «first `upgrade`»), and refuses on a symbolic link on its paths, on a leftover staging folder of its own or of `upgrade`, and on a destination that git ignores.
+- **`vibe-maestro archive`** moves old memory into an archive inside the project in one transaction with a backup and rollback. Without `--apply` it only shows what it would move, with sizes; `--json` reports what moved, what stayed and why. It works only on a project of its own version (otherwise «first `upgrade`»), and refuses on a symbolic link on its paths, on a leftover staging folder of its own or of `upgrade`, on a destination that git ignores, and on a destination that already exists under a name differing only in case or Unicode form.
   - **Log:** `wiki/log.md` over 20 000 characters — the last entries worth 10 000 characters stay (at least one), older ones go to `wiki/log/YYYY-MM.md` in their order. A pointer line is added to the log header once.
   - **Check reports:** closed ones (`status: resolved`, all findings resolved) go to `wiki/audits/archive/`. Open reports, reports `doctor` cannot read and reports named in a plan's `sources` stay, with the reason.
   - **Plan edits:** `--section "<heading start>"` (repeatable) moves a closed edit of the active plan to `wiki/plans/archive/<plan>.md`; the heading and a line «В архиве: …» stay in the plan. Only sections below «Правки после утверждения» or «Изменения после утверждения» can move; the main part of the plan, the collection itself, «Утверждение» and a section with the current slice in a heading are refused. A wrong name is refused with a list, not a byte written.

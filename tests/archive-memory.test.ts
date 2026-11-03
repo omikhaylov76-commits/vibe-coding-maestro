@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { executeArchiveCommand } from '../src/cli/archive-run.js';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { archiveProject } from '../src/core/archive/index.js';
 import { rebaseLinks } from '../src/core/archive/links.js';
@@ -481,5 +482,228 @@ describe('0.4.4 archive: закрытые правки плана', () => {
 
     expect(await runMaestroCli(['archive', '--path', root, '--section'], collectIo().io)).not.toBe(0);
     expect(await runMaestroCli(['doctor', '--path', root, '--section', 'x'], collectIo().io)).not.toBe(0);
+  });
+});
+
+describe('0.4.4 archive: находки ревью', () => {
+  /** На macOS и Windows имена, которые отличаются только регистром, — один файл. */
+  const sameFileInOtherCase = (root: string): boolean => existsSync(join(root, 'WIKI/HOT.MD'));
+  
+  it('файл архива с именем другого регистра не затирается: отчёт остаётся с причиной', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/archive/Report.md', closedAudit('AUD-OLD'));
+    await put(root, 'wiki/audits/report.md', closedAudit('AUD-NEW'));
+    const result = await archiveProject(root, { apply: true });
+    expect(await readUtf8(root, 'wiki/audits/archive/Report.md')).toContain('AUD-OLD');
+    if (sameFileInOtherCase(root)) {
+      expect(result.audits.kept).toEqual([expect.objectContaining({ path: 'wiki/audits/report.md', code: 'audit-archive-exists' })]);
+      expect(await readUtf8(root, 'wiki/audits/report.md')).toContain('AUD-NEW');
+    } else {
+      expect(await readUtf8(root, 'wiki/audits/archive/report.md')).toContain('AUD-NEW');
+    }
+  });
+
+  it('архив плана с именем другого регистра не затирается: отказ, ни байта', async () => {
+    const root = await project();
+    await withPlan(root, HUB, { digest: null });
+    await archiveProject(root, { apply: true, sections: ['Порция 01'] });
+    await rename(join(root, PLAN), join(root, 'wiki/plans/0002-WORK.md'));
+    await put(root, 'wiki/hot.md', (await readUtf8(root, 'wiki/hot.md')).replace('plans/0002-work.md', 'plans/0002-WORK.md'));
+    if (!sameFileInOtherCase(root)) return;
+    await expectRefused(root, ['SPEC DELTA 9'], 'archive-destination-exists');
+    expect(await readUtf8(root, PLAN_ARCHIVE)).toContain('## Порция 01');
+  });
+
+  it('ссылки и sources, которые doctor считает целыми, ведут на новое место: другой регистр, абсолютный адрес, обход через имя папки', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    const links = [`[абсолютный](${(await realpath(root)).split('\\').join('/')}/wiki/audits/AUD-1.md)`, '[обход](../../../проект/wiki/audits/AUD-1.md#finding)'];
+    if (sameFileInOtherCase(root)) links.push('[регистр](../audits/aud-1.md)');
+    await put(root, 'wiki/handoffs/2026-11-01-a.md', `# Передача\n\n${process.platform === 'win32' ? links.slice(1).join('\n') : links.join('\n')}\n`);
+    await expectDoctorClean(root);
+    expect((await archiveProject(root, { apply: true })).audits.moved).toHaveLength(1);
+    await expectDoctorClean(root);
+    const handoff = await readUtf8(root, 'wiki/handoffs/2026-11-01-a.md');
+    expect(handoff).toContain('(../audits/archive/AUD-1.md#finding)');
+    expect(handoff).not.toContain('(../audits/AUD-1.md');
+  });
+
+  it('в перенесённом отчёте адрес с обходом через имя папки тоже остаётся рабочим', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1', 'План: [README](../../../проект/wiki/plans/README.md).'));
+    await expectDoctorClean(root);
+    await archiveProject(root, { apply: true });
+    await expectDoctorClean(root);
+  });
+
+  it('отчёт, названный в sources в другом регистре, остаётся на месте', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    if (!sameFileInOtherCase(root)) return;
+    await withPlan(root, '# План\n', { digest: null, sources: '[wiki/audits/aud-1.md]' });
+    expect((await archiveProject(root, { apply: true })).audits.kept.map((item) => item.code)).toEqual(['audit-plan-source']);
+    await expectDoctorClean(root);
+  });
+
+  it('git: файл месяца уже есть, но игнорируется — отказ; правило родительского репозитория — отказ', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const longLog = (text: string): string => `${text}\n## 2026-10-01 — старая\n\n${'- подробность.\n'.repeat(1500)}\n## 2026-11-02 — новая\n\n- порция.\n`;
+    const root = await project();
+    await put(root, 'wiki/log.md', longLog(await readUtf8(root, 'wiki/log.md')));
+    await put(root, 'wiki/log/2026-10.md', '# Журнал: 2026-10\n');
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    await put(root, '.gitignore', 'wiki/log/\n');
+    await expectRefused(root, [], 'archive-destination-ignored');
+
+    const outer = await makeTempDir('outer-');
+    const nested = join(outer, 'app');
+    expect((await initProject({ target: nested, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    await put(nested, 'wiki/log.md', longLog(await readUtf8(nested, 'wiki/log.md')));
+    execFileSync('git', ['init', '-q'], { cwd: outer });
+    await put(outer, '.gitignore', 'app/wiki/log/\n');
+    await expectRefused(nested, [], 'archive-destination-ignored');
+  });
+
+  it('план на паузе (blocked): ссылка поправлена, отпечаток заменён, после возврата к работе гейт открыт', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    await withPlan(root, '# План\n\nОтчёт: [AUD-1](../audits/AUD-1.md).\n', { status: 'blocked', slice: '01-work' });
+    expect((await archiveProject(root, { apply: true })).digests).toHaveLength(1);
+    await put(root, PLAN, (await readUtf8(root, PLAN)).replace('status: blocked', 'status: active'));
+    await expectDoctorClean(root);
+    expect(await preflightCode(root)).toBe(0);
+  });
+
+  it.skipIf(process.platform === 'win32')('symbolic link на своих путях — отказ: журнал, папка отчётов, активный план, .maestro', async () => {
+    const outside = await makeTempDir('outside-');
+    const refused = async (root: string, sections: string[] = []): Promise<void> => {
+      const result = await archiveProject(root, { apply: true, sections });
+      expect(result.applied).toBe(false);
+      expect(result.blockers.map((item) => item.code)).toContain('archive-symlink');
+    };
+    const log = await project();
+    await put(outside, 'log.md', '# Журнал\n');
+    await rm(join(log, 'wiki/log.md'));
+    await symlink(join(outside, 'log.md'), join(log, 'wiki/log.md'));
+    await refused(log);
+
+    const audits = await project();
+    await mkdir(join(outside, 'audits'));
+    await rm(join(audits, 'wiki/audits'), { recursive: true, force: true });
+    await symlink(join(outside, 'audits'), join(audits, 'wiki/audits'));
+    await refused(audits);
+
+    const plan = await project();
+    await withPlan(plan, HUB, { digest: null });
+    await rename(join(plan, PLAN), join(outside, 'plan.md'));
+    await symlink(join(outside, 'plan.md'), join(plan, PLAN));
+    await refused(plan, ['Порция 01']);
+
+    const maestro = await project();
+    await rename(join(maestro, '.maestro'), join(outside, 'maestro-copy'));
+    await symlink(join(outside, 'maestro-copy'), join(maestro, '.maestro'));
+    await refused(maestro);
+    expect(existsSync(join(outside, 'maestro-copy/archive-staging'))).toBe(false);
+  });
+
+  it('файл на месте папки архива — понятный отказ; нечитаемый файл — отказ, а не падение', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    await put(root, 'wiki/audits/archive', 'это файл\n');
+    await expectRefused(root, [], 'archive-not-directory');
+
+    if (process.platform === 'win32' || process.getuid?.() === 0) return;
+    const locked = await project();
+    await put(locked, 'wiki/handoffs/2026-11-01-a.md', '# Передача\n');
+    await chmod(join(locked, 'wiki/handoffs/2026-11-01-a.md'), 0o000);
+    const json = collectIo();
+    expect(await runMaestroCli(['archive', '--path', locked, '--json'], json.io)).toBe(1);
+    expect(JSON.parse(json.stdout())).toMatchObject({ ok: false, blockers: [{ code: 'archive-unreadable', path: 'wiki/handoffs/2026-11-01-a.md' }] });
+    await chmod(join(locked, 'wiki/handoffs/2026-11-01-a.md'), 0o644);
+  });
+
+  it('откат не удался: CLI не говорит «изменений нет», называет частичное изменение', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    await put(root, 'wiki/handoffs/2026-11-01-a.md', 'Отчёт: [AUD-1](../audits/AUD-1.md).\n');
+    let count = 0;
+    const cli = collectIo();
+    const code = await executeArchiveCommand({
+      path: root,
+      json: false,
+      apply: true,
+      hooks: { beforeCommit: async () => {
+        count += 1;
+        // Третий путь: уже удалён отчёт, а вернуть его неоткуда.
+        if (count === 3) {
+          await rm(join(root, '.maestro/archive-staging/backup'), { recursive: true });
+          throw new Error('сбой');
+        }
+      } },
+    }, cli.io);
+    expect(code).toBe(1);
+    expect(cli.stderr()).toContain('проект изменён частично');
+    expect(cli.stderr()).not.toContain('изменений на диске нет');
+  });
+
+  it('второй сборник правок защищён так же, как первый; внутри раздела — тоже', async () => {
+    const root = await project();
+    const body = '# План\n\n## Цель\n\nТекст.\n\n## Изменения после утверждения\n\n### Старая\n\nТекст.\n\n## Правки после утверждения\n\n### Правка 1 — открытая (2026-11-01)\n\n- [ ] порция\n\n## Утверждение\n\nДа.\n';
+    await withPlan(root, body, { digest: null });
+    await expectRefused(root, ['Правки после утверждения'], 'archive-section-collection');
+    await expectRefused(root, ['Изменения после утверждения'], 'archive-section-collection');
+    await withPlan(root, body.replace('## Правки после утверждения', '#### Правки после утверждения').replace('## Изменения после утверждения', '### Изменения после утверждения\n\n## Сборка'), { digest: null });
+    await expectRefused(root, ['Сборка'], 'archive-section-collection');
+  });
+
+  it('журнал больше порога, а переносить нечего: сказано почему, а не «не больше порога»; отчёт в sources — без «закрытых отчётов нет»', async () => {
+    const dates = await project();
+    await put(dates, 'wiki/log.md', `# Журнал\n\n## 12.10.2026 — запись\n\n${'- подробность.\n'.repeat(1500)}`);
+    const first = collectIo();
+    expect(await runMaestroCli(['archive', '--path', dates], first.io)).toBe(0);
+    expect(first.stdout()).toContain('нет записей с датой в начале заголовка');
+    expect(first.stdout()).not.toContain('не больше порога');
+    expect((await archiveProject(dates)).logNote).toContain('20 000');
+
+    const single = await project();
+    await put(single, 'wiki/log.md', `# Журнал\n\n## 2026-10-12 — запись\n\n${'- подробность.\n'.repeat(1500)}`);
+    await put(single, 'wiki/audits/AUD-1.md', closedAudit('AUD-1'));
+    await withPlan(single, '# План\n', { digest: null, sources: '[wiki/audits/AUD-1.md]' });
+    const second = collectIo();
+    expect(await runMaestroCli(['archive', '--path', single], second.io)).toBe(0);
+    expect(second.stdout()).toContain('запись одна');
+    expect(second.stdout()).toContain('Остаётся wiki/audits/AUD-1.md');
+    expect(second.stdout()).not.toContain('закрытых отчётов нет');
+  });
+
+  it('особые знаки в адресах: скобки в кодировке и имя плана со скобками, процентом и пробелом дают рабочие ссылки', async () => {
+    const root = await project();
+    await put(root, 'wiki/audits/AUD(1).md', closedAudit('AUD-1'));
+    await put(root, 'wiki/handoffs/2026-11-01-a.md', 'Отчёт: [a](../audits/AUD%281%29.md).\n');
+    await expectDoctorClean(root);
+    await archiveProject(root, { apply: true });
+    await expectDoctorClean(root);
+    expect(await readUtf8(root, 'wiki/handoffs/2026-11-01-a.md')).toContain('(../audits/archive/AUD%281%29.md)');
+
+    for (const name of ['0002-demo(v2).md', '0002-100%.md', '0002 demo.md']) {
+      const named = await project();
+      await withPlan(named, HUB, { digest: null });
+      await rename(join(named, PLAN), join(named, 'wiki/plans', name));
+      await put(named, 'wiki/hot.md', (await readUtf8(named, 'wiki/hot.md')).replace('active_plan: plans/0002-work.md', `active_plan: plans/${name}`));
+      expect((await archiveProject(named, { apply: true, sections: ['Порция 01'] })).applied).toBe(true);
+      await expectDoctorClean(named);
+      expect((await readUtf8(named, `wiki/plans/${name}`)).match(/^В архиве: \[[^\]]*\]\(archive\/[^\s)]+\)\.$/m), name).not.toBeNull();
+      const again = await archiveProject(named, { sections: ['Порция 01'] });
+      expect(again.sections.map((item) => item.status), name).toEqual(['already']);
+    }
+  });
+
+  it('вложенный заголовок «Утверждение правки 1» не мешает; вложенный ровно «Утверждение» — отказ', async () => {
+    const root = await project();
+    const body = (nested: string): string => `# План\n\n## Изменения после утверждения\n\n### Правка 1 — вход (2026-11-01)\n\nТекст.\n\n#### ${nested}\n\nТекст.\n\n## Утверждение\n\nДа.\n`;
+    await withPlan(root, body('Утверждение правки 1'), { digest: null });
+    expect((await archiveProject(root, { sections: ['Правка 1'] })).ok).toBe(true);
+    await withPlan(root, body('Утверждение'), { digest: null });
+    await expectRefused(root, ['Правка 1'], 'archive-section-approval');
   });
 });

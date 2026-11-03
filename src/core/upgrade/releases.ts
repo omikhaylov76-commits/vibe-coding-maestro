@@ -481,11 +481,11 @@ const V044_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'maestro/templates/handoff.md': '1a691e4364947b1360764a50b685ff0b4fdd8c72b2e66c6750cf08aafecc5f33',
   'protocols/build.md': 'b1f688be1f243a733c01bcb43bd26ae2410f32e8d5defa97f4d66415ece6f028',
   'protocols/completion.md': '8f94b5dcb03f72e81030d3888c34dabe827c01471ad764941586f18e6f6cbdc1',
-  'protocols/handoff.md': '711be0c19476d0a7ff70ba44ca82d96bcfd45d1c08125726936117aa3f6064a3',
+  'protocols/handoff.md': '616d52a4b89cc39f7ec33730bce36e4811a62659e88e488e49a002c16c7abc1d',
   'protocols/plan.md': '1cc821c458a647e2bdb00271616eaf921d34e5985c7d16f7cca9e460d0969066',
   'protocols/status.md': '450fd472d2326a7b2c20e728a390b3acf491b54966db9aa707aa2be9f8ec63c2',
   'protocols/wiki.md': 'f0918a016f6d7c994801b41660926ad30b945375f96b7f89e92db4ec4740ab6b',
-  'wiki/plans/README.md': '25cf07eaf0874d0f27150495011c35efcbab657568f388d89713fd0fd2e96e6d',
+  'wiki/plans/README.md': '74d17873f322197ec1126408b8817ee998ef02749a0e2644e264f45ae091574c',
   'wiki/plans/TEMPLATE.md': 'a31964e24526d034579bda07789b7f3b4ea04b02f1324fdd1fe1b6bcab62870a',
 };
 

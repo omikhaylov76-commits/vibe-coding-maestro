@@ -241,3 +241,78 @@ describe('0.4.4: doctor сообщает о длине памяти, ничег�
     expect((await memory(root)).map((item) => item.code)).toEqual(['memory-log-long']);
   });
 });
+
+describe('0.4.4: договор текстов о памяти', () => {
+  const template = (path: string): Promise<string> => readFile(join(process.cwd(), 'templates/project', path), 'utf8');
+  const RESULT_LINE = '` → [итог](../handoffs/<имя файла>.md)`';
+  const ARCHIVES = ['wiki/log/', 'wiki/plans/archive/', 'wiki/audits/archive/'];
+
+  it('одно правило об итоге порции: в протоколах передачи и работы, в README планов и шаблоне плана — одна и та же строка', async () => {
+    for (const path of ['protocols/handoff.md', 'protocols/build.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md']) {
+      const text = (await template(path)).replace(/\s+/g, ' ');
+      expect(text, path).toContain('Итог порции — в передаче; в плане одна строка');
+      expect(text, path).toContain(RESULT_LINE);
+    }
+    for (const path of ['protocols/handoff.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md']) {
+      expect((await template(path)).replace(/\s+/g, ' '), path).toMatch(/[Ии]тог, приёмку и переход к следующей порции (?:в план|сюда) не (?:пиши|пишут)/);
+    }
+    expect(await template('maestro/templates/handoff.md')).toContain('Итог порции — здесь, а не в плане');
+  });
+
+  it('строка итога из шаблона — та, что отпечаток пропускает: другое имя файла, без пробела', () => {
+    const line = (tail: string): string => `---\nid: PLAN-0001\n---\n\n1. [x] Порция.${tail}\n`;
+    expect(planBodyDigest(line(' → [итог](../handoffs/2026-11-03-vhod.md)'))).toBe(planBodyDigest(line('')));
+  });
+
+  it('пороги в тексте равны порогам в коде', async () => {
+    const number = (value: number): string => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    expect(await template('protocols/build.md')).toContain(`до ${number(HOT_LIMIT)} знаков, примерно 60 строк`);
+    expect(await template('protocols/handoff.md')).toContain(`до ${number(HANDOFF_LIMIT)} знаков`);
+    expect(await template('protocols/wiki.md')).toContain(`порога (${number(LOG_LIMIT)} знаков)`);
+    expect(await template('wiki/log.md')).toContain(`${number(LOG_LIMIT)} знаков`);
+    expect(await template('protocols/build.md')).not.toContain('до 60 строк');
+  });
+
+  it('архив читается поиском: правило есть везде, где решают, что читать', async () => {
+    for (const path of ['.claude/rules/maestro.md', 'protocols/wiki.md', 'protocols/plan.md', 'protocols/build.md']) {
+      const text = await template(path);
+      for (const archive of ARCHIVES) expect(text, `${path}: ${archive}`).toContain(archive);
+      expect(text, path).toContain('ищи по имени или слову и читай найденный кусок');
+    }
+    expect(await template('protocols/status.md')).toContain('архив не читай');
+    expect(await template('protocols/wiki.md')).toContain('в отличие от `wiki/attic/`');
+  });
+
+  it('archive запускает агент при передаче, сам; при завершении — до итоговой передачи', async () => {
+    const handoff = await template('protocols/handoff.md');
+    const steps = ['Добавь одну запись в конец `wiki/log.md`', 'vibe-maestro archive --path .', 'Запусти `doctor`'].map((step) => handoff.indexOf(step));
+    expect(steps.every((at) => at !== -1)).toBe(true);
+    expect([...steps].sort((left, right) => left - right)).toEqual(steps);
+    expect(handoff).toContain('без вопроса человеку');
+    expect(handoff).toContain('«убрал старое в архив, ничего не удалено»');
+    const completion = await template('protocols/completion.md');
+    expect(completion.indexOf('vibe-maestro archive --path .')).toBeLessThan(completion.indexOf('Итоговая передача дел'));
+  });
+
+  it('новый план: порции списком с [ ]; раздел правок — ниже порядка работ и выше «Утверждение»; стартовый план — тоже с [ ]', async () => {
+    const plan = await template('wiki/plans/TEMPLATE.md');
+    expect(plan).toContain('1. [ ] Первая порция');
+    expect(plan.indexOf('## Порядок работ')).toBeLessThan(plan.indexOf('## Правки после утверждения'));
+    expect(plan.indexOf('## Правки после утверждения')).toBeLessThan(plan.indexOf('## Утверждение'));
+    expect(await template('wiki/plans/0001-starter.md')).toContain('1. [ ] Пройти `/start`');
+    for (const path of ['protocols/plan.md', 'protocols/build.md', 'wiki/plans/README.md']) expect(await template(path), path).toContain('### Правка N — суть (дата)');
+  });
+
+  it('правила Maestro — не длиннее 45 строк', async () => {
+    expect((await template('.claude/rules/maestro.md')).trimEnd().split('\n').length).toBeLessThanOrEqual(45);
+  });
+
+  it.each(['light', 'standard', 'advanced'] as const)('свежий проект %s: doctor --strict зелёный, ссылок на папки архива нет', async (depth) => {
+    const root = join(await makeTempDir('fresh-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect((await doctorProject(root, { strict: true })).findings.filter((item) => item.level !== 'info')).toEqual([]);
+    const index = await readUtf8(root, 'wiki/index.md');
+    expect(index).toContain('`plans/archive/`');
+    expect(index).not.toMatch(/\]\((?:log|plans\/archive|audits\/archive)\//);
+  });
+});

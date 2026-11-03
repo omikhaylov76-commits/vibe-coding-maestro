@@ -55,7 +55,7 @@ const NEW_PATHS = [
 const NEW_PROJECT_OWNED = ['.claude/rules/project.md', '.claude/settings.json', 'wiki/icebox.md', 'wiki/passport.md', 'wiki/plans/0001-starter.md', 'wiki/restore.md'];
 
 /** Managed-файлы, которые остаются за Maestro и обновляются. */
-const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-audit.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/wiki.md'];
+const MANAGED_UPDATED = ['.claude/agents/code-reviewer.md', '.claude/commands/build.md', 'maestro/inbox/README.md', 'maestro/runbooks/cowork-audit.md', 'maestro/runbooks/cowork-discovery.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/status.md', 'protocols/wiki.md'];
 
 /** Мелкие протоколы, которые 0.4.3 убрал из состава: нетронутые upgrade удаляет. */
 const REMOVED = [

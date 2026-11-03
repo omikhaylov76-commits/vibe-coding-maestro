@@ -39,6 +39,8 @@ const INBOX_GITATTRIBUTES_PATH = `${INBOX_DIR}/.gitattributes`;
 /** Страница отложенных идей (0.4.3) и каталог памяти, в котором о ней стоит строка. */
 const ICEBOX_PATH = 'wiki/icebox.md';
 const WIKI_INDEX_PATH = 'wiki/index.md';
+/** С этой версии память уходит в архив командой `archive`. */
+const MEMORY_ARCHIVE_SINCE = '0.4.4';
 
 /** Версия, с которой README проекта кладут create и upgrade; с неё и дальше удалённый README не возвращается. */
 const README_SINCE = '0.4.2';
@@ -615,9 +617,13 @@ export async function analyzeUpgrade(rootInput: string): Promise<UpgradePlan> {
     // git не перечитывает его, пока файл не тронут. Переписать его в git байт в байт можно только явно.
     result.notes.push('Материалы, которые уже лежат в maestro/inbox/, git сам не перепишет. Чтобы он хранил их байт в байт, после обновления выполните `git add --renormalize maestro/inbox` и закоммитьте вместе с обновлением. Если файл уже был нормализован (например, взят из свежего клона на другом компьютере), исходные байты есть только в его источнике.');
   }
-  // Каталог памяти принадлежит проекту: upgrade его не правит, но о новой странице напоминает.
-  if (creates.some((item) => item.path === ICEBOX_PATH) && !(await readFile(join(root, WIKI_INDEX_PATH), 'utf8').catch(() => '')).includes('icebox.md')) {
+  // Каталог памяти принадлежит проекту: upgrade его не правит, но о новых местах напоминает.
+  const wikiIndex = await readFile(join(root, WIKI_INDEX_PATH), 'utf8').catch(() => '');
+  if (creates.some((item) => item.path === ICEBOX_PATH) && !wikiIndex.includes('icebox.md')) {
     result.notes.push('Появилась страница отложенных идей wiki/icebox.md. Каталог wiki/index.md принадлежит проекту, и upgrade его не правит: допишите в него строку со ссылкой на icebox.md.');
+  }
+  if ((compareVersions(fromVersion, MEMORY_ARCHIVE_SINCE) ?? 0) < 0 && !wikiIndex.includes('plans/archive/')) {
+    result.notes.push('Появилась команда archive: старая память уходит в архив внутри проекта — wiki/log/, wiki/plans/archive/, wiki/audits/archive/. Каталог wiki/index.md принадлежит проекту, и upgrade его не правит: по желанию допишите в него строку об архиве.');
   }
   result.metadata = [MANIFEST_PATH, CHECKSUMS_PATH];
   result.preserves = [

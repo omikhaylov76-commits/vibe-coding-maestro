@@ -122,6 +122,13 @@ describe('0.4.3: upgrade --diff показывает сами правки', () 
 /** Ссылки Markdown сравниваются по тексту: адрес переехавшего раздела другой. */
 const withoutLinkTargets = (text: string): string => text.replace(/\]\([^)]*\)/g, ']');
 
+/** Единственные правки 0.4.4 в разделах, переехавших в 0.4.3 дословно. */
+const EDITS_044: readonly (readonly [string, string])[] = [
+  ['если меняется продуктовая граница.', 'если меняется продуктовая граница. В утверждённом плане это раздел «Правки после утверждения»: `### Правка N — суть (дата)`.'],
+  ['только нужные source-фрагменты.', 'только нужные source-фрагменты. Архив (`wiki/log/`, `wiki/plans/archive/`, `wiki/audits/archive/`) целиком не читай: ищи по имени или слову и читай найденный кусок.'],
+  ['(ориентир — до 60 строк)', '(ориентир — до 6 000 знаков, примерно 60 строк)'],
+];
+
 describe('0.4.3: мелкие протоколы вошли в соседние', () => {
   const removed = Object.keys(REMOVED_PATHS).sort();
 
@@ -153,7 +160,8 @@ describe('0.4.3: мелкие протоколы вошли в соседние'
         const owner = owners.get(id);
         expect(owner, id).toMatch(/^protocols\/(build|audit|wiki)\.md$/);
         const text = withoutLinkTargets(await packageText(`templates/project/${owner}`));
-        expect(text, `${id} в ${owner}`).toContain(withoutLinkTargets(match[1] as string));
+        const moved = EDITS_044.reduce((section, [from, to]) => section.replace(from, to), match[1] as string);
+        expect(text, `${id} в ${owner}`).toContain(withoutLinkTargets(moved));
         sections += 1;
       }
     }

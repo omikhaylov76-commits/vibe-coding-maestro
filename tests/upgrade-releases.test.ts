@@ -46,9 +46,9 @@ const REMOVED_IN_043 = [
 
 const union = (...lists: readonly string[][]): string[] => [...new Set(lists.flat())].sort();
 
-/** Файлы Maestro, которые 0.4.3 переписывает на нетронутом проекте любой прошлой версии (completion.md — с 0.4.0). */
+/** Файлы Maestro, которые 0.4.3 и 0.4.4 переписывают на нетронутом проекте любой прошлой версии (completion.md — с 0.4.0). */
 const UPDATED_IN_043 = union([
-  '.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/wiki.md',
+  '.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/status.md', 'protocols/wiki.md',
 ], UPDATED_IN_042);
 
 /** То же для проектов 0.3.0 и новее: у них уже есть правила Maestro, образец передачи и README и шаблон планов. */
@@ -326,11 +326,11 @@ describe('upgrade с опубликованных бет на текущую в�
 
   it('правка в файле, который upgrade не трогает, его не блокирует и сохраняется', async () => {
     const { root } = await materialize('0.3.0-beta.3-standard');
-    const edited = `${await readUtf8(root, 'protocols/status.md')}\nЛокальная заметка.\n`;
-    await writeFile(join(root, 'protocols/status.md'), edited, 'utf8');
+    const edited = `${await readUtf8(root, '.claude/commands/status.md')}\nЛокальная заметка.\n`;
+    await writeFile(join(root, '.claude/commands/status.md'), edited, 'utf8');
     const result = await upgradeProject(root, { apply: true });
     expect(result.applied).toBe(true);
-    expect(await readUtf8(root, 'protocols/status.md')).toBe(edited);
+    expect(await readUtf8(root, '.claude/commands/status.md')).toBe(edited);
   });
 
   it('проект более новой версии upgrade не трогает и называет нужную команду', async () => {
@@ -641,7 +641,7 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
       expect(analysis.preserves, path).toContain(path);
     }
     // Каталог памяти проекта upgrade не правит, но о новой странице icebox.md напоминает.
-    expect(analysis.notes).toEqual([expect.stringContaining('wiki/icebox.md')]);
+    expect(analysis.notes).toEqual([expect.stringContaining('wiki/icebox.md'), expect.stringContaining('wiki/plans/archive/')]);
     expect(await snapshotTree(root)).toEqual(before);
   });
 
@@ -775,7 +775,7 @@ describe('upgrade с опубликованного 0.4.2 на текущую в
   /** Всё, что upgrade с 0.4.2 переписывает на нетронутом проекте: изменения 0.4.3 и закреплённая версия в командах. */
   const UPDATED_FROM_042 = [
     '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/handoff.md',
-    'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md', 'protocols/wiki.md',
+    'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md', 'protocols/status.md', 'protocols/wiki.md',
     'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
   ];
   const OWNED = ['wiki/hot.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'README.md'];

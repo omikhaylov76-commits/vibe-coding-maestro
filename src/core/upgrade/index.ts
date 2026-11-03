@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
-import { copyFile, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { applyTransaction } from '../transaction.js';
+import type { TransactionHooks } from '../transaction.js';
 import { diffText } from '../text-diff.js';
 import type { TextDiff } from '../text-diff.js';
 import { analyzeUpgrade, STAGING_DIR } from './analyze.js';
@@ -10,14 +11,8 @@ export { analyzeUpgrade, STAGING_DIR } from './analyze.js';
 export type { UpgradeAnalysis, UpgradeBlocker, UpgradeChange, UpgradePlan, UpgradeStatus } from './analyze.js';
 export { BASELINE_ID } from './baseline.js';
 
-export interface UpgradeHooks {
-  /**
-   * Тестовый шов: вызывается перед публикацией очередного пути.
-   * Позволяет доказать откат, не полагаясь на права доступа конкретной ОС.
-   * В обычной работе не задаётся.
-   */
-  beforeCommit?: (path: string) => Promise<void>;
-}
+/** Тестовый шов транзакции — см. `TransactionHooks`. */
+export type UpgradeHooks = TransactionHooks;
 
 export interface UpgradeOptions {
   /** Запись выполняется только по явному apply; по умолчанию это dry-run. */
@@ -72,33 +67,9 @@ export async function upgradeDiffs(plan: UpgradePlan): Promise<UpgradeFileDiff[]
   return diffs;
 }
 
-/** Папки удалённых файлов, от глубоких к верхним: убираются, только если опустели. */
-function parentDirs(paths: readonly string[]): string[] {
-  const dirs = new Set<string>();
-  for (const path of paths) {
-    const parts = path.split('/').slice(0, -1);
-    for (let i = parts.length; i > 0; i -= 1) dirs.add(parts.slice(0, i).join('/'));
-  }
-  return [...dirs].sort((a, b) => b.split('/').length - a.split('/').length || a.localeCompare(b));
-}
-
-/** Каталоги, которых ещё нет: только их можно удалить при откате. */
-function missingDirs(root: string, relativePath: string): string[] {
-  const parts = relativePath.split('/').slice(0, -1);
-  const created: string[] = [];
-  let current = '';
-  for (const part of parts) {
-    current = current === '' ? part : `${current}/${part}`;
-    if (!existsSync(join(root, current))) created.push(current);
-  }
-  return created;
-}
-
 /** Содержимое Maestro пишется с LF; дописанный файл проекта (`latin1`) — байт в байт. */
-async function writeStaged(absolute: string, content: string, encoding?: 'latin1'): Promise<void> {
-  await mkdir(dirname(absolute), { recursive: true });
-  if (encoding === 'latin1') await writeFile(absolute, Buffer.from(content, 'latin1'));
-  else await writeFile(absolute, content.replace(/\r\n/g, '\n'), 'utf8');
+function stagedBytes(content: string, encoding?: 'latin1'): Buffer {
+  return encoding === 'latin1' ? Buffer.from(content, 'latin1') : Buffer.from(content.replace(/\r\n/g, '\n'), 'utf8');
 }
 
 /**
@@ -116,90 +87,30 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
   if (plan.analysis.status !== 'upgradable' || options.apply !== true) return result(plan);
 
   const { root, writes } = plan;
-  const staging = join(root, STAGING_DIR);
-  const newDir = join(staging, 'new');
-  const backupDir = join(staging, 'backup');
-
-  const createdDirs: string[] = [];
-  for (const write of writes) {
-    if (write.action !== 'create') continue;
-    for (const dir of missingDirs(root, write.path)) if (!createdDirs.includes(dir)) createdDirs.push(dir);
-  }
-
-  try {
-    await mkdir(staging, { recursive: false });
-    for (const write of writes) {
-      if (write.action !== 'remove') await writeStaged(join(newDir, write.path), write.content, write.encoding);
-      if (write.action !== 'create') {
-        // Backup — точная копия байтов: откат возвращает обновлённый или удалённый файл таким, каким он был.
-        await mkdir(dirname(join(backupDir, write.path)), { recursive: true });
-        await copyFile(join(root, write.path), join(backupDir, write.path));
-      }
+  const outcome = await applyTransaction(
+    root,
+    STAGING_DIR,
+    writes.map((write) => ({ path: write.path, action: write.action, ...(write.action === 'remove' ? {} : { bytes: stagedBytes(write.content, write.encoding) }) })),
+    options.hooks,
+  );
+  if (!outcome.ok) {
+    if (outcome.stage === 'prepare') {
+      return result(plan, { ok: false, error: `Подготовка транзакции не удалась, проект не изменён: ${outcome.reason}` });
     }
-  } catch (cause) {
-    await rm(staging, { recursive: true, force: true });
-    return result(plan, {
-      ok: false,
-      error: `Подготовка транзакции не удалась, проект не изменён: ${cause instanceof Error ? cause.message : String(cause)}`,
-    });
-  }
-
-  const committed: typeof writes = [];
-  try {
-    for (const write of writes) {
-      if (options.hooks?.beforeCommit !== undefined) await options.hooks.beforeCommit(write.path);
-      const target = join(root, write.path);
-      if (write.action === 'remove') {
-        await rm(target);
-      } else {
-        await mkdir(dirname(target), { recursive: true });
-        await rename(join(newDir, write.path), target);
-      }
-      committed.push(write);
-    }
-  } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
-    const unrestored: string[] = [];
-    for (const write of [...committed].reverse()) {
-      const target = join(root, write.path);
-      try {
-        if (write.action === 'create') {
-          await rm(target, { force: true });
-        } else {
-          await mkdir(dirname(target), { recursive: true });
-          await rename(join(backupDir, write.path), target);
-        }
-      } catch {
-        unrestored.push(write.path);
-      }
-    }
-    if (unrestored.length > 0) {
-      // Откат не удался: backup — единственная копия прежних файлов, удалять его нельзя.
+    if (!outcome.rolledBack) {
       return result(plan, {
         ok: false,
         rolledBack: false,
-        error: `Применение прервано (${reason}), и откатить удалось не всё: ${unrestored.join(', ')}. Прежние версии файлов оставлены в ${STAGING_DIR}/backup/ — верните их вручную, затем удалите ${STAGING_DIR}.`,
+        error: `Применение прервано (${outcome.reason}), и откатить удалось не всё: ${outcome.unrestored.join(', ')}. Прежние версии файлов оставлены в ${STAGING_DIR}/backup/ — верните их вручную, затем удалите ${STAGING_DIR}.`,
       });
     }
-    // Каталоги, созданные ради новых путей, удаляются только пустыми и только свои.
-    for (const dir of [...createdDirs].reverse()) await rmdir(join(root, dir)).catch(() => undefined);
-    await rm(staging, { recursive: true, force: true });
-    return result(plan, {
-      ok: false,
-      rolledBack: true,
-      error: `Применение прервано и откачено: ${reason}`,
-    });
+    return result(plan, { ok: false, rolledBack: true, error: `Применение прервано и откачено: ${outcome.reason}` });
   }
-
-  const removedFiles = writes.filter((write) => write.action === 'remove').map((write) => write.path);
-  // Папка, которую опустошило удаление (например, protocols/build/), уходит вместе с файлами.
-  for (const dir of parentDirs(removedFiles)) await rmdir(join(root, dir)).catch(() => undefined);
-  await rm(staging, { recursive: true, force: true });
   return result(plan, {
     ok: true,
     applied: true,
     createdFiles: writes.filter((write) => write.action === 'create').map((write) => write.path),
     updatedFiles: writes.filter((write) => write.action === 'update').map((write) => write.path),
-    removedFiles,
+    removedFiles: writes.filter((write) => write.action === 'remove').map((write) => write.path),
   });
 }

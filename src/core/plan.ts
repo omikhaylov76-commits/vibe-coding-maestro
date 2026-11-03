@@ -56,11 +56,26 @@ export const PLAN_DIGEST_KEYS = ['id', 'kind', 'scale', 'mode', 'governance', 'r
 const CHECKED_ITEM_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[[xX]\]/gm;
 
 /**
+ * Строка итога закрытой порции: один хвост ` → [итог](../handoffs/<имя>.md)` в конце строки
+ * с `[x]`. Другой текст ссылки, другая папка, второй хвост, хвост у `[ ]` или на строке
+ * продолжения пункта — это уже текст плана.
+ */
+const RESULT_LINE_RE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)(\[[xX]\])(.*?) → \[итог\]\(\.\.\/handoffs\/[^\s()/]+\.md\)$/gm;
+
+const clearMarks = (body: string): string => body.replace(CHECKED_ITEM_RE, '$1[ ]');
+/** Пробелы перед хвостом — конец строки пункта, а его пробелы в отпечаток не входят. */
+const withoutResult = (body: string, mark: (checked: string) => string): string =>
+  body.replace(RESULT_LINE_RE, (_line, lead: string, checked: string, item: string) => `${lead}${mark(checked)}${item.replace(/[ \t]+$/, '')}`);
+const dropResults = (body: string): string => withoutResult(body, (checked) => checked);
+const reopenResults = (body: string): string => withoutResult(body, () => '[ ]');
+
+/**
  * sha256 утверждённого: классификация из frontmatter плюс текст плана (LF, без хвостовых
- * пробелов). Отметки выполненных пунктов не входят: отметить пункт — не изменить план.
+ * пробелов). Отметки выполненных пунктов и строки итога не входят: закрыть порцию — не
+ * изменить план. Без строк итога отпечаток тот же, что в 0.4.3.
  */
 export function planBodyDigest(text: string): string {
-  return digest(text, (body) => body.replace(CHECKED_ITEM_RE, '$1[ ]'));
+  return digest(text, (body) => clearMarks(dropResults(body)));
 }
 
 /**
@@ -71,9 +86,19 @@ export function legacyPlanBodyDigest(text: string): string {
   return digest(text, (body) => body);
 }
 
-/** Записанный отпечаток совпадает с планом — новым способом или прежним. */
+/**
+ * Записанный отпечаток совпадает с планом — нынешним способом или одним из прежних.
+ * Строка итога не мешает ни одному: в отпечатке 0.3.0–0.4.2 отметки входят в текст, поэтому
+ * порция с итогом читается и как закрытая до утверждения, и как закрытая после него.
+ */
 export function planDigestMatches(approvedDigest: string, text: string): boolean {
-  return approvedDigest === planBodyDigest(text) || approvedDigest === legacyPlanBodyDigest(text);
+  return [
+    planBodyDigest(text),
+    digest(text, clearMarks),
+    legacyPlanBodyDigest(text),
+    digest(text, dropResults),
+    digest(text, reopenResults),
+  ].includes(approvedDigest);
 }
 
 function digest(text: string, normalizeBody: (body: string) => string): string {

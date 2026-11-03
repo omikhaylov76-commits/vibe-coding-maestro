@@ -17,6 +17,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   preflight           механическая проверка права начинать код по активному плану
   pack                архив тега сдачи для заказчика: без папок Maestro, с HANDOVER.md
   context             размер текущей сессии Claude Code: пора ли в новую сессию
+  archive             перенос старой памяти проекта в архив внутри проекта (ничего не удаляет)
 
 Общие опции команд:
   --path <путь>       корень проверяемого проекта (по умолчанию текущая папка)
@@ -41,6 +42,10 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   --allow <путь>      файл, который человек проверил: не секрет; флаг можно повторять
   --dry-run           состав архива с подсветкой внутреннего; ничего не пишет
 
+Опции archive:
+  --apply             перенести; без флага только показывает, что перенесёт
+  --section <начало>  закрытая правка активного плана по началу заголовка; флаг можно повторять
+
 Опции context:
   --window <токены>   окно модели в токенах (по умолчанию — по модели из журнала сессии)
 
@@ -52,7 +57,7 @@ const HELP = `${PRODUCT_NAME} — служебный CLI проекта.
   --help, -h          эта справка
   --version, -v       версия`;
 
-const COMMANDS = ['doctor', 'skills', 'sources', 'upgrade', 'preflight', 'pack', 'context'] as const;
+const COMMANDS = ['doctor', 'skills', 'sources', 'upgrade', 'preflight', 'pack', 'context', 'archive'] as const;
 type Command = (typeof COMMANDS)[number];
 
 export interface CommandOptions {
@@ -72,6 +77,7 @@ export interface CommandOptions {
   allow?: string[];
   dryRun?: boolean;
   window?: number;
+  sections?: string[];
 }
 
 type ParseResult =
@@ -109,9 +115,17 @@ export function parseMaestroArgs(argv: readonly string[]): ParseResult {
         break;
       }
       case '--apply': {
-        const message = only(arg, 'upgrade');
-        if (message !== null) return { kind: 'error', message };
+        if (first !== 'upgrade' && first !== 'archive') return { kind: 'error', message: `Флаг ${arg} доступен только для upgrade и archive.` };
         options.apply = true;
+        break;
+      }
+      case '--section': {
+        const message = only(arg, 'archive');
+        if (message !== null) return { kind: 'error', message };
+        const section = value();
+        if (section === undefined || section.trim() === '') return { kind: 'error', message: `Флаг ${arg} требует значение: начало заголовка раздела.` };
+        options.sections = [...(options.sections ?? []), section];
+        i += 1;
         break;
       }
       case '--diff': {
@@ -269,6 +283,10 @@ export async function runMaestroCli(argv: readonly string[], io: CliIo = process
   if (parsed.kind === 'pack') {
     const { executePackCommand } = await import('./pack-run.js');
     return executePackCommand({ ...parsed.options, tag: parsed.options.tag as string }, io);
+  }
+  if (parsed.kind === 'archive') {
+    const { executeArchiveCommand } = await import('./archive-run.js');
+    return executeArchiveCommand(parsed.options, io);
   }
   if (parsed.kind === 'context') {
     const { executeContextCommand } = await import('./context-run.js');

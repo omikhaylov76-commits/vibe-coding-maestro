@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.4.3';
+const BETA_VERSION = '0.4.4';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -196,11 +196,26 @@ describe('этапы 12–13: CI и документационные контр�
       for (const value of ['--diff', '--dry-run', '0.4.2', 'maestro/templates/audit.md', 'wiki/icebox.md']) expect(doc, `${path}: ${value}`).toContain(value);
     }
     const guide = await text('docs/USER_GUIDE.md');
-    expect(guide).toContain('Откуда upgrade умеет обновлять: 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1 и 0.4.2.');
+    // Список версий растёт с каждым выпуском; 0.4.2 в нём остаётся.
+    expect(guide).toContain('Откуда upgrade умеет обновлять: 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2');
     for (const value of ['**Что меняет переход на 0.4.3.**', '## Проверки на GitHub', 'cancel-in-progress', 'доступов не было', 'по названию модели']) expect(guide, value).toContain(value);
     expect(guide).not.toContain('mini-plan в `wiki/progress/`');
     expect(await text('README.md')).not.toContain('mini-plan в `wiki/progress/`');
     expect(await text('docs/ROADMAP.md')).toContain('**0.4.3** (выпуск');
+  });
+
+  it('0.4.4: заметки к выпуску, команда archive и версии upgrade названы в документах', async () => {
+    const changelog = await text('CHANGELOG.md');
+    const entry = changelog.slice(changelog.indexOf('## 0.4.4'), changelog.indexOf('## 0.4.3'));
+    expect(entry).toContain('### For those who create projects with their own scripts');
+    for (const value of [
+      '`vibe-maestro archive`', '`wiki/log/YYYY-MM.md`', '`wiki/audits/archive/`', '`wiki/plans/archive/<plan>.md`', '`approved_digest`', '`memory-hot-long`',
+      '`memory-plan-long`', '`memory-log-long`', '`memory-handoff-long`', '` → [итог](../handoffs/<file>.md)`', 'create-vibe-maestro@0.4.4',
+    ]) expect(entry, value).toContain(value);
+    const guide = await text('docs/USER_GUIDE.md');
+    for (const value of ['## Память не разрастается', '**Что меняет переход на 0.4.4.**', 'archive --path . --section', '`memory-handoff-long`', '0.4.2 и 0.4.3']) expect(guide, value).toContain(value);
+    expect(await text('README.md')).toContain('`archive` moves old memory');
+    expect(await text('docs/ROADMAP.md')).toContain('**0.4.4** (выпуск');
   });
 
   it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {

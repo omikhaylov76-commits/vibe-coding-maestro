@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.4.3 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.4.4 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -78,7 +78,7 @@ Vibe Coding Maestro doctor: всё сходится.
 The second line is `info` (from local Git data only; it never fails `doctor`, `--strict` or `preflight`) and disappears once the project has a copy in the cloud. `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2, 0.4.3). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -207,7 +207,7 @@ Maestro is deliberately conservative around existing data and Git state:
 - API keys live only in `.env`, which `.gitignore` excludes and `doctor` reports if Git tracks it; the agent writes a key you paste into `.env` itself, or opens `.env` in an editor for you to paste it (a key typed into the chat stays in the session history);
 - `sources` reads existing code read-only and writes nothing without an explicit `--write`;
 - `pack` builds the customer archive only from a delivery tag, leaves Maestro and agent folders out, adds `HANDOVER.md` with «change all passwords and keys» (or «there were no accesses» when every access section of the passport is «не применимо»), refuses on common kinds of secrets (a sieve, not a guarantee) or an incomplete passport, and gives the same bytes for the same tag; `pack --dry-run` shows the archive list first and highlights service files, personal paths, Maestro names, internal folders and plan numbers;
-- `upgrade` is a dry run without `--apply` (`--diff` prints the changes themselves), refuses a modified managed file, removes only untouched Maestro files that left the canon, and rolls back a failed apply;
+- `upgrade` is a dry run without `--apply` (`--diff` prints the changes themselves), refuses a modified managed file, removes only untouched Maestro files that left the canon, and rolls back a failed apply; `archive` moves old memory inside the project the same way — nothing deleted, text byte for byte except link addresses, a plan's approval digest rewritten only when the text matched it;
 - generated projects pin the exact Maestro version instead of `@latest`, so a new release cannot change a project's checks until someone runs `upgrade`;
 - there is intentionally no `doctor --fix` that could overwrite useful work.
 
@@ -289,12 +289,12 @@ npx --package create-vibe-maestro@latest vibe-maestro doctor --path . --strict
 npx --package create-vibe-maestro@latest vibe-maestro skills --path .
 npx --package create-vibe-maestro@latest vibe-maestro preflight --path . --json
 npx --package create-vibe-maestro@latest vibe-maestro sources --path . --source "../durak" --source "../dice-poker"
-npx --package create-vibe-maestro@latest vibe-maestro upgrade --path .
+npx --package create-vibe-maestro@latest vibe-maestro archive --path .
 ```
 
-`preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources` and `upgrade` write nothing at all unless you add `--write` or `--apply`.
+`preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources`, `upgrade` and `archive` write nothing at all unless you add `--write` or `--apply`.
 
-The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1 and 0.4.2. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1, 0.4.2 and 0.4.3. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
 ## Current scope
 

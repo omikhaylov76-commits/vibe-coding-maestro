@@ -4,6 +4,45 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
+## 0.4.4 — 2026-11-04
+
+The fifth part of 0.4: project memory stops growing. A slice result goes to its handoff and the plan keeps one line; old log entries, closed check reports and closed plan edits move to an archive inside the project, and the agent reads the archive by search; `doctor` says when memory gets long. Nothing is deleted: the moved text stays byte for byte, only link addresses change.
+
+### Added
+
+- **`vibe-maestro archive`** moves old memory into an archive inside the project in one transaction with a backup and rollback. Without `--apply` it only shows what it would move, with sizes; `--json` reports what moved, what stayed and why. It works only on a project of its own version (otherwise «first `upgrade`»), and refuses on a symbolic link on its paths, on a leftover staging folder of its own or of `upgrade`, and on a destination that git ignores. It never overwrites a file whose name differs only in case or Unicode form: a report stays with the reason, anything else is refused.
+  - **Log:** `wiki/log.md` over 20 000 characters — the last entries worth 10 000 characters stay (at least one), older ones go to `wiki/log/YYYY-MM.md` in their order. A pointer line is added to the log header once.
+  - **Check reports:** closed ones (`status: resolved`, all findings resolved) go to `wiki/audits/archive/`. Open reports, reports `doctor` cannot read and reports named in a plan's `sources` stay, with the reason.
+  - **Plan edits:** `--section "<heading start>"` (repeatable) moves a closed edit of the active plan to `wiki/plans/archive/<plan>.md`; the heading and a line «В архиве: …» stay in the plan. Only sections below «Правки после утверждения» or «Изменения после утверждения» can move; the main part of the plan, the collection itself, «Утверждение» and a section with the current slice in a heading are refused. A wrong name is refused with a list, not a byte written.
+  - **Links:** relative links in moved text are rebased, and links in `wiki/**` to a moved report lead to the new place. One link search for `doctor` and `archive`.
+  - **Approval digest:** when a plan has one, `archive` works only if the text matches it, then writes the new digest and a line with the date and both digests to the plan's archive. An unapproved edit cannot be laundered this way: a changed plan is refused, and a report it links to stays.
+- **`doctor` reports memory length** as `info`, which never fails `--strict` or `preflight`, because the limits are a hypothesis from three live projects: `memory-hot-long` (6 000 characters), `memory-plan-long` (60 000), `memory-log-long` (20 000), `memory-handoff-long` (6 000, the handoffs with the latest date in the name). Each message gives the number, the guide and what to do.
+
+### Changed
+
+- **A slice result lives in the handoff; the plan keeps one line.** Closing a slice: `[ ]` → `[x]` in «Порядок работ» or in the slice's edit, and the tail ` → [итог](../handoffs/<file>.md)` at the end of that line. Only where a `[ ]` exists: slices of older plans have no mark and get none. The result, acceptance and the move to the next slice are not written to the plan. `protocols/handoff.md`, `protocols/build.md`, `wiki/plans/README.md` and `wiki/plans/TEMPLATE.md` say the same.
+- **The tail does not break the approval digest.** Exactly one tail of exactly this form at the end of a checked item is left out of the digest; another link text, another folder, a second tail, a tail on `[ ]` or on a continuation line is plan text. Without tails the digest equals 0.4.3, and plans approved with the 0.4.3 or the earlier digest stay green.
+- **The agent runs `archive` itself** at the handoff of a closed slice and before the final handoff, without asking: it is a move inside the project. The human gets half a line in the summary. The agent names closed plan edits itself.
+- **The archive is read by search.** `.claude/rules/maestro.md`, `protocols/wiki.md`, `protocols/build.md`, `protocols/plan.md` and `protocols/status.md`: find by name or word, read the piece found. To redo a closed part: a new edit mid-plan with a link to the archived one, with the human's «да». The archive is not edited by hand and not copied back. `wiki/attic/` holds outdated and replaced documents; the archive holds closed history.
+- **«Правки после утверждения»** is a section of the plan template: an edit is `### Правка N — суть (дата)`. New plans list slices as `1. [ ]`.
+- `wiki/hot.md`: the guide is now up to 6 000 characters, about 60 lines.
+- `wiki/log.md` and `wiki/index.md` of new projects name the archive as plain paths; existing projects keep theirs, and `upgrade` reminds about the line in `wiki/index.md`.
+- The `vibe-maestro` companion package (0.1.8) depends on exactly `create-vibe-maestro@0.4.4`.
+- Upgrade tests use projects generated by the real published 0.4.3 package.
+
+### For those who create projects with their own scripts
+
+- **New command `vibe-maestro archive`:** without `--apply` it writes nothing; `--json` gives the report (what moved, what stayed and why; `logNote` says why a long log has nothing to move, `partial: true` means a rollback failed and the project is changed in part); a refusal is exit code 1 with not a byte written. Works only on a project of its own version.
+- **Log:** entries over the limit go to `wiki/log/YYYY-MM.md`; `wiki/log.md` stays the main file, with a line about months in the header. If a script reads the log, it should read `wiki/log/` too.
+- **Check reports:** closed ones (`status: resolved`) go to `wiki/audits/archive/`; open ones stay in `wiki/audits/`; `doctor` checks both folders.
+- **Plan archive** is `wiki/plans/archive/<plan>.md`, not a plan; the heading and a line with a link stay in the plan; `archive` rewrites `approved_digest` only for an unchanged approved plan.
+- **Links:** `archive` fixes link addresses inside `wiki/`; links to moved files from `README.md`, `docs/` and other places outside `wiki/` are not touched. Paths written as plain text stay old: the file is found by name.
+- **Digest:** on a `[x]` item the tail ` → [итог](../handoffs/<file>.md)` is left out; without tails the digest is the same.
+- **`doctor`:** new `info` codes `memory-hot-long`, `memory-plan-long`, `memory-log-long`, `memory-handoff-long`; they do not fail `--strict` or `preflight`.
+- **Do not change:** the section names of `wiki/hot.md`; the place and names of handoffs `wiki/handoffs/YYYY-MM-DD-….md`; `create --yes`; the set of Maestro files; `.claude/settings.json` of the template.
+- **Projects before 0.4.4:** `wiki/index.md` belongs to the project; add the line about the archive if you want it.
+- The `vibe-maestro` companion 0.1.8 is exactly `create-vibe-maestro@0.4.4`. `upgrade` works from 0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2 and 0.4.3.
+
 ## 0.4.3 — 2026-11-01
 
 The fourth part of 0.4: checks, protocols and command fixes. Checks run once and only the fixes are re-checked; small tasks follow the same path as any plan; eight protocols instead of eighteen; `upgrade` shows its changes and can remove retired Maestro files; `pack` shows what goes to the customer before packing. The set of project files changes; `vibe-maestro upgrade` migrates projects from 0.4.2, 0.4.1, 0.4.0, 0.3.1, 0.3.0, 0.3.0-beta.1 – beta.4 and 0.2.0-beta.1.

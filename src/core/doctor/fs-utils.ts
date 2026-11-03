@@ -19,7 +19,7 @@ export async function absolutePathHasSymlink(absolutePath: string): Promise<bool
   return false;
 }
 
-/** Проверяет относительный путь внутри проекта покомпонентно; отсутствующий путь не symlink. */
+/** Проверяет относительный путь внутри проекта покомпонентно; отсутствующий путь и путь сквозь файл не symlink. */
 export async function pathHasSymlink(root: string, relativePath: string): Promise<boolean> {
   let current = root;
   for (const part of relativePath.split('/')) {
@@ -27,7 +27,8 @@ export async function pathHasSymlink(root: string, relativePath: string): Promis
     try {
       if ((await lstat(current)).isSymbolicLink()) return true;
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      const { code } = cause as NodeJS.ErrnoException;
+      if (code === 'ENOENT' || code === 'ENOTDIR') return false;
       throw cause;
     }
   }

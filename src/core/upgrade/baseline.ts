@@ -199,4 +199,6 @@ export const BASELINE_TEMPLATES: readonly BaselineTemplate[] = [
   { path: 'protocols/build/step-5-feature-loop.md', source: 'registry/baseline/0.4.2/project/protocols/build/step-5-feature-loop.md', sha256: '27856936f0217e02fbd0de8ba9172197fcccb3032037e8555695e156362bc9b0' },
   { path: 'protocols/build/audit-plan.md', source: 'registry/baseline/0.4.2/project/protocols/build/audit-plan.md', sha256: '1a6cd6e69044a1985822ed28809123d2980a223fb78e39aa63d4f5618bb66a64' },
   { path: 'protocols/build/audit-phase.md', source: 'registry/baseline/0.4.2/project/protocols/build/audit-phase.md', sha256: 'ac0c1919380516e3c0da09697b2a021a96866016816fb76d7aef2866c8c08f81' },
+  // Изменён в 0.4.4; с 0.2 по 0.4.3 побайтово одинаков — копия общая.
+  { path: 'protocols/status.md', source: 'registry/baseline/0.4.3/project/protocols/status.md', sha256: '5614f012e8cac1f2071148e2685cbe1f9f94c8c5c72e59838fb072a39ccbb640' },
 ];

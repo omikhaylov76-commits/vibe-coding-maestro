@@ -240,6 +240,21 @@ describe('0.4.5: doctor видит отставшую память', () => {
     expect(await codes(root)).toEqual([]);
   });
 
+  it('шапка wiki/hot.md порцию не называет: совпало только имя плана', async () => {
+    const root = await project({ slice: '0002-work' });
+    await codeCommits(root, 3);
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+  });
+
+  it('переименование передачи счёт не сбрасывает и при diff.renames=false', async () => {
+    const root = await project();
+    await git(root, 'config', 'diff.renames', 'false');
+    await codeCommits(root, 3);
+    await git(root, 'mv', HANDOFF, 'wiki/handoffs/2026-11-01-renamed.md');
+    await commitAll(root, 'имя передачи');
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+  });
+
   it('файл во вложенной папке передач передачей не считается', async () => {
     const root = await project();
     await codeCommits(root, 3);
@@ -314,6 +329,15 @@ describe('0.4.5: upgrade честно говорит о неудачном от�
     expect(JSON.parse(json.stdout())).toMatchObject({ ok: false, applied: false, rolledBack: false, partial: true });
   });
 
+  it('повторный запуск после частичного отката не обещает «изменений нет»', async () => {
+    const { root } = await materializePublished(ID);
+    expect(await executeUpgradeCommand({ path: root, json: false, apply: true, hooks: failing(root, true) }, collectIo().io)).not.toBe(0);
+    const again = collectIo();
+    expect(await executeUpgradeCommand({ path: root, json: false }, again.io)).not.toBe(0);
+    expect(again.stderr().split('\n')[0]).toBe('Vibe Coding Maestro upgrade: обновление не запущено.');
+    expect(again.stderr()).toContain('upgrade-staging-present');
+  });
+
   it('откат удался и блокер — прежний текст; в --json partial: false', async () => {
     const { root } = await materializePublished(ID);
     const cli = collectIo();
@@ -354,7 +378,8 @@ describe('0.4.5: договор текстов', () => {
 
   it('одно правило об отчёте: в протоколе, образце отчёта и образце передачи', async () => {
     const audit = await template('protocols/audit.md');
-    expect(audit).toContain('Проверяющий возвращает все находки. Автор пишет отчёт после круга');
+    expect(audit).toContain('Проверяющий возвращает все находки. Автор пишет отчёт после проверки исправлений');
+    expect(audit).toContain('Передача посреди круга — неисправленные находки сразу в отчёт: `status: open`, `resolution: не исправлено`.');
     expect(audit).toContain('В отчёт — только critical, high и открытые');
     expect(audit).toContain('От закрытых medium и low остаются числа и коммиты исправлений');
     expect(audit).toContain('Записанное не вычищается; отчёт из Cowork импортируется целиком');

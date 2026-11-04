@@ -784,6 +784,17 @@ describe('0.4.5 archive: незакрытое в разделе', () => {
     }
   });
 
+  it('свой заголовок считается; пробелы в «не проверено» любые; строка находок — нет', async () => {
+    const root = await project();
+    await withPlan(root, body('Текст.').replace('### Правка 1', '### Правка 1 — открыто: цена'), { digest: null });
+    expect((await archiveProject(root, { sections: ['Правка 1'] })).sections[0]?.warnings).toEqual([expect.stringContaining('«### Правка 1 — открыто: цена»')]);
+    expect((await warnings('Файлы не  проверено.')).length).toBe(1);
+    expect((await warnings('Файлы не\u00A0проверено.')).length).toBe(1);
+    expect(await warnings('Находки: critical 0, high 0, medium 0, low 0; открыто 0.')).toEqual([]);
+    expect(await warnings('- Находки: critical 1, high 0, medium 0, low 0; открыто 1. [отчёт](x.md)')).toEqual([]);
+    expect((await warnings('Находки по цене: открыто.')).length).toBe(1);
+  });
+
   it('заголовок вложенного раздела считается; строк больше трёх — «ещё N»', async () => {
     const [nested] = await warnings('Текст.\n\n#### Открыто: цена доставки\n\nДальше.');
     expect(nested).toContain('«#### Открыто: цена доставки»');

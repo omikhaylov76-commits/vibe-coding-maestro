@@ -31,6 +31,7 @@ export const HANDOFF_COMMITS_LIMIT = 10;
 const MIN_CLOSED_SLICES = 5;
 
 const HANDOFFS = ':(glob)wiki/handoffs/*.md';
+const HANDOFF_PATH_RE = /^wiki\/handoffs\/[^/]+\.md$/;
 const PLANS = ':(glob)wiki/plans/*.md';
 const PLAN_ARCHIVE = ':(glob)wiki/plans/archive/*.md';
 const MANIFEST = '.maestro/manifest.json';
@@ -40,11 +41,15 @@ const APPROVAL_SECTION = 'Утверждение';
 const ARCHIVE_PATHS = ['wiki/log/', 'wiki/plans/archive/', 'wiki/audits/archive/'];
 
 /** Те же пять слов, что у `archive`: держит тест. */
-export const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не проверено|открыто)(?![\p{L}\p{N}_])/iu;
+export const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не\s+проверено|открыто)(?![\p{L}\p{N}_])/iu;
+const FINDINGS_LINE_RE = /^(?:[-*]\s+)?Находки:\s*critical\b/;
 const FINDINGS_RE = /^\s*(?:[-*]\s+)?Находки:\s*critical\s+(\d+),\s*high\s+(\d+),\s*medium\s+(\d+),\s*low\s+(\d+);\s*открыто\s+(\d+)\b.*$/gm;
-const RESULT_LINE_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[xX]\].*? → \[итог\]\(\.\.\/handoffs\/([^\s()/]+\.md)\)$/gm;
+/** В архиве плана адрес на уровень глубже: `archive` переписывает его на `../../handoffs/`. */
+const RESULT_LINE_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[xX]\].*? → \[итог\]\((?:\.\.\/)+handoffs\/([^\s()/]+\.md)\)$/gm;
+/** Ссылка на сам отчёт, а не упоминание папки: оно есть в образце передачи. */
+const REPORT_LINK_RE = /audits\/[^\s`)]+\.md/;
 const HEADING_RE = /^ {0,3}(#{2,6})[ \t]+(.*?)[ \t]*$/;
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 /** То же имя папки журналов, что у `src/core/context.ts`: держит тест. */
 export function projectLogDirName(path) {
@@ -178,15 +183,16 @@ export function frontmatter(text) {
   const values = {};
   for (const line of (block?.[1] ?? '').split(/\r?\n/)) {
     const pair = /^([A-Za-z_]+):\s*(.*)$/.exec(line);
-    if (pair) values[pair[1]] = pair[2].trim().replace(/^["']|["']$/g, '');
+    if (pair) values[pair[1]] = pair[2].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
   }
   return values;
 }
 
-/** Та же граница слова, что у `mentionsSlice`. */
+/** Та же граница слова, что у `mentionsSlice`; шапка `wiki/hot.md` не считается. */
 function mentionsSlice(text, slice) {
   const escaped = slice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u').test(text);
+  const body = text.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
+  return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u').test(body);
 }
 
 const sliceValue = (value) => (value === undefined || value === '' || value === 'null' || value === '~' ? null : value);
@@ -234,17 +240,20 @@ export function openMarkTitles(text) {
   let current = null;
   let fence = null;
   for (const line of text.split(/\r?\n/)) {
-    const mark = FENCE_RE.exec(line)?.[1];
-    if (mark !== undefined && (fence === null || mark[0] === fence[0])) {
-      fence = fence === null ? mark : null;
+    const [, mark, rest] = FENCE_RE.exec(line) ?? [];
+    if (fence !== null) {
+      if (mark?.[0] === fence[0] && mark.length >= fence.length && rest.trim() === '') fence = null;
       continue;
     }
-    if (fence !== null) continue;
+    if (mark !== undefined && !(mark.startsWith('`') && rest.includes('`'))) {
+      fence = mark;
+      continue;
+    }
     const heading = HEADING_RE.exec(line);
     if (heading !== null) {
       current = heading[2];
       if (OPEN_MARK_RE.test(current) && !titles.includes(current)) titles.push(current);
-    } else if (current !== null && OPEN_MARK_RE.test(line) && !titles.includes(current)) {
+    } else if (current !== null && !FINDINGS_LINE_RE.test(line.trim()) && OPEN_MARK_RE.test(line) && !titles.includes(current)) {
       titles.push(current);
     }
   }
@@ -262,24 +271,36 @@ function handoffsOf(cwd, period) {
     const slice = currentSlice(hot, (plan) => show(cwd, hash, plan));
     return { hash, time, path, text: show(cwd, hash, path) ?? '', midSlice: slice !== null };
   }));
-  return { commits: new Set(added.map((item) => item.hash)), inside };
+  return inside.sort((left, right) => left.time - right.time);
 }
 
-/** Коммиты вперёд по первому родителю: отставание памяти на каждом из них, как его считает doctor. */
-function lagReplay(cwd, handoffCommits, period) {
+/** Что изменил коммит: строки `--name-status`; у переименования путь — последний. */
+function changes(lines) {
+  return lines.filter(Boolean).map((line) => {
+    const [status, ...paths] = line.split('\t');
+    return { status: status ?? '', path: posixPath(paths.at(-1) ?? '') };
+  });
+}
+
+/**
+ * Коммиты вперёд по первому родителю: отставание памяти на каждом из них, как его
+ * считает doctor. Слитая ветка с передачей видна здесь как коммит слияния, добавивший файл.
+ */
+function lagReplay(cwd, period) {
   const manifest = gitLog(cwd, ['-1', '--diff-filter=A', '--', MANIFEST])[0]?.hash;
-  const commits = gitLog(cwd, ['--first-parent', '--reverse', '-m', '--name-only']);
+  const commits = gitLog(cwd, ['--first-parent', '--reverse', '-m', '-M', '--name-status']);
   const states = [];
   let anchored = false;
   let sawHandoff = false;
   let code = 0;
   for (const commit of commits) {
-    const isHandoff = handoffCommits.has(commit.hash);
+    const changed = changes(commit.rest);
+    const isHandoff = changed.some((item) => item.status === 'A' && HANDOFF_PATH_RE.test(item.path));
     if (isHandoff || (!sawHandoff && commit.hash === manifest)) {
       anchored = true;
       sawHandoff ||= isHandoff;
       code = 0;
-    } else if (anchored && commit.rest.some((path) => path !== '' && !posixPath(path).startsWith('wiki/'))) {
+    } else if (anchored && changed.some((item) => !item.path.startsWith('wiki/'))) {
       code += 1;
     }
     if (!anchored || !inPeriod(period)(commit)) continue;
@@ -370,7 +391,7 @@ async function measureProject(path, claudeDir, period) {
     for (const file of subagents) subagentCost += sum((await readJournal(file, period, true)).steps, (step) => step.cost);
   }
 
-  const { commits: handoffCommits, inside: handoffs } = handoffsOf(path, period);
+  const handoffs = handoffsOf(path, period);
   const closed = handoffs.filter((item) => !item.midSlice);
   const closedTimes = [...new Set(closed.map((item) => item.time))];
   const steps = sessions.flatMap((session) => session.steps);
@@ -440,26 +461,31 @@ async function measureProject(path, claudeDir, period) {
   const addFindings = (found) => {
     for (const level of ['critical', 'high', 'medium', 'low', 'open']) q4[level] += found[level];
   };
+  // Строка — сумма по порции: у двух передач одной порции считается последняя.
+  const bySlice = new Map();
   for (const item of handoffs) {
     const found = findingsIn(item.text);
     if (found === null) {
-      q4.handoffsWithoutLine += 1;
+      // Посреди порции проверок могло ещё не быть: строки там и не должно быть.
+      if (!item.midSlice) q4.handoffsWithoutLine += 1;
       continue;
     }
     q4.handoffsWithLine += 1;
-    addFindings(found);
-    if (needsReport(found) && !item.text.includes('audits/')) q4.lost.push(item.path);
+    const slice = sliceValue(frontmatter(item.text).slice);
+    bySlice.set(slice === null || slice === 'none' ? item.path : slice, found);
+    if (needsReport(found) && !REPORT_LINK_RE.test(item.text)) q4.lost.push(item.path);
   }
+  for (const found of bySlice.values()) addFindings(found);
   for (const commit of gitLog(path, ['-p', '-U0', '-GНаходки: critical', '--', PLANS]).filter(inside)) {
     const lines = addedLines(commit.rest).join('\n');
     const found = findingsIn(lines);
     if (found === null) continue;
     q4.planLines += [...lines.matchAll(FINDINGS_RE)].length;
     addFindings(found);
-    if (needsReport(found) && !lines.includes('audits/')) q4.lost.push(`план, коммит ${commit.hash.slice(0, 7)}`);
+    if (needsReport(found) && !REPORT_LINK_RE.test(lines)) q4.lost.push(`план, коммит ${commit.hash.slice(0, 7)}`);
   }
 
-  const q5 = { ...lagReplay(path, handoffCommits, period), now: lagNow(path), doctor: doctorCodes(path, version) };
+  const q5 = { ...lagReplay(path, period), now: lagNow(path), doctor: doctorCodes(path, version) };
 
   const human = sum(sessions, (session) => session.human);
   const ask = sum(sessions, (session) => session.ask);
@@ -495,9 +521,10 @@ function mainRepository() {
   return common === null ? REPO : dirname(resolve(REPO, common.trim()));
 }
 
+/** Настоящий путь: ссылки раскрыты, регистр как на диске. */
 const realDir = (path) => {
   try {
-    return realpathSync(path);
+    return realpathSync.native(path);
   } catch {
     return resolve(path);
   }
@@ -508,10 +535,11 @@ const isInside = (path, dir) => {
   return rest === '' || (!rest.startsWith('..') && !isAbsolute(rest));
 };
 
-/** Папка файла с настоящим путём: `/tmp` и `/private/tmp` на macOS — одно и то же. */
-const realTarget = (path) => join(realDir(dirname(resolve(path))), basename(path));
+/** Цель записи с настоящим путём: `/tmp` и `/private/tmp` на macOS — одно и то же. */
+const realTarget = (path) => (existsSync(path) ? realDir(path) : join(realDir(dirname(resolve(path))), basename(path)));
 
 function refuseOut(out, projects) {
+  if (!existsSync(dirname(resolve(out)))) return `Нет папки для --out: ${dirname(resolve(out))}.`;
   const target = realTarget(out);
   for (const dir of [REPO, mainRepository()]) {
     if (isInside(target, realDir(dir))) return `--out внутри репозитория: ${out}. В отчёте имена проектов, он лежит вне репозитория.`;
@@ -554,7 +582,7 @@ const ROWS = [
   ['4', 'находок critical и high на передачу', (r) => plain(per(r.q4.critical + r.q4.high, r.q2.handoffs))],
   ['4', 'находок medium и low на передачу', (r) => plain(per(r.q4.medium + r.q4.low, r.q2.handoffs))],
   ['4', 'открыто', (r) => plain(r.q4.open)],
-  ['4', 'передач без строки находок', (r) => percent(per(r.q4.handoffsWithoutLine, r.q2.handoffs))],
+  ['4', 'закрытых порций без строки находок', (r) => percent(per(r.q4.handoffsWithoutLine, r.q1.closedSlices))],
   ['4', 'потери: нет ссылки на отчёт', (r) => plain(r.q4.lost.length)],
   ['5', 'доля времени: порция не в wiki/hot.md', (r) => percent(r.q5.hotBehindTime)],
   ['5', 'доля времени: передача отстала', (r) => percent(r.q5.handoffBehindTime)],
@@ -610,6 +638,7 @@ function periodOf(from, to) {
   for (const date of [from, to]) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') || Number.isNaN(Date.parse(`${date}T00:00:00`))) throw new Error('--from и --to — даты вида ГГГГ-ММ-ДД.');
   }
+  if (from > to) throw new Error('--from позже --to.');
   return { from: Date.parse(`${from}T00:00:00`), to: Date.parse(`${to}T23:59:59.999`) };
 }
 
@@ -620,7 +649,7 @@ async function main(argv) {
     const text = compareReports(before, after);
     if (options.out === null) process.stdout.write(text);
     else {
-      const refused = refuseOut(options.out, []);
+      const refused = refuseOut(options.out, [before, after].flatMap((report) => Object.values(report.projects).map((project) => project.path)));
       if (refused !== null) throw new Error(refused);
       writeFileSync(options.out, text, 'utf8');
     }

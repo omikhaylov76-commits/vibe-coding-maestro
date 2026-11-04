@@ -53,7 +53,11 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
 
   const { analysis } = result;
   if (analysis.status === 'blocked' || result.ok === false) {
-    io.err(result.partial ? 'Vibe Coding Maestro upgrade: обновление прервано, и откатить удалось не всё: проект изменён частично.' : 'Vibe Coding Maestro upgrade: обновление не выполнено (изменений на диске нет).');
+    // Осталась папка транзакции: прошлый запуск мог изменить проект, поэтому «изменений нет» здесь не обещается.
+    const staged = analysis.blockers.some((item) => item.code === 'upgrade-staging-present');
+    io.err(result.partial
+      ? 'Vibe Coding Maestro upgrade: обновление прервано, и откатить удалось не всё: проект изменён частично.'
+      : `Vibe Coding Maestro upgrade: ${staged ? 'обновление не запущено.' : 'обновление не выполнено (изменений на диске нет).'}`);
     if (result.error !== undefined) io.err(`- ${result.error}`);
     for (const item of analysis.blockers) io.err(`- ${item.code}${item.path ? ` (${item.path})` : ''}: ${item.message}`);
     return EXIT_FAILED;

@@ -21,7 +21,10 @@ const HANDOFFS = ':(glob)wiki/handoffs/*.md';
 const CHECK_LOG = 'Если работа идёт не в этой сессии — сверь `git log` и запиши передачу.';
 
 /** Коммит, добавивший файл: передача считается добавленной один раз, поправленная ссылка в ней счёт не сбрасывает. */
-const lastAdded = (root: string, path: string): Promise<string | null> => gitAnswer(root, ['log', '-1', '--diff-filter=A', '--format=%H', '--', path]);
+const lastAdded = (root: string, path: string): Promise<string | null> => gitAnswer(root, ['log', '-1', '-M', '--diff-filter=A', '--format=%H', '--', path]);
+
+/** Текст без шапки: `active_plan` в ней может совпасть с именем порции. */
+const withoutFrontmatter = (text: string): string => withoutBom(text).replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
 
 /** Передача ещё не закоммичена и свежее последнего коммита: на шаге передачи doctor идёт до коммита. */
 async function handoffInProgress(root: string): Promise<boolean> {
@@ -67,7 +70,7 @@ export async function checkMemoryLag(root: string, wiki: ReadonlyMap<string, str
 
   const counted = handoff === '' ? `передач ещё не было, а коммитов кода с подключения Maestro: ${commits}` : `после последней передачи коммитов кода: ${commits}`;
   const slice = currentSlice(wiki);
-  if (slice !== null && !mentionsSlice(wiki.get(HOT_PATH) ?? '', slice)) {
+  if (slice !== null && !mentionsSlice(withoutFrontmatter(wiki.get(HOT_PATH) ?? ''), slice)) {
     findings.push(info('memory-hot-behind', `wiki/hot.md не называет текущую порцию ${slice}, ${counted}. ${CHECK_LOG}`, HOT_PATH));
   }
   if (commits >= HANDOFF_COMMITS_LIMIT) {

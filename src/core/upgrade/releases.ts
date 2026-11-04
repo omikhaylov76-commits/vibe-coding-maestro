@@ -516,12 +516,12 @@ function copiesFor045(managedSha256: Readonly<Record<string, string>>): Baseline
 const V045_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...V044_MANAGED_SHA256,
   '.claude/rules/maestro.md': '227893191aa8921d5b2171e769e26a7b1e6d40eb24401b53913311007d968402',
-  'maestro/templates/audit.md': '5892d07da64f4aabd4be46ad412d5daf3ecdc1ce53fece54832cd4cfa3db3be3',
+  'maestro/templates/audit.md': 'd36a1ee2e2d4dc9c8964a92b28dd78602094ca94fb13ef4bcde6ea6fc9a3c2ab',
   'maestro/templates/handoff.md': '80ae0db79ad2f7632a0a75467ad960ee7188e207ce7b051493c25a12cb08a6dc',
-  'protocols/audit.md': '5d516e051ceaffd6fd4098e9482ebc938d376745d95bfe4850ce2252768fa1ba',
+  'protocols/audit.md': 'b9e6449a8176d9ba502ba7f8814f9162434ca27b249f5c774ed32dc948c14491',
   'protocols/build.md': '9c587b9c4f89b1afbae9071c3f09864287644747a92902f9261f468f527892d1',
   'protocols/completion.md': 'bc0a6fd2f237181991fe1e11b360b0528e59a9d99fadf30ea3e1a67e76df6c72',
-  'protocols/handoff.md': 'a5faa036725a07e7174284a6eacbbbef6095fe95c5de218c8b760e3fe117367a',
+  'protocols/handoff.md': 'f3c95a4bf96a5958615105a889a83eb7225806650e7bbf9395a218c64c55a3ff',
 };
 
 /**

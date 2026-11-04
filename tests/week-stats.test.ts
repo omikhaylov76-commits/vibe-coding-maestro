@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from 'node:child_process';
-import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -185,9 +185,68 @@ describe('0.4.5: скрипт недели', () => {
     const data = (JSON.parse(await readFile(setup.out, 'utf8')) as Report).projects['учебный проект'];
     expect(data?.q2).toMatchObject({ handoffs: 3, withSummary: 2, byTemplate: 2, resultLines: 1, archiveCommits: 1, openMarkCandidates: ['Правка 1'] });
     expect(data?.q3).toEqual({ withText: 1, none: 1, missing: 1, lines: ['упала сборка на старом Node'] });
-    expect(data?.q4).toMatchObject({ critical: 1, high: 1, medium: 2, low: 3, open: 1, handoffsWithLine: 2, handoffsWithoutLine: 1, planLines: 1 });
+    expect(data?.q4).toMatchObject({ critical: 1, high: 1, medium: 2, low: 3, open: 1, handoffsWithLine: 2, handoffsWithoutLine: 0, planLines: 1 });
     expect(data?.q4.lost).toEqual(['wiki/handoffs/2026-10-12-close.md', expect.stringContaining('план, коммит ')]);
     expect(data?.q5).toMatchObject({ commits: 9, hotBehindCommits: 2, handoffBehindCommits: 0, now: { slice: '01-next', hotNamesSlice: false, codeCommitsAfterHandoff: 4 } });
+  });
+
+  it('слитая ветка с передачей сбрасывает счёт, как у doctor', async () => {
+    const root = await makeTempDir('week-');
+    const claudeDir = await makeTempDir('week-claude-');
+    const path = await project(root);
+    await writeFile(join(path, 'wiki/hot.md'), `${await readFile(join(path, 'wiki/hot.md'), 'utf8')}\nПорция 02-other.\n`, 'utf8');
+    await writeFile(join(path, PLAN), planText('01-next'), 'utf8');
+    await commit(path, '2026-10-18', 'память');
+    const branchName = (await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: path })).stdout.trim();
+    for (let round = 0; round < 3; round += 1) {
+      await git(path, 'checkout', '-q', '-b', `side-${round}`);
+      await writeFile(join(path, 'src/a.txt'), `ветка ${round}\n`, 'utf8');
+      await commit(path, '2026-10-19', 'код на ветке');
+      await writeFile(join(path, 'src/a.txt'), `ветка ${round} ещё\n`, 'utf8');
+      await commit(path, '2026-10-19', 'ещё код');
+      await writeFile(join(path, `wiki/handoffs/2026-10-19-side-${round}.md`), FULL('Находки: critical 0, high 0, medium 0, low 0; открыто 0.', '- нет'), 'utf8');
+      await commit(path, '2026-10-19', 'передача на ветке');
+      await git(path, 'checkout', '-q', branchName);
+      await git(path, 'merge', '-q', '--no-ff', '-m', `слияние ${round}`, `side-${round}`);
+    }
+    const out = join(await makeTempDir('week-out-'), 'merge.json');
+    expect(run(['--project', path, '--from', '2026-10-19', '--to', '2026-10-30', '--out', out], claudeDir).code).toBe(0);
+    const data = (JSON.parse(await readFile(out, 'utf8')) as Report).projects['учебный проект'];
+    expect(data?.q5).toMatchObject({ hotBehindCommits: 0, handoffBehindCommits: 0, now: { codeCommitsAfterHandoff: 0 } });
+  });
+
+  it('строка итога считается и в архиве плана, с адресом на уровень глубже', async () => {
+    const setup = await sample();
+    await writeFile(join(setup.path, 'wiki/plans/archive/0002-work.md'), '# Архив\n\n### Правка 3\n\n1. [x] Порция. → [итог](../../handoffs/2026-10-14-mid.md)\n', 'utf8');
+    await commit(setup.path, '2026-10-19', 'архив');
+    expect(measure(setup).code).toBe(0);
+    expect((JSON.parse(await readFile(setup.out, 'utf8')) as Report).projects['учебный проект']?.q2.resultLines).toBe(2);
+  });
+
+  it('потери: строка образца об отчёте ссылкой не считается', async () => {
+    const setup = await sample();
+    await writeFile(join(setup.path, 'wiki/handoffs/2026-10-19-lost.md'), FULL('Находки: critical 0, high 2, medium 0, low 0; открыто 0.', '- нет').replace('## Что мешало', '- Открытые находки проверок: что решили не исправлять (ссылка на отчёт в `wiki/audits/`).\n\n## Что мешало'), 'utf8');
+    await writeFile(join(setup.path, 'wiki/handoffs/2026-10-19-path.md'), FULL('Находки: critical 0, high 2, medium 0, low 0; открыто 0. Отчёт: `wiki/audits/AUD-2.md`.', '- нет'), 'utf8');
+    await commit(setup.path, '2026-10-19', 'передачи');
+    expect(measure(setup).code).toBe(0);
+    const lost = (JSON.parse(await readFile(setup.out, 'utf8')) as Report).projects['учебный проект']?.q4.lost;
+    expect(lost).toContain('wiki/handoffs/2026-10-19-lost.md');
+    expect(lost).not.toContain('wiki/handoffs/2026-10-19-path.md');
+  });
+
+  it('две передачи одной порции: считается последняя строка; без строки — только закрытая порция', async () => {
+    const setup = await sample();
+    const withSlice = (text: string): string => text.replace('type: handoff', 'type: handoff\nslice: 01-next');
+    await writeFile(join(setup.path, 'wiki/handoffs/2026-10-19-a.md'), withSlice(FULL('Находки: critical 0, high 0, medium 4, low 0; открыто 0.', '- нет')), 'utf8');
+    await commit(setup.path, '2026-10-19', 'передача посреди порции');
+    await writeFile(join(setup.path, 'wiki/handoffs/2026-10-20-b.md'), withSlice(FULL('Находки: critical 0, high 0, medium 5, low 0; открыто 0.', '- нет')), 'utf8');
+    await writeFile(join(setup.path, PLAN), planText('null'), 'utf8');
+    await commit(setup.path, '2026-10-20', 'итоговая передача');
+    await writeFile(join(setup.path, 'wiki/handoffs/2026-10-20-c.md'), HANDOFF('## Состояние\n- факты'), 'utf8');
+    await commit(setup.path, '2026-10-20', 'передача без строки');
+    expect(measure(setup).code).toBe(0);
+    const data = (JSON.parse(await readFile(setup.out, 'utf8')) as Report).projects['учебный проект'];
+    expect(data?.q4).toMatchObject({ medium: 2 + 5, handoffsWithoutLine: 1 });
   });
 
   it('потери: со ссылкой на отчёт — нет; открытый отчёт считается', async () => {
@@ -219,6 +278,27 @@ describe('0.4.5: скрипт недели', () => {
     expect(own.code).toBe(2);
     expect(own.stderr).toContain('внутри проекта');
     expect(await snapshotTree(setup.path)).toEqual(before);
+  });
+
+  it('--compare --out в проект — отказ; файл-ссылка в проект — отказ; нет папки — отказ до замера', async () => {
+    const setup = await sample();
+    expect(measure(setup).code).toBe(0);
+    const before = await snapshotTree(setup.path);
+    const compared = run(['--compare', setup.out, setup.out, '--out', join(setup.path, 'week.md')], setup.claudeDir);
+    expect([compared.code, compared.stderr.includes('внутри проекта')]).toEqual([2, true]);
+    if (process.platform !== 'win32') {
+      await writeFile(join(setup.path, 'wiki/x.json'), '{}\n', 'utf8');
+      await commit(setup.path, '2026-10-19', 'файл');
+      const link = join(dirname(setup.out), 'link.json');
+      await symlink(join(setup.path, 'wiki/x.json'), link);
+      const linked = run(['--root', setup.root, '--from', FROM, '--to', TO, '--out', link], setup.claudeDir);
+      expect([linked.code, linked.stderr.includes('внутри проекта')]).toEqual([2, true]);
+      expect(await readFile(join(setup.path, 'wiki/x.json'), 'utf8')).toBe('{}\n');
+    } else {
+      expect(await snapshotTree(setup.path)).toEqual(before);
+    }
+    const missing = run(['--root', setup.root, '--from', FROM, '--to', TO, '--out', join(dirname(setup.out), 'нет-папки', 'a.json')], setup.claudeDir);
+    expect([missing.code, missing.stderr.includes('Нет папки для --out')]).toEqual([2, true]);
   });
 
   it('папки журналов без проекта: только с префиксом --root, без Maestro, только токены', async () => {
@@ -278,6 +358,7 @@ describe('0.4.5: скрипт недели', () => {
   it('неверные флаги — отказ кодом 2', async () => {
     const claudeDir = await makeTempDir('week-claude-');
     expect(run(['--from', 'вчера', '--to', TO], claudeDir).code).toBe(2);
+    expect(run(['--project', '.', '--from', TO, '--to', FROM], claudeDir).stderr).toContain('--from позже --to');
     expect(run(['--from', FROM, '--to', TO], claudeDir).code).toBe(2);
     expect(run(['--что-то'], claudeDir).code).toBe(2);
     expect(run(['--project', await makeTempDir('week-'), '--from', FROM, '--to', TO], claudeDir).stderr).toContain('не проект Maestro');
@@ -316,6 +397,14 @@ describe('0.4.5: скрипт недели держится тех же прав
     const { OPEN_MARK_RE, openMarkTitles } = await week();
     expect(await readFile(join(process.cwd(), 'src/core/archive/plan.ts'), 'utf8')).toContain(OPEN_MARK_RE.source);
     expect(openMarkTitles('### A\n\nоткрыто\n\n### B\n\n```\nUNKNOWN\n```\n\n~~~\n```\nHYPOTHESIS\n~~~\n\n### Открыто: C\n\nтекст\n')).toEqual(['A', 'Открыто: C']);
+    // Блок закрывает ограждение не короче открывшего; строка находок — не пометка.
+    expect(openMarkTitles('### A\n\n````\n```\nUNKNOWN\n```\n````\n\n### B\n\nНаходки: critical 0, high 0, medium 0, low 0; открыто 0.\n\nне  проверено\n')).toEqual(['B']);
+    expect(openMarkTitles('### A\n\nНаходки: critical 1, high 0, medium 0, low 0; открыто 1.\n')).toEqual([]);
+  });
+
+  it('шапка: комментарий после значения отбрасывается, как у doctor', async () => {
+    const { frontmatter } = await week();
+    expect(frontmatter('---\ncurrent_slice: 1.6a # идёт\ntitle: "Работа"\n---\n')).toEqual({ current_slice: '1.6a', title: 'Работа' });
   });
 
   it('разделители Windows в именах', async () => {

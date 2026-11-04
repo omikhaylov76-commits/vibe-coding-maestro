@@ -12,6 +12,7 @@ import { checkGit } from './git.js';
 import { checkInbox } from './inbox.js';
 import { checkInventory, checkManagedFiles } from './managed.js';
 import { checkMemory } from './memory.js';
+import { checkMemoryLag } from './memory-lag.js';
 import { checkPlans } from './plans.js';
 import { checkProtocols } from './protocols.js';
 import { checkSources } from './sources.js';
@@ -130,6 +131,7 @@ export async function doctorProject(rootInput: string, options: DoctorOptions = 
   checkPlans(root, wiki, findings);
   checkMemory(rootInput, wiki, findings);
   await checkGit(root, managedDocs, findings, managedFiles);
+  await checkMemoryLag(root, wiki, findings);
   await checkInbox(root, findings);
   await checkSources(root, findings);
   await checkProjectEntries(root, manifest.product.version, findings);

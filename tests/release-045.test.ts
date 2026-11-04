@@ -1,11 +1,18 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { cp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { levelFor, measureContext, projectLogDirName, thresholdsFor } from '../src/core/context.js';
-import { cleanupTempDirs, makeTempDir } from './helpers.js';
+import { doctorProject } from '../src/core/doctor.js';
+import { initProject } from '../src/core/init.js';
+import { planBodyDigest } from '../src/core/plan.js';
+import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8 } from './helpers.js';
 import { collectIo } from './published.js';
 
+const execFileAsync = promisify(execFile);
 afterEach(cleanupTempDirs);
 // Тесты не зависят от сессии Claude Code, в которой их запустили.
 delete process.env.CLAUDE_CODE_SESSION_ID;
@@ -83,5 +90,199 @@ describe('0.4.5: context считает пороги в токенах', () => {
       if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR;
       else process.env.CLAUDE_CONFIG_DIR = previous;
     }
+  });
+});
+
+describe('0.4.5: doctor видит отставшую память', () => {
+  const PLAN = 'wiki/plans/0002-work.md';
+  const HANDOFF = 'wiki/handoffs/2026-11-01-work.md';
+  const git = async (cwd: string, ...args: string[]): Promise<string> =>
+    (await execFileAsync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', '-c', 'commit.gpgSign=false', ...args], { cwd })).stdout.trim();
+
+  async function commitAll(root: string, message: string): Promise<void> {
+    await git(root, 'add', '-A');
+    await git(root, 'commit', '-q', '--allow-empty', '-m', message);
+  }
+
+  /** Проект в git с активным планом и порцией; `handoff` — закоммичена ли передача. */
+  async function project(options: { slice?: string; handoff?: string | null } = {}): Promise<string> {
+    const root = join(await makeTempDir('lag-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    await git(root, 'init', '-q');
+    const slice = options.slice ?? '01-vhod';
+    const plan = ['---', 'type: plan', 'title: Работа', 'id: PLAN-0002', 'kind: mini', 'status: approved', 'scale: quick', 'mode: extension',
+      'governance: standard', 'risk: low', 'profiles: []', 'created: 2026-11-01', 'updated: 2026-11-01', 'sources: []', 'supersedes: null', 'approved_by: Человек',
+      'approved_at: 2026-11-01', 'active_phase: null', 'blocking_questions: 0', 'spec_delta: none', `current_slice: ${slice}`, '---', '', '# Работа', ''].join('\n');
+    await writeFile(join(root, PLAN), plan.replace(/^(approved_at: .*)$/m, `$1\napproved_digest: ${planBodyDigest(plan)}`), 'utf8');
+    await writeFile(join(root, 'wiki/hot.md'), (await readUtf8(root, 'wiki/hot.md')).replace(/^active_plan: .*$/m, 'active_plan: plans/0002-work.md'), 'utf8');
+    if (options.handoff !== null) await writeFile(join(root, options.handoff ?? HANDOFF), '# Передача\n', 'utf8');
+    await commitAll(root, 'начало');
+    return root;
+  }
+
+  async function codeCommits(root: string, count: number, from = 0): Promise<void> {
+    await mkdir(join(root, 'src'), { recursive: true });
+    for (let index = from; index < from + count; index += 1) {
+      await writeFile(join(root, 'src/a.txt'), `${index}\n`, 'utf8');
+      await commitAll(root, `код ${index}`);
+    }
+  }
+
+  async function codes(root: string): Promise<string[]> {
+    const report = await doctorProject(root);
+    return report.findings.filter((item) => item.code === 'memory-hot-behind' || item.code === 'memory-handoff-behind').map((item) => item.code);
+  }
+
+  /** Maestro в папке с прошлой историей: create пишет только в пустую папку. */
+  async function addMaestro(root: string): Promise<void> {
+    const made = join(await makeTempDir('lag-'), 'проект');
+    expect((await initProject({ target: made, startingPoint: 'code', git: false, now: FIXED_NOW })).ok).toBe(true);
+    await cp(made, root, { recursive: true });
+  }
+
+  async function setCurrentSlice(root: string, value: string): Promise<void> {
+    await writeFile(join(root, PLAN), (await readUtf8(root, PLAN)).replace(/^current_slice: .*$/m, `current_slice: ${value}`), 'utf8');
+  }
+
+  it('memory-hot-behind: порция, три коммита кода, wiki/hot.md её не называет', async () => {
+    const root = await project();
+    await codeCommits(root, 2);
+    expect(await codes(root)).toEqual([]);
+    await codeCommits(root, 1, 2);
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+    const finding = (await doctorProject(root)).findings.find((item) => item.code === 'memory-hot-behind');
+    expect(finding).toMatchObject({ level: 'info', path: 'wiki/hot.md' });
+    expect(finding?.message).toContain('01-vhod');
+    expect(finding?.message).toContain('сверь `git log` и запиши передачу');
+  });
+
+  it('memory-hot-behind молчит при current_slice: null и когда порция названа', async () => {
+    const root = await project();
+    await codeCommits(root, 4);
+    await setCurrentSlice(root, 'null');
+    await commitAll(root, 'план');
+    expect(await codes(root)).toEqual([]);
+
+    await setCurrentSlice(root, '01-vhod');
+    await writeFile(join(root, 'wiki/hot.md'), `${await readUtf8(root, 'wiki/hot.md')}\nПорция 01-vhod идёт.\n`, 'utf8');
+    await commitAll(root, 'память');
+    expect(await codes(root)).toEqual([]);
+  });
+
+  it('имя порции с точкой и дефисом — граница слова', async () => {
+    const root = await project({ slice: '1.6a' });
+    await codeCommits(root, 3);
+    await writeFile(join(root, 'wiki/hot.md'), `${await readUtf8(root, 'wiki/hot.md')}\nПорция 1.6ab и 11.6a идут, версия 1x6a.\n`, 'utf8');
+    await commitAll(root, 'память');
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+    await writeFile(join(root, 'wiki/hot.md'), `${await readUtf8(root, 'wiki/hot.md')}\nПорция «1.6a» идёт.\n`, 'utf8');
+    await commitAll(root, 'память 2');
+    expect(await codes(root)).toEqual([]);
+  });
+
+  it('memory-handoff-behind: 9 молчит, 10 есть; коммиты только в wiki/ не считаются', async () => {
+    const root = await project();
+    await writeFile(join(root, 'wiki/hot.md'), `${await readUtf8(root, 'wiki/hot.md')}\nПорция 01-vhod.\n`, 'utf8');
+    await commitAll(root, 'память');
+    await codeCommits(root, 9);
+    for (let index = 0; index < 3; index += 1) {
+      await writeFile(join(root, 'wiki/log.md'), `${await readUtf8(root, 'wiki/log.md')}\nзапись ${index}\n`, 'utf8');
+      await commitAll(root, `журнал ${index}`);
+    }
+    expect(await codes(root)).toEqual([]);
+    await codeCommits(root, 1, 9);
+    expect(await codes(root)).toEqual(['memory-handoff-behind']);
+    expect((await doctorProject(root)).findings.find((item) => item.code === 'memory-handoff-behind')?.message).toContain('10 при ориентире 10');
+  });
+
+  it('передач нет — счёт от коммита с manifest, история до него не считается', async () => {
+    const root = join(await makeTempDir('lag-'), 'проект');
+    await mkdir(root, { recursive: true });
+    await git(root, 'init', '-q');
+    await mkdir(join(root, 'src'));
+    for (let index = 0; index < 12; index += 1) {
+      await writeFile(join(root, 'src/old.txt'), `${index}\n`, 'utf8');
+      await commitAll(root, `старое ${index}`);
+    }
+    await addMaestro(root);
+    await commitAll(root, 'Maestro');
+    expect(await codes(root)).toEqual([]);
+    await codeCommits(root, 10);
+    expect(await codes(root)).toEqual(['memory-handoff-behind']);
+    expect((await doctorProject(root)).findings.find((item) => item.code === 'memory-handoff-behind')?.message).toContain('с подключения Maestro передач не было');
+  });
+
+  it('manifest не закоммичен, нет .git — молчит', async () => {
+    const bare = join(await makeTempDir('lag-'), 'проект');
+    expect((await initProject({ target: bare, startingPoint: 'idea', git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect(await codes(bare)).toEqual([]);
+
+    const root = join(await makeTempDir('lag-'), 'проект');
+    await mkdir(join(root, 'src'), { recursive: true });
+    await git(root, 'init', '-q');
+    await codeCommits(root, 12);
+    await addMaestro(root);
+    expect(await codes(root)).toEqual([]);
+  });
+
+  it('имя передачи без даты находится; поправленная ссылка в старой передаче счёт не сбрасывает', async () => {
+    const root = await project({ handoff: 'wiki/handoffs/HANDOFF_2026-10-17_work.md' });
+    await codeCommits(root, 3);
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+    await writeFile(join(root, 'wiki/handoffs/HANDOFF_2026-10-17_work.md'), '# Передача\n\n[план](../plans/archive/0002-work.md)\n', 'utf8');
+    await commitAll(root, 'archive: поправлены ссылки');
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+    await writeFile(join(root, 'wiki/handoffs/2026-11-02-next.md'), '# Передача\n', 'utf8');
+    await commitAll(root, 'передача');
+    expect(await codes(root)).toEqual([]);
+  });
+
+  it('файл во вложенной папке передач передачей не считается', async () => {
+    const root = await project();
+    await codeCommits(root, 3);
+    await mkdir(join(root, 'wiki/handoffs/old'));
+    await writeFile(join(root, 'wiki/handoffs/old/x.md'), '# Старое\n', 'utf8');
+    await commitAll(root, 'старое');
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+  });
+
+  it('незакоммиченная свежая передача — молчит; старая неотслеживаемая — не глушит', async () => {
+    const root = await project();
+    await codeCommits(root, 3);
+    const fresh = join(root, 'wiki/handoffs/2026-11-05-fresh.md');
+    await writeFile(fresh, '# Передача\n', 'utf8');
+    expect(await codes(root)).toEqual([]);
+    await git(root, 'add', '--', 'wiki/handoffs/2026-11-05-fresh.md');
+    expect(await codes(root)).toEqual([]);
+    await git(root, 'reset', '-q', '--', 'wiki/handoffs/2026-11-05-fresh.md');
+    await utimes(fresh, new Date('2020-01-01'), new Date('2020-01-01'));
+    expect(await codes(root)).toEqual(['memory-hot-behind']);
+  });
+
+  it('мелкий клон и отказ git — молчит', async () => {
+    const root = await project();
+    await codeCommits(root, 12);
+    expect(await codes(root)).toEqual(['memory-hot-behind', 'memory-handoff-behind'].sort());
+
+    const shallow = join(await makeTempDir('lag-'), 'проект');
+    await execFileAsync('git', ['clone', '-q', '--depth', '5', pathToFileURL(root).href, shallow]);
+    expect(await codes(shallow)).toEqual([]);
+
+    await rm(join(root, '.git/HEAD'));
+    await writeFile(join(root, '.git/HEAD'), 'мусор\n', 'utf8');
+    expect(await codes(root)).toEqual([]);
+  });
+
+  it('--strict и preflight не падают; порядок находок стабилен', async () => {
+    const root = await project();
+    await codeCommits(root, 12);
+    const strict = await doctorProject(root, { strict: true });
+    expect(strict.findings.filter((item) => item.level !== 'info')).toEqual([]);
+    expect(strict.ok).toBe(true);
+    const again = await doctorProject(root, { strict: true });
+    expect(again.findings).toEqual(strict.findings);
+    const cli = collectIo();
+    expect(await runMaestroCli(['preflight', '--path', root], cli.io)).toBe(0);
+    expect(cli.stdout()).not.toContain('memory-');
   });
 });

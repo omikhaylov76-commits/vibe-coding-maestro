@@ -212,7 +212,7 @@ describe('0.4.5: doctor видит отставшую память', () => {
     expect(await codes(root)).toEqual([]);
     await codeCommits(root, 10);
     expect(await codes(root)).toEqual(['memory-handoff-behind']);
-    expect((await doctorProject(root)).findings.find((item) => item.code === 'memory-handoff-behind')?.message).toContain('с подключения Maestro передач не было');
+    expect((await doctorProject(root)).findings.find((item) => item.code === 'memory-handoff-behind')?.message).toContain('передач ещё не было, а коммитов кода с подключения Maestro: 10 при ориентире 10');
   });
 
   it('manifest не закоммичен, нет .git — молчит', async () => {

@@ -65,12 +65,12 @@ export async function checkMemoryLag(root: string, wiki: ReadonlyMap<string, str
   if (!Number.isInteger(commits) || commits < HOT_BEHIND_COMMITS) return;
   if (await handoffInProgress(root)) return;
 
-  const after = handoff === '' ? 'с подключения Maestro передач не было' : 'после последней передачи';
+  const counted = handoff === '' ? `передач ещё не было, а коммитов кода с подключения Maestro: ${commits}` : `после последней передачи коммитов кода: ${commits}`;
   const slice = currentSlice(wiki);
   if (slice !== null && !mentionsSlice(wiki.get(HOT_PATH) ?? '', slice)) {
-    findings.push(info('memory-hot-behind', `wiki/hot.md не называет текущую порцию ${slice}, а коммитов кода ${after}: ${commits}. ${CHECK_LOG}`, HOT_PATH));
+    findings.push(info('memory-hot-behind', `wiki/hot.md не называет текущую порцию ${slice}, ${counted}. ${CHECK_LOG}`, HOT_PATH));
   }
   if (commits >= HANDOFF_COMMITS_LIMIT) {
-    findings.push(info('memory-handoff-behind', `Коммитов кода ${after}: ${commits} при ориентире ${HANDOFF_COMMITS_LIMIT}. ${CHECK_LOG}`));
+    findings.push(info('memory-handoff-behind', `Отстала передача: ${counted} при ориентире ${HANDOFF_COMMITS_LIMIT}. ${CHECK_LOG}`));
   }
 }

@@ -42,9 +42,15 @@ export function windowForModel(model: string): number | null {
   if (major === 4 && minor <= 5) return DEFAULT_BUDGET;
   return LARGE_WINDOW;
 }
-/** HYPOTHESIS: пороги подобраны на глаз и уточняются повторным замером. */
-export const FINISH_SLICE_SHARE = 0.4;
-export const NEW_SESSION_SHARE = 0.7;
+/**
+ * Пороги в токенах: цену шага задаёт размер сессии, а не доля окна.
+ * HYPOTHESIS: числа — из проигрыша настоящих сессий, уточняются повторным замером.
+ */
+export const FINISH_SLICE_TOKENS = 400_000;
+export const NEW_SESSION_TOKENS = 600_000;
+/** У модели с меньшим окном действует меньшее из двух: порог выше окна не сработал бы. */
+const FINISH_SLICE_PERCENT = 40;
+const NEW_SESSION_PERCENT = 70;
 
 export type ContextLevel = 'continue' | 'finish-slice' | 'new-session';
 
@@ -62,6 +68,10 @@ export interface ContextReport {
   windowSource?: WindowSource;
   percent?: number;
   level?: ContextLevel;
+  /** С какого размера следующую порцию — в новой сессии. */
+  finishSliceTokens?: number;
+  /** С какого размера передача дел сейчас. */
+  newSessionTokens?: number;
   /** Сколько токенов модель получила на входе за всю сессию. */
   totalInputTokens?: number;
   requests?: number;
@@ -157,9 +167,18 @@ interface Usage {
 
 const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
 
-export function levelFor(share: number): ContextLevel {
-  if (share >= NEW_SESSION_SHARE) return 'new-session';
-  if (share >= FINISH_SLICE_SHARE) return 'finish-slice';
+/** Пороги при этом окне. Токены — целые, поэтому округление вверх не сдвигает границу. */
+export function thresholdsFor(budget: number): { finishSliceTokens: number; newSessionTokens: number } {
+  return {
+    finishSliceTokens: Math.min(FINISH_SLICE_TOKENS, Math.ceil((budget * FINISH_SLICE_PERCENT) / 100)),
+    newSessionTokens: Math.min(NEW_SESSION_TOKENS, Math.ceil((budget * NEW_SESSION_PERCENT) / 100)),
+  };
+}
+
+export function levelFor(tokens: number, budget: number): ContextLevel {
+  const { finishSliceTokens, newSessionTokens } = thresholdsFor(budget);
+  if (tokens >= newSessionTokens) return 'new-session';
+  if (tokens >= finishSliceTokens) return 'finish-slice';
   return 'continue';
 }
 
@@ -221,7 +240,6 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     // Смотрится только эта модель: прежняя модель с большим окном не раздувает окно новой.
     if ((byModel === null ? largest : largestByModel.get(lastModel ?? '') ?? 0) > budget) budget = LARGE_WINDOW;
   }
-  const share = contextTokens / budget;
   return {
     reportVersion: 1,
     ok: true,
@@ -231,8 +249,9 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     budget,
     ...(lastModel === undefined ? {} : { model: lastModel }),
     windowSource,
-    percent: Math.round(share * 100),
-    level: levelFor(share),
+    percent: Math.round((contextTokens / budget) * 100),
+    level: levelFor(contextTokens, budget),
+    ...thresholdsFor(budget),
     totalInputTokens: totalInput,
     requests: seen.size,
   };

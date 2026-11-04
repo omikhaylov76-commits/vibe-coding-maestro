@@ -94,6 +94,13 @@ const COLLECTIONS = ['Правки после утверждения', 'Изме
 const APPROVAL = 'Утверждение';
 const POINTER_RE = /^В архиве: \[[^\]]*\]\(archive\/[^)]*\)\.?$/;
 const UNCHECKED_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]/gm;
+/** Пометки незакрытого: целым словом, в любом регистре. Само слово не значит «открыто», поэтому только предупреждение. */
+const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не\s+проверено|открыто)(?![\p{L}\p{N}_])/iu;
+/** Строка находок с нулём открытых содержит «открыто», но пометкой не является. */
+const CLOSED_FINDINGS_RE = /Находки:\s*critical\s+\d+,\s*high\s+\d+,\s*medium\s+\d+,\s*low\s+\d+;\s*открыто\s+0(?!\d)/;
+/** Раздел бывает в десятки тысяч знаков: агент видит сами строки и не перечитывает его. */
+const SHOWN_MARKS = 3;
+const SHOWN_CHARS = 100;
 /** Сколько заголовков показать в отказе: у живых планов их сотни. */
 const LISTED = 30;
 
@@ -104,7 +111,7 @@ export function plainTitle(value: string): string {
 
 const startsWithWord = (title: string, wanted: string): boolean => title.startsWith(wanted) && !WORD_RE.test(title.slice(wanted.length));
 
-function mentionsSlice(text: string, slice: string): boolean {
+export function mentionsSlice(text: string, slice: string): boolean {
   const escaped = slice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u').test(text);
 }
@@ -167,7 +174,34 @@ function chooseSection(text: string, plan: PlanFile, argument: string, headings:
   if (declaredSlice !== null && mentionsSlice(rest, declaredSlice)) warnings.push(`раздел ${title} упоминает текущую порцию ${declaredSlice}.`);
   const unchecked = [...rest.matchAll(UNCHECKED_RE)].length;
   if (unchecked > 0) warnings.push(`в разделе ${title} неотмеченных пунктов [ ]: ${formatChars(unchecked)}.`);
-  return { choice: { heading, nested, already: POINTER_RE.test(rest.trim()), warnings } };
+  const already = POINTER_RE.test(rest.trim());
+  const marks = already ? null : openMarksWarning(title, section);
+  if (marks !== null) warnings.push(marks);
+  return { choice: { heading, nested, already, warnings } };
+}
+
+/** Строка с пометкой, не длиннее `SHOWN_CHARS` кодовых точек; слово остаётся видно и в длинной строке. */
+function shownLine(line: string, mark: number): string {
+  const points = [...line];
+  if (points.length <= SHOWN_CHARS) return line;
+  const before = [...line.slice(0, mark)].length;
+  const start = before < SHOWN_CHARS / 2 ? 0 : Math.min(before - SHOWN_CHARS / 4, points.length - SHOWN_CHARS);
+  const shown = points.slice(start, start + SHOWN_CHARS).join('');
+  return `${start > 0 ? '…' : ''}${shown}${start + SHOWN_CHARS < points.length ? '…' : ''}`;
+}
+
+/** Предупреждение о пометках незакрытого в тексте раздела; блоки кода не считаются. */
+function openMarksWarning(title: string, section: string): string | null {
+  const found: string[] = [];
+  for (const { line, code } of markdownLines(section)) {
+    if (code) continue;
+    const text = line.trim();
+    const mark = OPEN_MARK_RE.exec(text.replace(CLOSED_FINDINGS_RE, (found) => ' '.repeat(found.length)));
+    if (mark !== null) found.push(`«${shownLine(text, mark.index)}»`);
+  }
+  if (found.length === 0) return null;
+  const more = found.length > SHOWN_MARKS ? `; ещё ${formatChars(found.length - SHOWN_MARKS)}` : '';
+  return `в разделе ${title} есть пометки незакрытого: ${found.slice(0, SHOWN_MARKS).join('; ')}${more}. Закрыто — переносите; открыто — сначала запишите в wiki/hot.md или wiki/icebox.md: обратно архив не копируют.`;
 }
 
 /** `active_plan` из `wiki/hot.md`. */

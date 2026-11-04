@@ -231,7 +231,7 @@ describe('0.4.3: проверки без лишнего круга — когд�
 
     const root = await project();
     const sample = await packageText('templates/project/maestro/templates/audit.md');
-    // high закрыта после проверенного исправления, medium «не исправляем» открыта, low проверки исправлений — своя находка.
+    // high закрыта после проверенного исправления, medium «не исправляем» открыта, high проверки исправлений — своя находка.
     expect(sample).toMatch(/- severity: high\n[^#]*- status: resolved\n- resolution: [^\n]*проверка исправления/);
     expect(sample).toMatch(/- severity: medium\n[^#]*- status: open\n- resolution: не исправляем — причина; где записано/);
     expect(sample).toMatch(/- evidence: найдено проверкой исправления F001/);
@@ -301,7 +301,7 @@ describe('0.4.3: проверки без лишнего круга — когд�
     expect(audit).toContain('Ничего не исправляли — проверять нечего');
     expect(audit).toContain('«проверь ещё раз» — проверка');
     expect(audit).toContain('`status: open` с `resolution: не исправляем — причина; где записано`');
-    expect(audit).toContain('текст каждой находки из отчёта, файлы и строки исправления и сам текст изменений');
+    expect(audit).toContain('текст каждой находки проверяющего, файлы и строки исправления и сам текст изменений');
   });
 
   it('ревьюер: три вида работы, только читает, находки возвращает, файл не пишет', async () => {

@@ -1,4 +1,4 @@
-import { FINISH_SLICE_SHARE, measureContext, NEW_SESSION_SHARE } from '../core/context.js';
+import { measureContext, thresholdsFor } from '../core/context.js';
 import type { ContextLevel, WindowSource } from '../core/context.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
@@ -52,6 +52,7 @@ export async function executeContextCommand(options: ContextRunOptions, io: CliI
   io.out(ADVICE[report.level]);
   const total = report.totalInputTokens ?? 0;
   io.out(`За сессию модель получила на вход ${formatTokens(total)} ${tokensWord(total)} (шагов модели: ${report.requests}): каждый шаг заново пересылает всю историю.`);
-  io.out(`Пороги ${Math.round(FINISH_SLICE_SHARE * 100)}% и ${Math.round(NEW_SESSION_SHARE * 100)}% — гипотеза; их уточнит замер.`);
+  const { finishSliceTokens, newSessionTokens } = thresholdsFor(report.budget);
+  io.out(`Пороги ${formatTokens(finishSliceTokens)} и ${formatTokens(newSessionTokens)} ${tokensWord(newSessionTokens)} — гипотеза; их уточнит замер.`);
   return EXIT_OK;
 }

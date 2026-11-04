@@ -110,6 +110,9 @@ const FIXTURES_042 = ['0.4.2-light', '0.4.2-standard', '0.4.2-advanced'];
 /** Проекты опубликованного 0.4.3: после них 0.4.4 только переписал тексты, состав тот же. */
 const FIXTURES_043 = ['0.4.3-light', '0.4.3-standard', '0.4.3-advanced'];
 
+/** Проекты опубликованного 0.4.4: после них 0.4.5 только переписал тексты, состав тот же. */
+const FIXTURES_044 = ['0.4.4-light', '0.4.4-standard', '0.4.4-advanced'];
+
 /** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
 const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_043_SINCE_030);
 
@@ -211,7 +214,7 @@ describe('реестр опубликованных канонов', () => {
     }
   });
 
-  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042, ...FIXTURES_043])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042, ...FIXTURES_043, ...FIXTURES_044])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
     const data = await fixture(id);
     const release = findRelease(data.version);
     expect(release).toBeDefined();
@@ -850,9 +853,9 @@ describe('upgrade с опубликованного 0.4.2 на текущую в
 });
 
 describe('upgrade с опубликованного 0.4.3 на текущую версию', () => {
-  /** Всё, что upgrade с 0.4.3 переписывает на нетронутом проекте: изменения 0.4.4 и закреплённая версия в командах. */
+  /** Всё, что upgrade с 0.4.3 переписывает на нетронутом проекте: изменения 0.4.4 и 0.4.5 и закреплённая версия в командах. */
   const UPDATED_FROM_043 = [
-    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/templates/handoff.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md',
+    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md',
     'protocols/plan.md', 'protocols/start.md', 'protocols/status.md', 'protocols/wiki.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
   ];
   const OWNED = ['wiki/hot.md', 'wiki/log.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'wiki/icebox.md'];
@@ -924,7 +927,75 @@ describe('upgrade с опубликованного 0.4.3 на текущую в
     expect(await runMaestroCli(['preflight', '--path', root], collect().io)).toBe(0);
   });
 
-  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042].filter((id) => id.endsWith('standard')))('%s: archive без upgrade отказывает и называет upgrade; после upgrade — работает', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042, ...FIXTURES_043].filter((id) => id.endsWith('standard')))('%s: archive без upgrade отказывает и называет upgrade; после upgrade — работает', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const refused = await archiveProject(root, { apply: true });
+    expect(refused.blockers.map((item) => item.code)).toEqual(['archive-version-mismatch']);
+    expect(refused.blockers[0]?.message).toContain('upgrade');
+    expect(await snapshotTree(root)).toEqual(before);
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await archiveProject(root, { apply: true })).ok).toBe(true);
+  });
+});
+
+describe('upgrade с опубликованного 0.4.4 на текущую версию', () => {
+  /** Всё, что upgrade с 0.4.4 переписывает на нетронутом проекте: изменения 0.4.5 и закреплённая версия в командах. */
+  const UPDATED_FROM_044 = [
+    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'protocols/audit.md', 'protocols/build.md',
+    'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md',
+  ];
+  const OWNED = ['wiki/hot.md', 'wiki/log.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'wiki/icebox.md'];
+
+  it.each(FIXTURES_044)('%s: dry-run и --diff ни байта не пишут; новых файлов, удалений и напоминаний нет', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.fromVersion).toBe('0.4.4');
+    expect(analysis.creates).toEqual([]);
+    expect(analysis.removes).toEqual([]);
+    expect(analysis.notes).toEqual([]);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_044);
+    for (const path of OWNED) expect(analysis.preserves, path).toContain(path);
+    const cli = collect();
+    expect(await runMaestroCli(['upgrade', '--path', root, '--diff'], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('protocols/audit.md');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it.each(FIXTURES_044)('%s: --apply даёт канон текущей версии, файлы проекта не тронуты, doctor --strict зелёный', async (id) => {
+    const { root, data } = await materialize(id);
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.error).toBeUndefined();
+    expect(result.applied).toBe(true);
+    for (const path of OWNED) expect(await readUtf8(root, path), path).toBe(data.files[path]);
+    const fresh = join(await makeTempDir('fresh-044-'), data.folder);
+    expect((await initProject({ target: fresh, name: 'Проект фикстуры', startingPoint: 'idea', depth: data.depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect((await loadManifest(root)).inventory).toEqual((await loadManifest(fresh)).inventory);
+    const withoutDate = (text: string): string => text.replace(/^updated: .*$/m, '');
+    for (const path of UPDATED_FROM_044) expect(withoutDate(await readUtf8(root, path)), path).toBe(withoutDate(await readUtf8(fresh, path)));
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await analyzeUpgrade(root)).analysis.status).toBe('current');
+  });
+
+  it('утверждённый план с отпечатком 0.4.4 и хвостами [x] после upgrade остаётся зелёным', async () => {
+    const { root } = await materialize('0.4.4-standard');
+    const path = 'wiki/plans/0001-starter.md';
+    let text = await readUtf8(root, path);
+    text = text.replace(/^status: .*$/m, 'status: approved').replace(/^approved_by: .*$/m, 'approved_by: Человек').replace(/^approved_at: .*$/m, 'approved_at: 2026-11-01')
+      .replace(/^blocking_questions: .*$/m, 'blocking_questions: 0').replace(/^current_slice: .*$/m, 'current_slice: 02-next')
+      .replace('1. Пройти `/start` — знакомство с задачей.', '1. [ ] Пройти `/start` — знакомство с задачей.');
+    text = text.replace(/^(approved_at: .*)$/m, `$1\napproved_digest: ${planBodyDigest(text)}`);
+    await writeFile(join(root, 'wiki/handoffs/2026-11-02-start.md'), '# Передача\n', 'utf8');
+    await writeFile(join(root, path), text.replace('1. [ ] Пройти `/start` — знакомство с задачей.', '1. [x] Пройти `/start` — знакомство с задачей. → [итог](../handoffs/2026-11-02-start.md)'), 'utf8');
+    await writeFile(join(root, 'wiki/hot.md'), (await readUtf8(root, 'wiki/hot.md')).replace(/^active_plan: .*$/m, 'active_plan: plans/0001-starter.md'), 'utf8');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect(await runMaestroCli(['preflight', '--path', root], collect().io)).toBe(0);
+  });
+
+  it.each(FIXTURES_044.filter((id) => id.endsWith('standard')))('%s: archive без upgrade отказывает и называет upgrade; после upgrade — работает', async (id) => {
     const { root } = await materialize(id);
     const before = await snapshotTree(root);
     const refused = await archiveProject(root, { apply: true });

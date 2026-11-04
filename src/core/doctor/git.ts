@@ -49,7 +49,7 @@ export async function checkGit(root: string, managedDocs: Set<string>, findings:
 }
 
 /** Команда git, чей отказ — ответ «нет», а не сбой проверки. */
-async function gitAnswer(root: string, args: readonly string[]): Promise<string | null> {
+export async function gitAnswer(root: string, args: readonly string[]): Promise<string | null> {
   try {
     return (await execFileAsync('git', [...args], { cwd: root, encoding: 'utf8' })).stdout.trim();
   } catch {

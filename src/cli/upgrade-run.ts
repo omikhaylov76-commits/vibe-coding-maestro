@@ -4,7 +4,7 @@ import { quotePathArg, serviceInvocation, VERSION } from '../core/meta.js';
 import { formatHunk } from '../core/text-diff.js';
 import type { TextDiff } from '../core/text-diff.js';
 import { upgradeDiffs, upgradeProject } from '../core/upgrade/index.js';
-import type { UpgradeFileDiff } from '../core/upgrade/index.js';
+import type { UpgradeFileDiff, UpgradeHooks } from '../core/upgrade/index.js';
 import type { CliIo } from './io.js';
 import { EXIT_FAILED, EXIT_OK } from './io.js';
 
@@ -13,6 +13,8 @@ export interface UpgradeRunOptions {
   json: boolean;
   apply?: boolean;
   diff?: boolean;
+  /** Тестовый шов: см. `TransactionHooks`. */
+  hooks?: UpgradeHooks;
 }
 
 /** Сколько строк добавится и уберётся: «строк: +12 -5». */
@@ -32,13 +34,17 @@ const DIFF_TITLES: Record<UpgradeFileDiff['action'], string> = {
  * а запись требует отдельного человеческого намерения.
  */
 export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliIo): Promise<number> {
-  const result = await upgradeProject(options.path, { apply: options.apply === true });
+  const result = await upgradeProject(options.path, {
+    apply: options.apply === true,
+    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
+  });
   if (options.json) {
     io.out(JSON.stringify({
       reportVersion: 1,
       ok: result.ok,
       applied: result.applied,
       rolledBack: result.rolledBack,
+      partial: result.partial,
       ...(result.error === undefined ? {} : { error: result.error }),
       analysis: result.analysis,
     }, null, 2));
@@ -47,7 +53,11 @@ export async function executeUpgradeCommand(options: UpgradeRunOptions, io: CliI
 
   const { analysis } = result;
   if (analysis.status === 'blocked' || result.ok === false) {
-    io.err(`Vibe Coding Maestro upgrade: обновление не выполнено (изменений на диске нет).`);
+    // Осталась папка транзакции: прошлый запуск мог изменить проект, поэтому «изменений нет» здесь не обещается.
+    const staged = analysis.blockers.some((item) => item.code === 'upgrade-staging-present');
+    io.err(result.partial
+      ? 'Vibe Coding Maestro upgrade: обновление прервано, и откатить удалось не всё: проект изменён частично.'
+      : `Vibe Coding Maestro upgrade: ${staged ? 'обновление не запущено.' : 'обновление не выполнено (изменений на диске нет).'}`);
     if (result.error !== undefined) io.err(`- ${result.error}`);
     for (const item of analysis.blockers) io.err(`- ${item.code}${item.path ? ` (${item.path})` : ''}: ${item.message}`);
     return EXIT_FAILED;

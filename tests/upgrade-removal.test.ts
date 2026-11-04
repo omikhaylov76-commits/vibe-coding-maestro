@@ -171,12 +171,12 @@ describe('upgrade удаляет нетронутые файлы Maestro, уше
     expect(await snapshotTree(root)).toEqual(before);
   });
 
-  it('--json — прежний отчёт плюс поле removes', async () => {
+  it('--json — прежний отчёт плюс поля partial и removes', async () => {
     const root = await projectWith(RETIRED);
     const cli = collectIo();
     expect(await runMaestroCli(['upgrade', '--path', root, '--json'], cli.io)).toBe(0);
     const report = JSON.parse(cli.stdout()) as { analysis: Record<string, unknown> };
-    expect(Object.keys(report)).toEqual(['reportVersion', 'ok', 'applied', 'rolledBack', 'analysis']);
+    expect(Object.keys(report)).toEqual(['reportVersion', 'ok', 'applied', 'rolledBack', 'partial', 'analysis']);
     expect(Object.keys(report.analysis)).toEqual([
       'reportVersion', 'status', 'root', 'baselineId', 'fromVersion', 'toVersion',
       'creates', 'updates', 'removes', 'unchanged', 'preserves', 'handedOver', 'metadata', 'notes', 'blockers',

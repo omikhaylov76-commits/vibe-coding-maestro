@@ -25,7 +25,7 @@
 </p>
 
 > [!IMPORTANT]
-> **0.4.4 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
+> **0.4.5 is published on npm.** Create a project with `npx create-vibe-maestro@latest`. Every generated project records the exact Maestro version in `.claude/rules/maestro.md`, so its checks do not change under it when a new version is published; `vibe-maestro upgrade` moves it forward when you decide. Interfaces may still change before 1.0. The CLI and generated project templates are Russian-first; English localization is planned before a global release.
 
 When an AI-assisted project lasts longer than one chat, the same problems keep returning:
 
@@ -78,7 +78,7 @@ Vibe Coding Maestro doctor: всё сходится.
 The second line is `info` (from local Git data only; it never fails `doctor`, `--strict` or `preflight`) and disappears once the project has a copy in the cloud. `@latest` above is the newest published Maestro. If it is newer than your project, `doctor` says so and prints the exact commands to check the project with its own version or to upgrade it.
 
 > [!WARNING]
-> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2, 0.4.3). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
+> **Core 0.3 creates new canonical projects only.** It can also re-check a complete project already created by the same canonical engine, and `vibe-maestro upgrade` can evolve a provably canonical project created by an earlier published version (0.2.0-beta.1, 0.3.0-beta.1 – 0.3.0-beta.4, 0.3.0, 0.3.1, 0.4.0, 0.4.1, 0.4.2, 0.4.3, 0.4.4). It refuses to modify a non-empty, non-canonical directory, and no flag overrides that refusal. Safe conversion of arbitrary existing projects belongs to a separate future Converter.
 
 ## Что дальше после создания проекта: Planning Gate
 
@@ -178,7 +178,7 @@ From there, `protocols/build.md` routes the agent through the relevant rules, pl
 
 ## A normal working cycle
 
-The guided path above is the whole cycle: material in `maestro/inbox/` → `/start` (getting to know the task) → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Checks run once: the plan is always checked against the real situation, a plan audit before approval, one code review per slice, then only the fixes are re-checked; the agent runs tests and checks itself and asks the human only about what they understand and own. Independent audit findings are recorded with stable IDs on one `critical | high | medium | low` scale (sample: `maestro/templates/audit.md`); open `high` or `critical` findings block a green doctor result.
+The guided path above is the whole cycle: material in `maestro/inbox/` → `/start` (getting to know the task) → plan → human approval → one bounded build with tests and live evidence → `doctor` → handoff, then a new session for the next slice (`vibe-maestro context` tells the agent how large the session has grown, at the end of a slice and after a commit in the middle of one). When the last slice is done, `protocols/completion.md` walks through delivery or closing: criteria checked, tests green, a delivery tag, a complete project passport (`wiki/passport.md`: where everything lives, names of environment variables but never their values), customer documents, a final handoff; `vibe-maestro pack` builds the customer archive from the delivery tag. Checks run once: the plan is always checked against the real situation, a plan audit before approval, one code review per slice, then only the fixes are re-checked; the agent runs tests and checks itself and asks the human only about what they understand and own. Independent audit findings are recorded with stable IDs on one `critical | high | medium | low` scale (sample: `maestro/templates/audit.md`); a report holds only `critical`, `high` and open findings, and the handoff keeps the numbers of all of them; open `high` or `critical` findings block a green doctor result. A handoff marks what the agent did not check itself, and `doctor` says when memory falls behind the code.
 
 Claude Code projects receive six thin commands:
 
@@ -294,7 +294,7 @@ npx --package create-vibe-maestro@latest vibe-maestro archive --path .
 
 `preflight` and `doctor` exit `0` when the check passes and `1` when it blocks; `sources`, `upgrade` and `archive` write nothing at all unless you add `--write` or `--apply`.
 
-The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1, 0.4.2 and 0.4.3. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
+The repository release gate covers tests, type checking, build, audit, source acceptance, packed-tarball installation, all three depths, paths with spaces, deterministic doctor JSON, protocol drift, canonical identity forgery, incomplete canonical trees, forbidden audit waivers, symlink boundaries, and upgrades from projects created by the published 0.3 betas, 0.3.x, 0.4.0, 0.4.1, 0.4.2, 0.4.3 and 0.4.4. Pull requests and `main` run on Ubuntu, macOS, and Windows with Node.js 20 and 22; a branch push runs one quick Ubuntu job.
 
 ## Current scope
 

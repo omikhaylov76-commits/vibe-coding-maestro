@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-const BETA_VERSION = '0.4.4';
+const BETA_VERSION = '0.4.5';
 
 async function text(path: string): Promise<string> {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -213,9 +213,26 @@ describe('этапы 12–13: CI и документационные контр�
       '`memory-plan-long`', '`memory-log-long`', '`memory-handoff-long`', '` → [итог](../handoffs/<file>.md)`', 'create-vibe-maestro@0.4.4',
     ]) expect(entry, value).toContain(value);
     const guide = await text('docs/USER_GUIDE.md');
-    for (const value of ['## Память не разрастается', '**Что меняет переход на 0.4.4.**', 'archive --path . --section', '`memory-handoff-long`', '0.4.2 и 0.4.3']) expect(guide, value).toContain(value);
+    for (const value of ['## Память не разрастается', '**Что меняет переход на 0.4.4.**', 'archive --path . --section', '`memory-handoff-long`', '0.4.2, 0.4.3']) expect(guide, value).toContain(value);
     expect(await text('README.md')).toContain('`archive` moves old memory');
     expect(await text('docs/ROADMAP.md')).toContain('**0.4.4** (выпуск');
+  });
+
+  it('0.4.5: заметки к выпуску, новые коды doctor и пороги названы в документах', async () => {
+    const changelog = await text('CHANGELOG.md');
+    const entry = changelog.slice(changelog.indexOf('## 0.4.5'), changelog.indexOf('## 0.4.4'));
+    expect(entry).toContain('### For those who create projects with their own scripts');
+    for (const value of [
+      '`memory-hot-behind`', '`memory-handoff-behind`', '`finishSliceTokens`', '`newSessionTokens`', '`partial`', '`## Что мешало в работе`',
+      '`Находки: critical N, high N, medium N, low N; открыто N.`', 'create-vibe-maestro@0.4.5', 'maestro/inbox/.gitattributes',
+    ]) expect(entry, value).toContain(value);
+    const guide = await text('docs/USER_GUIDE.md');
+    for (const value of ['**Что меняет переход на 0.4.5.**', '`memory-hot-behind`', '`memory-handoff-behind`', 'от 600 000', '«со слов: кого»', 'Что мешало в работе', '0.4.3 и 0.4.4']) expect(guide, value).toContain(value);
+    expect(guide).not.toContain('до 40% окна модели');
+    const roadmap = await text('docs/ROADMAP.md');
+    for (const value of ['**0.4.5** (выпуск', '### 0.4.5 — неделя настоящей работы', '### Ждёт статистику (0.4.6)']) expect(roadmap, value).toContain(value);
+    const postponed = roadmap.slice(roadmap.indexOf('### Отложено'));
+    expect(postponed).not.toContain('отстал от коммитов');
   });
 
   it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {

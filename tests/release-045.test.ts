@@ -1,16 +1,17 @@
 import { execFile } from 'node:child_process';
-import { cp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { executeUpgradeCommand } from '../src/cli/upgrade-run.js';
+import { countChars } from '../src/core/archive/limits.js';
 import { levelFor, measureContext, projectLogDirName, thresholdsFor } from '../src/core/context.js';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
 import { planBodyDigest } from '../src/core/plan.js';
-import { STAGING_DIR } from '../src/core/upgrade/index.js';
+import { STAGING_DIR, upgradeProject } from '../src/core/upgrade/index.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8 } from './helpers.js';
 import { collectIo, materializePublished } from './published.js';
 
@@ -329,5 +330,111 @@ describe('0.4.5: upgrade честно говорит о неудачном от�
     const refused = collectIo();
     expect(await executeUpgradeCommand({ path: blocked.root, json: false, apply: true }, refused.io)).not.toBe(0);
     expect(refused.stderr().split('\n')[0]).toBe('Vibe Coding Maestro upgrade: обновление не выполнено (изменений на диске нет).');
+  });
+});
+
+describe('0.4.5: договор текстов', () => {
+  const template = (path: string): Promise<string> => readFile(join(process.cwd(), 'templates/project', path), 'utf8');
+  /** Правила Maestro, которые агент читает: `protocols`, `.claude`, образцы, README и шаблон планов. */
+  async function ruleFiles(): Promise<string[]> {
+    const inDir = async (dir: string): Promise<string[]> => (await readdir(join(process.cwd(), 'templates/project', dir))).filter((name) => name.endsWith('.md')).map((name) => `${dir}/${name}`);
+    return [
+      ...await inDir('protocols'), '.claude/rules/maestro.md', ...await inDir('maestro/templates'),
+      'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md', ...await inDir('.claude/commands'), ...await inDir('.claude/agents'),
+    ];
+  }
+
+  it('бюджет: текст правил в сумме не растёт', async () => {
+    const files = await ruleFiles();
+    expect(files).toHaveLength(23);
+    let total = 0;
+    for (const path of files) total += countChars(await template(path));
+    expect(total).toBeLessThanOrEqual(68_968);
+  });
+
+  it('одно правило об отчёте: в протоколе, образце отчёта и образце передачи', async () => {
+    const audit = await template('protocols/audit.md');
+    expect(audit).toContain('Проверяющий возвращает все находки. Автор пишет отчёт после круга');
+    expect(audit).toContain('В отчёт — только critical, high и открытые');
+    expect(audit).toContain('От закрытых medium и low остаются числа и коммиты исправлений');
+    expect(audit).toContain('Записанное не вычищается; отчёт из Cowork импортируется целиком');
+    expect(audit).toContain('Закрытая medium или low в отчёте (импорт из Cowork) — в `resolution` чем подтверждено');
+    expect(audit).toContain('Аудит плана — та же строка в разделе «Утверждение» плана');
+    expect(await template('maestro/templates/audit.md')).toContain('В отчёт — только critical, high и открытые');
+    const line = 'Находки: critical N, high N, medium N, low N; открыто N.';
+    expect(audit).toContain(line);
+    const handoff = await template('maestro/templates/handoff.md');
+    const checks = handoff.slice(handoff.indexOf('## Проверки'), handoff.indexOf('## Решения'));
+    expect(checks).toContain(line);
+    expect(handoff).not.toContain('находок нет');
+    // Ревьюер и импорт из Cowork не меняются: проверяющий по-прежнему возвращает всё.
+    expect(await template('.claude/agents/code-reviewer.md')).not.toContain('только critical');
+    expect(await template('maestro/runbooks/cowork-audit.md')).not.toContain('только critical');
+  });
+
+  it('честность проверки: таблица в передаче и в завершении, «со слов»', async () => {
+    const handoff = await template('maestro/templates/handoff.md');
+    const checks = handoff.slice(handoff.indexOf('## Проверки'), handoff.indexOf('## Решения'));
+    expect(checks).toContain('| Пункт | Чем проверено | Результат |');
+    expect(checks).toContain('«со слов: кого»');
+    const completion = await template('protocols/completion.md');
+    expect(completion).toContain('таблицей `| Пункт | Чем проверено | Результат |`');
+    expect(completion).toContain('никогда «прошло» без него');
+    expect(completion).toContain('Статус в документах не сильнее таблицы шага 1');
+  });
+
+  it('«Что мешало в работе» — перед «Следующий шаг» и только в образце передачи', async () => {
+    const handoff = await template('maestro/templates/handoff.md');
+    expect(handoff.indexOf('## Что мешало в работе')).toBeGreaterThan(handoff.indexOf('## Риски и открытые вопросы'));
+    expect(handoff.indexOf('## Что мешало в работе')).toBeLessThan(handoff.indexOf('## Следующий шаг'));
+    for (const path of await ruleFiles()) {
+      if (path !== 'maestro/templates/handoff.md') expect(await template(path), path).not.toContain('Что мешало');
+    }
+  });
+
+  it('строка о проверках на сервере — только в build.md, с условием', async () => {
+    const phrase = 'сколько проверок на сервере запускал и зачем';
+    for (const path of await ruleFiles()) {
+      if (path !== 'protocols/build.md') expect(await template(path), path).not.toContain(phrase);
+    }
+    expect(await template('protocols/build.md')).toContain(`есть копия в облаке — в итоге порции строка: ${phrase}`);
+  });
+
+  it('размер сессии проверяют и посреди порции', async () => {
+    const rules = await template('.claude/rules/maestro.md');
+    expect(rules).toContain('Посреди порции запускай `context` после коммита: ответ «пора в новую сессию» — передача дел сейчас.');
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
+    expect(await template('protocols/handoff.md')).toContain('Сообщения `memory-…` — подсказка, что сократить или догнать');
+  });
+
+  it.each(['light', 'standard', 'advanced'] as const)('свежий проект %s: doctor --strict зелёный', async (depth) => {
+    const root = join(await makeTempDir('fresh-045-'), 'проект');
+    expect((await initProject({ target: root, startingPoint: 'idea', depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+  });
+});
+
+describe('0.4.5: переход в git с каждой опубликованной версии', () => {
+  const ALL = [
+    '0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-standard', '0.3.0-beta.3-advanced', '0.3.0-beta.4-standard', '0.3.0-standard',
+    '0.3.1-light', '0.3.1-standard', '0.3.1-advanced', '0.4.0-light', '0.4.0-standard', '0.4.0-advanced', '0.4.1-light', '0.4.1-standard', '0.4.1-advanced',
+    '0.4.2-light', '0.4.2-standard', '0.4.2-advanced', '0.4.3-light', '0.4.3-standard', '0.4.3-advanced', '0.4.4-light', '0.4.4-standard', '0.4.4-advanced',
+  ];
+  const git = async (cwd: string, ...args: string[]): Promise<void> => {
+    await execFileAsync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', '-c', 'commit.gpgSign=false', ...args], { cwd });
+  };
+
+  it.each(ALL)('%s: --apply, коммит, doctor --strict зелёный', async (id) => {
+    const { root } = await materializePublished(id);
+    await git(root, 'init', '-q');
+    await git(root, 'add', '-A');
+    await git(root, 'commit', '-q', '-m', 'до перехода');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    await git(root, 'add', '-A');
+    await git(root, 'commit', '-q', '-m', 'Maestro 0.4.5');
+    const report = await doctorProject(root, { strict: true });
+    expect(report.ok).toBe(true);
+    expect(report.findings.filter((item) => item.level !== 'info')).toEqual([]);
+    expect(report.findings.filter((item) => item.code.startsWith('memory-'))).toEqual([]);
   });
 });

@@ -96,8 +96,8 @@ const POINTER_RE = /^В архиве: \[[^\]]*\]\(archive\/[^)]*\)\.?$/;
 const UNCHECKED_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]/gm;
 /** Пометки незакрытого: целым словом, в любом регистре. Само слово не значит «открыто», поэтому только предупреждение. */
 const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не\s+проверено|открыто)(?![\p{L}\p{N}_])/iu;
-/** Строка находок сама содержит «открыто»: это числа, а не пометка. */
-const FINDINGS_LINE_RE = /^(?:[-*]\s+)?Находки:\s*critical\b/;
+/** Строка находок с нулём открытых содержит «открыто», но пометкой не является. */
+const CLOSED_FINDINGS_RE = /Находки:\s*critical\s+\d+,\s*high\s+\d+,\s*medium\s+\d+,\s*low\s+\d+;\s*открыто\s+0(?!\d)/;
 /** Раздел бывает в десятки тысяч знаков: агент видит сами строки и не перечитывает его. */
 const SHOWN_MARKS = 3;
 const SHOWN_CHARS = 100;
@@ -174,9 +174,10 @@ function chooseSection(text: string, plan: PlanFile, argument: string, headings:
   if (declaredSlice !== null && mentionsSlice(rest, declaredSlice)) warnings.push(`раздел ${title} упоминает текущую порцию ${declaredSlice}.`);
   const unchecked = [...rest.matchAll(UNCHECKED_RE)].length;
   if (unchecked > 0) warnings.push(`в разделе ${title} неотмеченных пунктов [ ]: ${formatChars(unchecked)}.`);
-  const marks = openMarksWarning(title, section);
+  const already = POINTER_RE.test(rest.trim());
+  const marks = already ? null : openMarksWarning(title, section);
   if (marks !== null) warnings.push(marks);
-  return { choice: { heading, nested, already: POINTER_RE.test(rest.trim()), warnings } };
+  return { choice: { heading, nested, already, warnings } };
 }
 
 /** Строка с пометкой, не длиннее `SHOWN_CHARS` кодовых точек; слово остаётся видно и в длинной строке. */
@@ -195,7 +196,7 @@ function openMarksWarning(title: string, section: string): string | null {
   for (const { line, code } of markdownLines(section)) {
     if (code) continue;
     const text = line.trim();
-    const mark = FINDINGS_LINE_RE.test(text) ? null : OPEN_MARK_RE.exec(text);
+    const mark = OPEN_MARK_RE.exec(text.replace(CLOSED_FINDINGS_RE, (found) => ' '.repeat(found.length)));
     if (mark !== null) found.push(`«${shownLine(text, mark.index)}»`);
   }
   if (found.length === 0) return null;

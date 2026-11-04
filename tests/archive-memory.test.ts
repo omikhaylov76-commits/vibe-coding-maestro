@@ -791,8 +791,17 @@ describe('0.4.5 archive: незакрытое в разделе', () => {
     expect((await warnings('Файлы не  проверено.')).length).toBe(1);
     expect((await warnings('Файлы не\u00A0проверено.')).length).toBe(1);
     expect(await warnings('Находки: critical 0, high 0, medium 0, low 0; открыто 0.')).toEqual([]);
-    expect(await warnings('- Находки: critical 1, high 0, medium 0, low 0; открыто 1. [отчёт](x.md)')).toEqual([]);
+    expect((await warnings('- Находки: critical 1, high 0, medium 0, low 0; открыто 1. [отчёт](x.md)')).length).toBe(1);
+    expect((await warnings('Находки: critical 0, high 0, medium 0, low 0; открыто 0. UNKNOWN: цена доставки.')).length).toBe(1);
     expect((await warnings('Находки по цене: открыто.')).length).toBe(1);
+  });
+
+  it('уже перенесённый раздел с пометкой в заголовке — без предупреждения', async () => {
+    const root = await project();
+    await withPlan(root, body('Текст.').replace('### Правка 1', '### Правка 1 — открыто: цена'), { digest: null });
+    expect((await archiveProject(root, { apply: true, sections: ['Правка 1'] })).applied).toBe(true);
+    const again = (await archiveProject(root, { sections: ['Правка 1'] })).sections[0];
+    expect([again?.status, again?.warnings]).toEqual(['already', []]);
   });
 
   it('заголовок вложенного раздела считается; строк больше трёх — «ещё N»', async () => {

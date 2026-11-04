@@ -379,7 +379,7 @@ describe('0.4.5: договор текстов', () => {
   it('одно правило об отчёте: в протоколе, образце отчёта и образце передачи', async () => {
     const audit = await template('protocols/audit.md');
     expect(audit).toContain('Проверяющий возвращает все находки. Автор пишет отчёт после проверки исправлений');
-    expect(audit).toContain('Передача посреди круга — неисправленные находки сразу в отчёт: `status: open`, `resolution: не исправлено`.');
+    expect(audit).toContain('Передача посреди круга — незакрытое проверкой исправлений сразу в отчёт: `status: open`, в `resolution` — не исправлено или исправлено, не проверено.');
     expect(audit).toContain('В отчёт — только critical, high и открытые');
     expect(audit).toContain('От закрытых medium и low остаются числа и коммиты исправлений');
     expect(audit).toContain('Записанное не вычищается; отчёт из Cowork импортируется целиком');

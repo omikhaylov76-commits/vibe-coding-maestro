@@ -757,3 +757,78 @@ describe('0.4.4 archive: находки ревью', () => {
     await expectRefused(root, ['Правка 1'], 'archive-section-approval');
   });
 });
+
+describe('0.4.5 archive: незакрытое в разделе', () => {
+  const body = (text: string): string => ['# Работа', '', '## Изменения после утверждения', '', '### Правка 1', '', text, '', '### Правка 2', '', 'Закрыта.', '', '## Утверждение', '', 'Да.', ''].join('\n');
+  async function warnings(text: string): Promise<string[]> {
+    const root = await project();
+    await withPlan(root, body(text), { digest: null });
+    const report = await archiveProject(root, { sections: ['Правка 1'] });
+    expect(report.ok).toBe(true);
+    return report.sections[0]?.warnings ?? [];
+  }
+
+  it('каждое из пяти слов даёт предупреждение со строкой и подсказкой, что делать', async () => {
+    for (const word of ['UNKNOWN', 'OPEN_QUESTION', 'HYPOTHESIS', 'не проверено', 'открыто']) {
+      const [warning, ...rest] = await warnings(`Строка: ${word}: ответ потом.`);
+      expect(rest).toEqual([]);
+      expect(warning).toContain(`«Строка: ${word}: ответ потом.»`);
+      expect(warning).toContain('Закрыто — переносите; открыто — сначала запишите в wiki/hot.md или wiki/icebox.md');
+    }
+  });
+
+  it('регистр не важен; слово внутри другого слова и блок кода — нет', async () => {
+    for (const text of ['hypothesis подтвердилась', 'Unknown закрыт', 'ОТКРЫТО: нет', 'Не проверено руками']) expect((await warnings(text)).length, text).toBe(1);
+    for (const text of ['Закрыто.', 'неоткрыто', 'HYPOTHESISES', 'UNKNOWN_1', 'открытой', '```text\nUNKNOWN и открыто\n```', '~~~\nHYPOTHESIS\n~~~']) {
+      expect(await warnings(text), text).toEqual([]);
+    }
+  });
+
+  it('заголовок вложенного раздела считается; строк больше трёх — «ещё N»', async () => {
+    const [nested] = await warnings('Текст.\n\n#### Открыто: цена доставки\n\nДальше.');
+    expect(nested).toContain('«#### Открыто: цена доставки»');
+    const [many] = await warnings(['UNKNOWN первая', 'UNKNOWN вторая', 'UNKNOWN третья', 'UNKNOWN четвёртая', 'UNKNOWN пятая'].join('\n\n'));
+    expect(many).toContain('«UNKNOWN третья»; ещё 2.');
+    expect(many).not.toContain('четвёртая');
+  });
+
+  it('длинная строка режется по кодовым точкам, слово остаётся видно', async () => {
+    const start = (await warnings(`HYPOTHESIS ${'😀'.repeat(200)}`))[0] ?? '';
+    const shown = /незакрытого: «(.*?)»/su.exec(start)?.[1] ?? '';
+    expect(shown.endsWith('😀…')).toBe(true);
+    expect([...shown].length).toBe(101);
+    expect(shown).not.toContain('�');
+
+    const far = (await warnings(`${'😀'.repeat(200)} открыто ${'x'.repeat(200)}`))[0] ?? '';
+    const middle = /незакрытого: «(.*?)»/su.exec(far)?.[1] ?? '';
+    expect(middle).toContain('открыто');
+    expect(middle.startsWith('…') && middle.endsWith('…')).toBe(true);
+    expect([...middle].length).toBe(102);
+    expect(middle).not.toContain('�');
+
+    const end = (await warnings(`${'x'.repeat(300)} открыто`))[0] ?? '';
+    const tail = /незакрытого: «(.*?)»/su.exec(end)?.[1] ?? '';
+    expect(tail.endsWith(' открыто')).toBe(true);
+    expect([...tail].length).toBe(101);
+  });
+
+  it('[ ] как раньше; пробный запуск — ни байта; --json — те же warnings; перенос не отказывает', async () => {
+    const root = await project();
+    await withPlan(root, body('- [ ] пункт\n\nHYPOTHESIS: проверить.'), { digest: null });
+    const before = await snapshotTree(root);
+    const preview = await archiveProject(root, { sections: ['Правка 1'] });
+    expect(preview.sections[0]?.warnings).toEqual([expect.stringContaining('неотмеченных пунктов [ ]: 1'), expect.stringContaining('«HYPOTHESIS: проверить.»')]);
+
+    const cli = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root, '--section', 'Правка 1'], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('- Проверьте: в разделе «Правка 1» есть пометки незакрытого: «HYPOTHESIS: проверить.».');
+    const json = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root, '--section', 'Правка 1', '--json'], json.io)).toBe(0);
+    expect((JSON.parse(json.stdout()) as { sections: { warnings: string[] }[] }).sections[0]?.warnings).toEqual(preview.sections[0]?.warnings);
+    expect(await snapshotTree(root)).toEqual(before);
+
+    const applied = await archiveProject(root, { apply: true, sections: ['Правка 1'] });
+    expect([applied.ok, applied.applied]).toEqual([true, true]);
+    expect(await readUtf8(root, PLAN_ARCHIVE)).toContain('HYPOTHESIS: проверить.');
+  });
+});

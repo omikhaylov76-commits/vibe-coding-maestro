@@ -335,7 +335,7 @@ describe('0.4.1: vibe-maestro context', () => {
     expect(JSON.stringify(report)).not.toContain('секретный');
   });
 
-  it('пороги 40 и 70 процентов', async () => {
+  it('пороги: при окне 200 000 — прежние, при окне 1 000 000 такая сессия мала', async () => {
     const claudeDir = await makeTempDir('claude-');
     const root = join(await makeTempDir('proj-'), 'app');
     await mkdir(root);

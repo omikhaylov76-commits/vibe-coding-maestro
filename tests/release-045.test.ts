@@ -5,12 +5,14 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
+import { executeUpgradeCommand } from '../src/cli/upgrade-run.js';
 import { levelFor, measureContext, projectLogDirName, thresholdsFor } from '../src/core/context.js';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
 import { planBodyDigest } from '../src/core/plan.js';
+import { STAGING_DIR } from '../src/core/upgrade/index.js';
 import { cleanupTempDirs, FIXED_NOW, makeTempDir, readUtf8 } from './helpers.js';
-import { collectIo } from './published.js';
+import { collectIo, materializePublished } from './published.js';
 
 const execFileAsync = promisify(execFile);
 afterEach(cleanupTempDirs);
@@ -284,5 +286,48 @@ describe('0.4.5: doctor видит отставшую память', () => {
     const cli = collectIo();
     expect(await runMaestroCli(['preflight', '--path', root], cli.io)).toBe(0);
     expect(cli.stdout()).not.toContain('memory-');
+  });
+});
+
+describe('0.4.5: upgrade честно говорит о неудачном откате', () => {
+  const ID = '0.3.0-beta.3-standard';
+  /** Сбой на последнем файле; `lose` — потерять backup уже опубликованного файла, тогда откат не удастся. */
+  const failing = (root: string, lose: boolean) => ({
+    beforeCommit: async (path: string): Promise<void> => {
+      if (path !== '.maestro/checksums.json') return;
+      if (lose) await rm(join(root, STAGING_DIR, 'backup', 'protocols', 'plan.md'), { force: true });
+      throw new Error('сбой');
+    },
+  });
+
+  it('откат не удался — первая строка не обещает «изменений нет», в --json partial: true', async () => {
+    const { root } = await materializePublished(ID);
+    const cli = collectIo();
+    expect(await executeUpgradeCommand({ path: root, json: false, apply: true, hooks: failing(root, true) }, cli.io)).not.toBe(0);
+    expect(cli.stderr().split('\n')[0]).toBe('Vibe Coding Maestro upgrade: обновление прервано, и откатить удалось не всё: проект изменён частично.');
+    expect(cli.stderr()).not.toContain('изменений на диске нет');
+
+    const other = await materializePublished(ID);
+    const json = collectIo();
+    expect(await executeUpgradeCommand({ path: other.root, json: true, apply: true, hooks: failing(other.root, true) }, json.io)).not.toBe(0);
+    expect(JSON.parse(json.stdout())).toMatchObject({ ok: false, applied: false, rolledBack: false, partial: true });
+  });
+
+  it('откат удался и блокер — прежний текст; в --json partial: false', async () => {
+    const { root } = await materializePublished(ID);
+    const cli = collectIo();
+    expect(await executeUpgradeCommand({ path: root, json: false, apply: true, hooks: failing(root, false) }, cli.io)).not.toBe(0);
+    expect(cli.stderr().split('\n')[0]).toBe('Vibe Coding Maestro upgrade: обновление не выполнено (изменений на диске нет).');
+
+    const other = await materializePublished(ID);
+    const json = collectIo();
+    expect(await executeUpgradeCommand({ path: other.root, json: true, apply: true, hooks: failing(other.root, false) }, json.io)).not.toBe(0);
+    expect(JSON.parse(json.stdout())).toMatchObject({ ok: false, applied: false, rolledBack: true, partial: false });
+
+    const blocked = await materializePublished(ID);
+    await writeFile(join(blocked.root, 'protocols/plan.md'), 'подмена\n', 'utf8');
+    const refused = collectIo();
+    expect(await executeUpgradeCommand({ path: blocked.root, json: false, apply: true }, refused.io)).not.toBe(0);
+    expect(refused.stderr().split('\n')[0]).toBe('Vibe Coding Maestro upgrade: обновление не выполнено (изменений на диске нет).');
   });
 });

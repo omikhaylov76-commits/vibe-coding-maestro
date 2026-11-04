@@ -28,6 +28,8 @@ export interface UpgradeResult {
   updatedFiles: string[];
   removedFiles: string[];
   rolledBack: boolean;
+  /** Откат не удался: проект изменён частично. */
+  partial: boolean;
   error?: string;
   /** Точное содержимое предложения — для показа правок. В отчёт `--json` не входит. */
   plan: UpgradePlan;
@@ -41,6 +43,7 @@ const result = (plan: UpgradePlan, patch: Partial<UpgradeResult> = {}): UpgradeR
   updatedFiles: [],
   removedFiles: [],
   rolledBack: false,
+  partial: false,
   plan,
   ...patch,
 });
@@ -101,6 +104,7 @@ export async function upgradeProject(rootInput: string, options: UpgradeOptions 
       return result(plan, {
         ok: false,
         rolledBack: false,
+        partial: true,
         error: `Применение прервано (${outcome.reason}), и откатить удалось не всё: ${outcome.unrestored.join(', ')}. Прежние версии файлов оставлены в ${STAGING_DIR}/backup/ — верните их вручную, затем удалите ${STAGING_DIR}.`,
       });
     }

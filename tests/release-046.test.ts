@@ -207,11 +207,12 @@ describe('0.4.6: договор текстов', () => {
     return next === -1 ? text.slice(from) : text.slice(from, from + heading.length + next);
   };
 
-  it('лёгкое чтение на старте: капсула и план по частям, капсула старого вида — начало и последние записи', async () => {
+  it('лёгкое чтение на старте: капсула и план по частям, капсула старого вида — начало и последние по дате записи', async () => {
     const build = await template('protocols/build.md');
     const pipeline = section(build, '## Deterministic context pipeline');
     expect(pipeline).toContain('На старте читай по частям: из капсулы — цель с критериями, открытое и «где остановились», без хода работы и черновиков');
-    expect(pipeline).toContain('капсула старого вида — начало и последние записи в конце файла');
+    // Живой прогон на копии Промтары: свежие записи старой капсулы бывают в середине файла, а не в конце.
+    expect(pipeline).toContain('капсула старого вида — начало и последние по дате записи');
     expect(pipeline).toContain('из плана — шапку, «Как проверим», «Где правим», строку порции и её правку');
     // Порядок чтения и чтение открытых отчётов прежние; проверки на старте сессии не тронуты.
     expect(pipeline).toContain('`wiki/hot.md` → capsule → active spec/plan → открытые audits → только нужные source-фрагменты');
@@ -256,7 +257,7 @@ describe('0.4.6: договор текстов', () => {
     const summary = handoff.slice(handoff.indexOf('## Итог для человека'), handoff.indexOf('## Состояние'));
     expect(summary).toContain('- Решил сам: до трёх решений, которые человек заметит, или «нет». Отступление от утверждённого — правка плана, вопрос до неё.');
     const state = handoff.slice(handoff.indexOf('## Состояние'), handoff.indexOf('## Проверки'));
-    expect(state).toContain('- Посреди порции — счёт по критериям капсулы: `Цель: доказано N из M; в прошлой передаче K.`');
+    expect(state).toContain('- Посреди порции — счёт по «Сверке с целью» (`build.md`): `Цель: доказано N из M; в прошлой передаче K.` Первая — без K.');
     expect(handoff).toContain('Находки: critical N, high N, medium N, low N; открыто N.');
     expect(await template('.claude/rules/maestro.md')).toContain('что сделано, что проверено, что решил сам, что осталось и почему');
   });

@@ -198,7 +198,7 @@ describe('0.4.6: context говорит, сколько шагов до поро
 });
 
 describe('0.4.6: договор текстов', () => {
-  const template = (path: string): Promise<string> => readFile(join(process.cwd(), 'templates/project', path), 'utf8');
+  const template = async (path: string): Promise<string> => (await readFile(join(process.cwd(), 'templates/project', path), 'utf8')).replace(/\r\n/g, '\n');
   /** Раздел протокола от заголовка до следующего заголовка или якоря. */
   const section = (text: string, heading: string): string => {
     const from = text.indexOf(heading);

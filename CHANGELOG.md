@@ -4,7 +4,7 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
-## 0.4.6 — 2026-11-24
+## 0.4.6 — 2026-11-25
 
 The seventh part of 0.4: easier to work, nothing gets lost. A week of real work on 0.4.5 was measured, and this release fixes what the numbers showed: a session reads less before it starts working, a slice capsule is a card and not a journal, every handoff in the middle of a slice checks the work against the goal, open items are carried forward instead of fading out, a finding nobody is going to fix closes its report, and `context` and `archive` say what to do next. Nothing changes under a project that is in the middle of its work: no Maestro file is added or removed, the session thresholds stay 400 000 and 600 000 tokens, and the checks at the start of a session stay as they were.
 

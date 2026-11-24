@@ -856,6 +856,19 @@ describe('0.4.5 archive: незакрытое в разделе', () => {
 describe('0.4.6 archive: правки плана на виду без --section', () => {
   const KEYS_045 = ['applied', 'audits', 'blockers', 'digests', 'log', 'logNote', 'ok', 'partial', 'plan', 'planArchive', 'relinked', 'reportVersion', 'rolledBack', 'root', 'sections', 'writes'];
 
+  it('неотмеченный пункт [ ] в блоке кода правку незакрытой не делает; вне блока — делает', async () => {
+    const root = await project();
+    await withPlan(root, [
+      '# План', '', '## Порядок работ', '', '1. [x] Порция.', '', '## Правки после утверждения', '',
+      '### Правка 1 — образец строки (2026-10-12)', '', '1. [x] Сделано.', '', '```text', '- [ ] пример строки в блоке кода', '  1. [ ] и ещё один', '```', '',
+      '### Правка 2 — настоящая (2026-10-13)', '', '- [ ] не сделано', '',
+    ].join('\n'));
+    const report = await archiveProject(root);
+    expect(report.planEdits?.sections.map((item) => [item.heading, item.open])).toEqual([
+      ['Правка 1 — образец строки (2026-10-12)', false], ['Правка 2 — настоящая (2026-10-13)', true],
+    ]);
+  });
+
   it('план со сборником правок: список с размерами, без раздела текущей порции, сборника и утверждения; ни байта', async () => {
     const root = await project();
     const text = await withPlan(root, PROMTARA, { slice: '1.6a' });

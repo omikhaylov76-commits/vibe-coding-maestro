@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runMaestroCli } from '../src/cli/maestro.js';
 import { GROWTH_MIN_STEPS, GROWTH_STEPS, growthPerStep, measureContext, projectLogDirName } from '../src/core/context.js';
+import { parseAudit } from '../src/core/audits.js';
 import { doctorProject } from '../src/core/doctor.js';
 import { initProject } from '../src/core/init.js';
 import { sha256 } from '../src/core/manifest.js';
@@ -193,5 +194,136 @@ describe('0.4.6: context говорит, сколько шагов до поро
     const calm = JSON.parse(await cliText(await session('claude-opus-5-5', growing(300_000, 5_000, 40)), '--json')) as Record<string, unknown>;
     expect(Object.keys(calm)).not.toContain('growthPerStep');
     expect(Object.keys(calm)).not.toContain('stepsToNewSession');
+  });
+});
+
+describe('0.4.6: договор текстов', () => {
+  const template = (path: string): Promise<string> => readFile(join(process.cwd(), 'templates/project', path), 'utf8');
+  /** Раздел протокола от заголовка до следующего заголовка или якоря. */
+  const section = (text: string, heading: string): string => {
+    const from = text.indexOf(heading);
+    expect(from, heading).toBeGreaterThan(-1);
+    const next = text.slice(from + heading.length).search(/\n(?:## |<a id=)/);
+    return next === -1 ? text.slice(from) : text.slice(from, from + heading.length + next);
+  };
+
+  it('лёгкое чтение на старте: капсула и план по частям, капсула старого вида — начало и последние записи', async () => {
+    const build = await template('protocols/build.md');
+    const pipeline = section(build, '## Deterministic context pipeline');
+    expect(pipeline).toContain('На старте читай по частям: из капсулы — цель с критериями, открытое и «где остановились», без хода работы и черновиков');
+    expect(pipeline).toContain('капсула старого вида — начало и последние записи в конце файла');
+    expect(pipeline).toContain('из плана — шапку, «Как проверим», «Где правим», строку порции и её правку');
+    // Порядок чтения и чтение открытых отчётов прежние; проверки на старте сессии не тронуты.
+    expect(pipeline).toContain('`wiki/hot.md` → capsule → active spec/plan → открытые audits → только нужные source-фрагменты');
+    expect(build).toContain('Каждая сессия начинается одинаково: `wiki/hot.md` → `git log --oneline -10` и `git status` → прогон проверок проекта (тесты и `doctor`) до новой работы.');
+  });
+
+  it('капсула — карточка: правило в build.md и четыре раздела образца покрывают прежние восемь пунктов', async () => {
+    const capsule = section(await template('protocols/build.md'), '## Task Context Capsule');
+    expect(capsule).toContain('Ход работы в капсулу не пиши — он в передачах; черновик правки плана после переноса в план замени ссылкой.');
+    const sample = await template('maestro/templates/progress.md');
+    expect(sample).toMatch(/^---\ntype: progress\nstatus: active\nplan: none\nupdated: YYYY-MM-DD\n---\n/);
+    expect([...sample.matchAll(/^## (.+)$/gm)].map((match) => match[1])).toEqual(['Цель и готово', 'Границы', 'Открыто', 'Где остановились']);
+    expect(sample).toContain('критерии — списком из плана, меняет его только правка плана');
+    expect(sample).toContain('карточка, а не журнал');
+    expect(sample).toContain('active_progress: progress/слаг.md');
+  });
+
+  it('сверка с целью: счёт по доказательству, две передачи без роста, побочное дело, закрытие порции', async () => {
+    const build = await template('protocols/build.md');
+    const goal = section(build, '## Сверка с целью');
+    expect(build.indexOf('## Сверка с целью')).toBeGreaterThan(build.indexOf('## Quality gate'));
+    for (const phrase of [
+      'нумерованный список в капсуле, при её старте — из плана: её пункты в «Как проверим» и «Где правим» и стоп-гейт; у `QUICK` — пункт «проверка» мини-плана',
+      'Список меняет только правка плана.',
+      'Передача посреди порции — счёт: доказано N из M, в прошлой передаче K.',
+      'Доказано — вывод команды, тест или то, что видно; не ощущение.',
+      'Две передачи порции подряд без роста счёта — ты топчешься: тот же подход и те же проверки не повторяй',
+      'смени подход и скажи человеку одной строкой',
+      'нужно для цели — доделай; нет — доведи до целого или откати и запиши в `wiki/icebox.md` с состоянием',
+      'Новое не начинай, пока начатое не доведено.',
+      'Порция закрыта, только когда критерии выполнены и ревью, где оно положено, пройдено.',
+      '«Да» человека выполненных критериев не заменяет.',
+    ]) expect(goal, phrase).toContain(phrase);
+    // Вопроса человеку сверка не добавляет.
+    expect(goal).not.toContain('?');
+    expect(goal).not.toMatch(/спроси/i);
+  });
+
+  it('образец передачи: «Решил сам» в итоге, счёт цели в состоянии; разделы и их порядок прежние', async () => {
+    const handoff = await template('maestro/templates/handoff.md');
+    expect([...handoff.matchAll(/^## (.+)$/gm)].map((match) => match[1])).toEqual(['Итог для человека', 'Состояние', 'Проверки', 'Решения', 'Риски и открытые вопросы', 'Что мешало в работе', 'Следующий шаг']);
+    const summary = handoff.slice(handoff.indexOf('## Итог для человека'), handoff.indexOf('## Состояние'));
+    expect(summary).toContain('- Решил сам: до трёх решений, которые человек заметит, или «нет». Отступление от утверждённого — правка плана, вопрос до неё.');
+    const state = handoff.slice(handoff.indexOf('## Состояние'), handoff.indexOf('## Проверки'));
+    expect(state).toContain('- Посреди порции — счёт по критериям капсулы: `Цель: доказано N из M; в прошлой передаче K.`');
+    expect(handoff).toContain('Находки: critical N, high N, medium N, low N; открыто N.');
+    expect(await template('.claude/rules/maestro.md')).toContain('что сделано, что проверено, что решил сам, что осталось и почему');
+  });
+
+  it('передача: открытое не теряется, короткая запись журнала, перенос из капсулы до архива', async () => {
+    const handoff = await template('protocols/handoff.md');
+    const step = (number: number): string => handoff.slice(handoff.indexOf(`\n${number}. `), handoff.indexOf(`\n${number + 1}. `));
+    for (const phrase of [
+      'В раздел «Открытые вопросы» — что ждёт человека и видимые дефекты; находку — с её ID.',
+      'Незакрытую строку не удаляй, чья бы она ни была; `hot.md` длинен — выноси справочное.',
+      'В `wiki/icebox.md` — только «на потом»: на старте его не читают.',
+      'Капсула старого вида — поставь наверх «Открыто» и «Где остановились».',
+    ]) expect(step(3), phrase).toContain(phrase);
+    expect(step(4)).toContain('Добавь одну запись в конец `wiki/log.md`: что сделано — одной строкой и ссылка на передачу, остальное в ней.');
+    const five = step(5);
+    expect(five).toContain('открытое из капсулы перенеси в `wiki/hot.md`, «на потом» человека — в `wiki/icebox.md`; сменился этап — поправь `wiki/roadmap.md`');
+    expect(five.indexOf('открытое из капсулы перенеси')).toBeLessThan(five.indexOf('--apply'));
+    expect(five).toContain('Правки плана называешь ты, `--section`: только те, все порции которых закрыты.');
+    expect(step(6)).toContain('Запусти `doctor` и покажи вывод; в передачу — только новое в нём.');
+    expect(handoff).toContain('открытые находки и то, что решили не исправлять, — одной фразой его словами');
+    // Образец журнала нового проекта говорит то же, что шаг 4.
+    const log = await template('wiki/log.md');
+    expect(log).toContain('- **Что сделано** — факт, а не намерение, одной строкой.');
+    expect(log).toContain('- **Ссылка на передачу** — «почему» и «что дальше» записаны в ней.');
+    // Названия разделов wiki/hot.md, которые читает хаб, прежние.
+    const hot = await template('wiki/hot.md');
+    for (const heading of ['## Сейчас в работе', '## Открытые вопросы', '## Следующий шаг']) expect(hot).toContain(heading);
+  });
+
+  it('«не исправляем» закрывается во всех местах сразу и не пропадает из слов человеку', async () => {
+    const audit = await template('protocols/audit.md');
+    expect(audit).toContain('В отчёт — только critical, high и открытые, а также «не исправляем».');
+    expect(audit).toContain('Medium и low, которые решили не исправлять, закрываются: `status: resolved` с `resolution: не исправляем — причина; где записано`. Строка в следующей порции или в `wiki/icebox.md` обязательна.');
+    expect(audit).toContain('Открытые находки и то, что решили не исправлять, попадают в передачу порции (раздел «Риски и открытые вопросы») и в итог [завершения](completion.md) («что осталось»).');
+    expect(audit).not.toContain('остаются `status: open`');
+    expect(await template('maestro/runbooks/cowork-audit.md')).toContain('Medium/low, которые решили не исправлять, закрываются: `resolved` с `resolution: не исправляем — причина; где записано`.');
+    expect(await template('maestro/runbooks/cowork-audit.md')).not.toContain('остаются `open`');
+    const handoff = await template('maestro/templates/handoff.md');
+    expect(handoff.slice(handoff.indexOf('## Риски и открытые вопросы'), handoff.indexOf('## Что мешало в работе'))).toContain('Открытые находки проверок и то, что решили не исправлять: почему и где записано');
+    expect(await template('protocols/completion.md')).toContain('что осталось открытым — открытые отчёты (`wiki/audits/`) и находки проверок «не исправляем» (`wiki/icebox.md` или следующая порция)');
+    expect(await template('wiki/icebox.md')).toContain('находки проверок, которые решили не исправлять');
+
+    // Образец отчёта: «не исправляем» закрыта, шапка open — из-за непроверенного исправления; закроют его — отчёт можно закрыть целиком.
+    const sample = await template('maestro/templates/audit.md');
+    expect(sample).toMatch(/^---\naudit_id: AUD-YYYY-MM-DD-slug\nstatus: open\n---\n/);
+    expect(parseAudit(sample)).toEqual({ malformed: false, closed: false, blocking: [] });
+    const closed = sample.replace('status: open\n---', 'status: resolved\n---').replace('- status: open\n- resolution: исправлено в <коммит>, не проверено', '- status: resolved\n- resolution: исправлено в <коммит>; проверка исправления: тест');
+    expect(parseAudit(closed)).toEqual({ malformed: false, closed: true, blocking: [] });
+  });
+
+  it('пороги сессии и правило посреди порции не менялись; совет о новой сессии — в правилах, протоколы ссылаются', async () => {
+    const rules = await template('.claude/rules/maestro.md');
+    expect(rules).toContain('Посреди порции запускай `context` после коммита: ответ «пора в новую сессию» — передача дел сейчас.');
+    expect(rules.split('\n').length).toBeLessThanOrEqual(45);
+    const { FINISH_SLICE_TOKENS, NEW_SESSION_TOKENS } = await import('../src/core/context.js');
+    expect([FINISH_SLICE_TOKENS, NEW_SESSION_TOKENS]).toEqual([400_000, 600_000]);
+    for (const path of ['protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md']) {
+      expect(await template(path), path).toMatch(/[Пп]ора ли в новую сессию — по выводу `context` \(`\.claude\/rules\/maestro\.md`\)\./);
+    }
+  });
+
+  it('новых файлов Maestro и удалений нет: состав шаблона тот же, что в 0.4.5', async () => {
+    const { canonicalOwnershipInventory } = await import('../src/core/inventory.js');
+    const { publishedFixture } = await import('./published.js');
+    for (const depth of ['light', 'standard', 'advanced'] as const) {
+      const before = JSON.parse((await publishedFixture(`0.4.5-${depth}`)).files['.maestro/manifest.json'] as string) as { inventory: { path: string; ownership: string }[] };
+      expect(canonicalOwnershipInventory(depth), depth).toEqual(Object.fromEntries(before.inventory.map((item) => [item.path, item.ownership])));
+    }
   });
 });

@@ -524,6 +524,47 @@ const V045_MANAGED_SHA256: Readonly<Record<string, string>> = {
   'protocols/handoff.md': 'f3c95a4bf96a5958615105a889a83eb7225806650e7bbf9395a218c64c55a3ff',
 };
 
+/** Файлы Maestro, которые 0.4.6 изменил. */
+const CHANGED_IN_046: readonly string[] = [
+  '.claude/rules/maestro.md',
+  'maestro/runbooks/cowork-audit.md',
+  'maestro/templates/audit.md',
+  'maestro/templates/handoff.md',
+  'maestro/templates/progress.md',
+  'protocols/audit.md',
+  'protocols/build.md',
+  'protocols/completion.md',
+  'protocols/handoff.md',
+  'protocols/plan.md',
+];
+
+/** Копии шаблонов 0.4.5, изменённых в 0.4.6; одна копия служит всем версиям с тем же содержимым. */
+const v045Copy = (path: string): BaselineTemplate => ({
+  path,
+  source: `registry/baseline/0.4.5/project/${path}`,
+  sha256: V045_MANAGED_SHA256[path] as string,
+});
+
+/** Копии к изменениям 0.4.6 для прошлой версии: правило то же, что у `copiesFor043`. */
+function copiesFor046(managedSha256: Readonly<Record<string, string>>): BaselineTemplate[] {
+  return CHANGED_IN_046.filter((path) => managedSha256[path] !== undefined && managedSha256[path] === V045_MANAGED_SHA256[path]).map(v045Copy);
+}
+
+/** Слепок `templates/project` 0.4.6: состав тот же, что в 0.4.3. */
+const V046_MANAGED_SHA256: Readonly<Record<string, string>> = {
+  ...V045_MANAGED_SHA256,
+  '.claude/rules/maestro.md': '0c5e6ae045e30dd7958be90cf72506c815986632f3bd411d23ae7f49c3036050',
+  'maestro/runbooks/cowork-audit.md': '2ea1a68f5957d63b695b1feade45f0ee592de9300d417db1e402e21ae1a28a25',
+  'maestro/templates/audit.md': '37c3cb7109568900f6bb6608da0092273b2596640926243d6f7e417174be2367',
+  'maestro/templates/handoff.md': 'ee970aa0d96d08808d3f0fd4d4164b4ff6dd71661841938003a823462508ded8',
+  'maestro/templates/progress.md': '9e836f73439c5d6473068d4e32b0ce5cb4ead37e2de676db54aca29e06e77f95',
+  'protocols/audit.md': '1e682a0cc9983f87d09c887618f1e4679abf1352a73a5b213fce0c10983f7034',
+  'protocols/build.md': 'f506134f3d90b5cf37f968da3f982f6a3f43a89cada7ffb77c582bfb76b4a35f',
+  'protocols/completion.md': 'c3cd2acae8a875a3b5fcbf12866a44d07eee4d86b53534d2cd9dc4a3ee48a773',
+  'protocols/handoff.md': 'a463365f689c15e3b3f6d66989bd64b2529df18bbfc694bc10bf751a6767c65d',
+  'protocols/plan.md': '9e91ef7b822da16bc1dab81b496db85357c5dc647767b81a46c8443c931a4469',
+};
+
 /**
  * Файлы Maestro, которые ушли из состава: путь → версия, в которой ушёл.
  *
@@ -554,6 +595,7 @@ export const RELEASES: readonly Release[] = [
       ...copiesFor043(V03_BETA_MANAGED_SHA256),
       ...copiesFor044(V03_BETA_MANAGED_SHA256),
       ...copiesFor045(V03_BETA_MANAGED_SHA256),
+      ...copiesFor046(V03_BETA_MANAGED_SHA256),
     ],
   },
   {
@@ -567,6 +609,7 @@ export const RELEASES: readonly Release[] = [
       ...copiesFor043(V03_BETA4_MANAGED_SHA256),
       ...copiesFor044(V03_BETA4_MANAGED_SHA256),
       ...copiesFor045(V03_BETA4_MANAGED_SHA256),
+      ...copiesFor046(V03_BETA4_MANAGED_SHA256),
     ],
   },
   {
@@ -585,6 +628,7 @@ export const RELEASES: readonly Release[] = [
       ...copiesFor043(V030_MANAGED_SHA256),
       ...copiesFor044(V030_MANAGED_SHA256),
       ...copiesFor045(V030_MANAGED_SHA256),
+      ...copiesFor046(V030_MANAGED_SHA256),
     ],
   },
   {
@@ -598,6 +642,7 @@ export const RELEASES: readonly Release[] = [
       ...copiesFor043(V031_MANAGED_SHA256),
       ...copiesFor044(V031_MANAGED_SHA256),
       ...copiesFor045(V031_MANAGED_SHA256),
+      ...copiesFor046(V031_MANAGED_SHA256),
     ],
   },
   {
@@ -611,6 +656,7 @@ export const RELEASES: readonly Release[] = [
       ...copiesFor043(V040_MANAGED_SHA256),
       ...copiesFor044(V040_MANAGED_SHA256),
       ...copiesFor045(V040_MANAGED_SHA256),
+      ...copiesFor046(V040_MANAGED_SHA256),
     ],
   },
   {
@@ -623,6 +669,7 @@ export const RELEASES: readonly Release[] = [
       ...copiesFor043(V041_MANAGED_SHA256),
       ...copiesFor044(V041_MANAGED_SHA256),
       ...copiesFor045(V041_MANAGED_SHA256),
+      ...copiesFor046(V041_MANAGED_SHA256),
     ],
   },
   {
@@ -630,27 +677,34 @@ export const RELEASES: readonly Release[] = [
     versions: ['0.4.2'],
     inventory: ownershipInventory(V042_TEMPLATE_FILES, V042_CONTENT_OWNED_FILES),
     managedSha256: V042_MANAGED_SHA256,
-    templates: [...copiesFor043(V042_MANAGED_SHA256), ...copiesFor044(V042_MANAGED_SHA256), ...copiesFor045(V042_MANAGED_SHA256)],
+    templates: [...copiesFor043(V042_MANAGED_SHA256), ...copiesFor044(V042_MANAGED_SHA256), ...copiesFor045(V042_MANAGED_SHA256), ...copiesFor046(V042_MANAGED_SHA256)],
   },
   {
     id: '0.4.3',
     versions: ['0.4.3'],
     inventory: ownershipInventory(V043_TEMPLATE_FILES, V043_CONTENT_OWNED_FILES),
     managedSha256: V043_MANAGED_SHA256,
-    templates: [...copiesFor044(V043_MANAGED_SHA256), ...copiesFor045(V043_MANAGED_SHA256)],
+    templates: [...copiesFor044(V043_MANAGED_SHA256), ...copiesFor045(V043_MANAGED_SHA256), ...copiesFor046(V043_MANAGED_SHA256)],
   },
   {
     id: '0.4.4',
     versions: ['0.4.4'],
     inventory: ownershipInventory(V043_TEMPLATE_FILES, V043_CONTENT_OWNED_FILES),
     managedSha256: V044_MANAGED_SHA256,
-    templates: copiesFor045(V044_MANAGED_SHA256),
+    templates: [...copiesFor045(V044_MANAGED_SHA256), ...copiesFor046(V044_MANAGED_SHA256)],
   },
   {
     id: '0.4.5',
     versions: ['0.4.5'],
     inventory: ownershipInventory(V043_TEMPLATE_FILES, V043_CONTENT_OWNED_FILES),
     managedSha256: V045_MANAGED_SHA256,
+    templates: copiesFor046(V045_MANAGED_SHA256),
+  },
+  {
+    id: '0.4.6',
+    versions: ['0.4.6'],
+    inventory: ownershipInventory(V043_TEMPLATE_FILES, V043_CONTENT_OWNED_FILES),
+    managedSha256: V046_MANAGED_SHA256,
     templates: [],
   },
 ];

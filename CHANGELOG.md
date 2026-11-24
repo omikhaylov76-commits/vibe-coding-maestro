@@ -4,6 +4,11 @@ All notable changes to Vibe Coding Maestro are documented here.
 
 The project follows Semantic Versioning while prerelease interfaces may still change between beta versions.
 
+## 0.4.6 — 2026-11-24
+
+- Work in progress: release notes are written in the documentation portion of this release.
+- The `vibe-maestro` companion package (0.1.10) depends on exactly `create-vibe-maestro@0.4.6`.
+
 ## 0.4.5 — 2026-11-04
 
 The sixth part of 0.4: ready for a week of real work. `context` counts in tokens and is checked in the middle of a slice too; `archive` shows what looks open in a section; `doctor` sees memory falling behind the code; check reports carry only what matters and a handoff keeps the numbers; a handoff says honestly what was checked and what got in the way. The set of project files does not change, and the text of the rules does not grow.

@@ -231,10 +231,10 @@ describe('0.4.3: проверки без лишнего круга — когд�
 
     const root = await project();
     const sample = await packageText('templates/project/maestro/templates/audit.md');
-    // high закрыта после проверенного исправления, medium «не исправляем» открыта, high проверки исправлений — своя находка.
+    // high закрыта после проверенного исправления; medium «не исправляем» с 0.4.6 закрыта с причиной; находка проверки исправлений — своя, пока не проверена — открыта.
     expect(sample).toMatch(/- severity: high\n[^#]*- status: resolved\n- resolution: [^\n]*проверка исправления/);
-    expect(sample).toMatch(/- severity: medium\n[^#]*- status: open\n- resolution: не исправляем — причина; где записано/);
-    expect(sample).toMatch(/- evidence: найдено проверкой исправления F001/);
+    expect(sample).toMatch(/- severity: medium\n[^#]*- status: resolved\n- resolution: не исправляем — причина; где записано/);
+    expect(sample).toMatch(/- evidence: найдено проверкой исправления F001[^#]*- status: open\n- resolution: исправлено в <коммит>, не проверено/);
     const result = await report(root, sample);
     expect(result.codes).toEqual([]);
     expect(result.strict).toEqual([]);
@@ -246,7 +246,7 @@ describe('0.4.3: проверки без лишнего круга — когд�
     const openHigh = sample.replace('- severity: high\n- target: src/файл.ts:42\n- evidence: что воспроизведено — команда, строка или наблюдение\n- status: resolved', '- severity: high\n- target: src/файл.ts:42\n- evidence: что воспроизведено — команда, строка или наблюдение\n- status: open');
     expect(openHigh).not.toBe(sample);
     expect((await report(root, openHigh)).codes).toContain('audit-blocking-finding');
-    // «не исправляем» нельзя прятать в закрытом отчёте: resolved — только проверенное исправление.
+    // Отчёт resolved — только когда все находки resolved: открытую medium в закрытом отчёте doctor не примет.
     expect((await report(root, sample.replace('status: open\n---', 'status: resolved\n---'))).codes).toContain('audit-malformed');
   });
 
@@ -300,7 +300,7 @@ describe('0.4.3: проверки без лишнего круга — когд�
     expect(audit).toContain('Проверка исправлений — одна на круг');
     expect(audit).toContain('Ничего не исправляли — проверять нечего');
     expect(audit).toContain('«проверь ещё раз» — проверка');
-    expect(audit).toContain('`status: open` с `resolution: не исправляем — причина; где записано`');
+    expect(audit).toContain('`status: resolved` с `resolution: не исправляем — причина; где записано`');
     expect(audit).toContain('текст каждой находки проверяющего, файлы и строки исправления и сам текст изменений');
   });
 
@@ -371,9 +371,12 @@ describe('0.4.3: маленькая задача, метки, новая сес�
   const template = (path: string): Promise<string> => packageText(`templates/project/${path}`);
   const SESSION = 'Новую сессию советует `npx --package create-vibe-maestro@{{MAESTRO_VERSION}} vibe-maestro context --path .`: по его выводу простыми словами скажи человеку, пора ли в новую сессию — она начнёт с `wiki/hot.md` и последней передачи, а не с пересылки всей истории.';
 
-  it('одна и та же фраза о новой сессии в четырёх местах; «всегда новая сессия после утверждения» ушло', async () => {
-    for (const path of ['.claude/rules/maestro.md', 'protocols/handoff.md', 'protocols/build.md', 'protocols/plan.md']) {
-      expect(await template(path), path).toContain(SESSION);
+  it('фраза о новой сессии — в правилах, которые загружены всегда; протоколы на неё ссылаются (0.4.6); «всегда новая сессия после утверждения» ушло', async () => {
+    expect(await template('.claude/rules/maestro.md')).toContain(SESSION);
+    for (const path of ['protocols/handoff.md', 'protocols/build.md', 'protocols/plan.md']) {
+      const text = await template(path);
+      expect(text, path).not.toContain(SESSION);
+      expect(text, path).toMatch(/[Пп]ора ли в новую сессию — по выводу `context` \(`\.claude\/rules\/maestro\.md`\)\./);
     }
     expect(await template('protocols/plan.md')).not.toContain('Работу по утверждённому плану начинай в новой сессии');
   });

@@ -81,7 +81,7 @@ async function project(root: string, name = 'учебный проект'): Prom
   await mkdir(join(path, 'wiki/audits'), { recursive: true });
   await mkdir(join(path, 'src'));
   await git(path, 'init', '-q');
-  await writeFile(join(path, '.maestro/manifest.json'), JSON.stringify({ product: { version: '0.4.5' } }), 'utf8');
+  await writeFile(join(path, '.maestro/manifest.json'), JSON.stringify({ product: { version: '0.4.6' } }), 'utf8');
   await writeFile(join(path, 'wiki/hot.md'), '---\nactive_plan: plans/0002-work.md\n---\n\n# Сейчас\n', 'utf8');
   await writeFile(join(path, PLAN), planText('null'), 'utf8');
   await commit(path, '2026-10-01', 'Maestro');

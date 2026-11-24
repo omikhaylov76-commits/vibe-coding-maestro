@@ -368,12 +368,12 @@ describe('0.4.5: договор текстов', () => {
     ];
   }
 
-  it('бюджет: текст правил в сумме не растёт', async () => {
+  it('бюджет: текст правил в сумме не растёт (предел 0.4.6 — 70 500: сверка с целью)', async () => {
     const files = await ruleFiles();
     expect(files).toHaveLength(23);
     let total = 0;
     for (const path of files) total += countChars(await template(path));
-    expect(total).toBeLessThanOrEqual(68_968);
+    expect(total).toBeLessThanOrEqual(70_500);
   });
 
   it('одно правило об отчёте: в протоколе, образце отчёта и образце передачи', async () => {
@@ -443,7 +443,7 @@ describe('0.4.5: переход в git с каждой опубликованн�
   const ALL = [
     '0.3.0-beta.2-standard', '0.3.0-beta.3-light', '0.3.0-beta.3-standard', '0.3.0-beta.3-advanced', '0.3.0-beta.4-standard', '0.3.0-standard',
     '0.3.1-light', '0.3.1-standard', '0.3.1-advanced', '0.4.0-light', '0.4.0-standard', '0.4.0-advanced', '0.4.1-light', '0.4.1-standard', '0.4.1-advanced',
-    '0.4.2-light', '0.4.2-standard', '0.4.2-advanced', '0.4.3-light', '0.4.3-standard', '0.4.3-advanced', '0.4.4-light', '0.4.4-standard', '0.4.4-advanced',
+    '0.4.2-light', '0.4.2-standard', '0.4.2-advanced', '0.4.3-light', '0.4.3-standard', '0.4.3-advanced', '0.4.4-light', '0.4.4-standard', '0.4.4-advanced', '0.4.5-light', '0.4.5-standard', '0.4.5-advanced',
   ];
   const git = async (cwd: string, ...args: string[]): Promise<void> => {
     await execFileAsync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', '-c', 'commit.gpgSign=false', ...args], { cwd });

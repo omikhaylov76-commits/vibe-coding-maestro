@@ -230,9 +230,37 @@ describe('этапы 12–13: CI и документационные контр�
     for (const value of ['**Что меняет переход на 0.4.5.**', '`memory-hot-behind`', '`memory-handoff-behind`', 'от 600 000', '«со слов: кого»', 'Что мешало в работе', '0.4.3 и 0.4.4']) expect(guide, value).toContain(value);
     expect(guide).not.toContain('до 40% окна модели');
     const roadmap = await text('docs/ROADMAP.md');
-    for (const value of ['**0.4.5** (выпуск', '### 0.4.5 — неделя настоящей работы', '### Ждёт статистику (0.4.6)']) expect(roadmap, value).toContain(value);
+    // Раздел «Ждёт статистику» с каждым выпуском переезжает под следующую версию: его держит договор 0.4.6.
+    for (const value of ['**0.4.5** (выпуск', '### 0.4.5 — неделя настоящей работы']) expect(roadmap, value).toContain(value);
     const postponed = roadmap.slice(roadmap.indexOf('### Отложено'));
     expect(postponed).not.toContain('отстал от коммитов');
+  });
+
+  it('0.4.6: заметки к выпуску, сверка с целью и новые поля названы в документах', async () => {
+    const changelog = await text('CHANGELOG.md');
+    const entry = changelog.slice(changelog.indexOf('## 0.4.6'), changelog.indexOf('## 0.4.5'));
+    expect(entry).toContain('### For those who create projects with their own scripts');
+    expect(entry).toContain('### Upgrading from 0.4.5');
+    expect(entry).not.toContain('Work in progress');
+    for (const value of [
+      '«Сверка с целью»', '`Цель: доказано N из M; в прошлой передаче K.`', '«Решил сам»', '`growthPerStep`', '`stepsToNewSession`', '`planEdits`',
+      '`preflight-spec-delta-resolved`', '`source-hash-missing`', '`resolution: не исправляем — причина; где записано`', '«Цель и готово», «Границы», «Открыто», «Где остановились»',
+      '70 500', 'blocks of your own in a handoff are not affected', 'create-vibe-maestro@0.4.6', '0.4.4 and 0.4.5', 'twelve Maestro files',
+    ]) expect(entry, value).toContain(value);
+    // Строка образца передачи в заметках — та же, что в самом образце.
+    expect(await text('templates/project/maestro/templates/handoff.md')).toContain('`Цель: доказано N из M; в прошлой передаче K.`');
+    const guide = await text('docs/USER_GUIDE.md');
+    for (const value of [
+      '**Что меняет переход на 0.4.6.**', '`preflight-spec-delta-resolved`', '`growthPerStep`', '`stepsToNewSession`', '`planEdits`', 'Решил сам', 'Цель: доказано N из M',
+      'не исправляем — причина; где записано', 'Сверка с целью', 'vibe-maestro sources --write', '0.4.4 и 0.4.5',
+    ]) expect(guide, value).toContain(value);
+    const readme = await text('README.md');
+    for (const value of ['0.4.4, 0.4.5)', 'twelve Maestro files', 'Goal check', 'vibe-maestro context --path .', '| Interface | Level | What is available |']) expect(readme, value).toContain(value);
+    // Упоминания «0.3» как нынешней версии из README ушли: остались только названия прошлых выпусков.
+    for (const stale of ['Core 0.3', 'В 0.3', 'Level in 0.3', 'the 0.3 contract', '0.3 file layout']) expect(readme, stale).not.toContain(stale);
+    const roadmap = await text('docs/ROADMAP.md');
+    for (const value of ['**0.4.6** (выпуск', '### 0.4.6 — легче работать, ничего не терять', '### Ждёт статистику (0.4.7)', '70 500']) expect(roadmap, value).toContain(value);
+    expect(roadmap).not.toContain('### Ждёт статистику (0.4.6)');
   });
 
   it('ни один публикуемый текст не содержит деталей закрытых проектов и личных путей', async () => {
@@ -263,7 +291,7 @@ describe('этапы 12–13: CI и документационные контр�
       '/wiki',
       '/handoff',
       'skills',
-      'level in 0.3',
+      'integration status',
       'canonical',
       '--depth',
       'light',

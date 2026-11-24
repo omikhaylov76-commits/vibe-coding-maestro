@@ -290,7 +290,7 @@ describe('0.4.2: один первый шаг везде — создание �
     expect(rules).toMatch(/команды `build`, `status`, `wiki`, `handoff`, `plan`, `start`/);
 
     const readme = await readFile(join(process.cwd(), 'README.md'), 'utf8');
-    startThenPlan(readme.slice(readme.indexOf('## Что дальше после создания проекта')), 'README');
+    startThenPlan(readme.slice(readme.indexOf('## Первые шаги по-русски')), 'README');
     expect(readme).toContain('создание → /start → /plan');
   });
 

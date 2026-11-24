@@ -93,7 +93,8 @@ const WORD_RE = /^[\p{L}\p{N}_]/u;
 const COLLECTIONS = ['Правки после утверждения', 'Изменения после утверждения'];
 const APPROVAL = 'Утверждение';
 const POINTER_RE = /^В архиве: \[[^\]]*\]\(archive\/[^)]*\)\.?$/;
-const UNCHECKED_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]/gm;
+/** Неотмеченный пункт списка; в блоках кода не считается. */
+const UNCHECKED_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]/;
 /** Пометки незакрытого: целым словом, в любом регистре. Само слово не значит «открыто», поэтому только предупреждение. */
 const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не\s+проверено|открыто)(?![\p{L}\p{N}_])/iu;
 /** Строка находок с нулём открытых содержит «открыто», но пометкой не является. */
@@ -135,6 +136,10 @@ export interface SectionChoice {
   nested: PlanHeading[];
   /** От раздела осталась только строка «В архиве: …». */
   already: boolean;
+  /** В разделе есть неотмеченный пункт `[ ]` или пометка незакрытого. */
+  open: boolean;
+  /** Текст раздела упоминает текущую порцию. */
+  currentSlice: boolean;
   warnings: string[];
 }
 
@@ -156,7 +161,11 @@ function chooseSection(text: string, plan: PlanFile, argument: string, headings:
   const movable = candidates.filter((heading) => heading.start > collection.start);
   if (found.length === 0) return { blocker: blocker('archive-section-not-found', `В плане нет раздела, заголовок которого начинается с «${argument}». Правки плана: ${listed(movable) || 'их нет'}.`, plan.path) };
   if (found.length > 1) return { blocker: blocker('archive-section-ambiguous', `«${argument}» подходит к разделам: ${listed(found)}. Уточните начало заголовка; одинаковые заголовки так не перенести.`, plan.path) };
-  const heading = found[0]!;
+  return examineSection(text, plan, found[0]!, headings, collection);
+}
+
+/** Можно ли перенести раздел и что в нём насторожит; одна проверка и для переноса, и для подсказки без `--section`. */
+function examineSection(text: string, plan: PlanFile, heading: PlanHeading, headings: readonly PlanHeading[], collection: PlanHeading): { choice?: SectionChoice; blocker?: ArchiveBlocker } {
   const title = `«${heading.title}»`;
   if (heading === collection || COLLECTIONS.includes(heading.title)) return { blocker: blocker('archive-section-collection', `${title} — сборник правок: внутри могут быть и открытые. Называйте закрытые правки по одной.`, plan.path) };
   if (heading.start < collection.start) return { blocker: blocker('archive-section-main-part', `${title} — основная часть плана, она в архив не переносится. Переносить можно только разделы ниже «${collection.title}».`, plan.path) };
@@ -171,13 +180,14 @@ function chooseSection(text: string, plan: PlanFile, argument: string, headings:
   const section = text.slice(heading.start, heading.end);
   const rest = section.slice(heading.line.length);
   const warnings: string[] = [];
-  if (declaredSlice !== null && mentionsSlice(rest, declaredSlice)) warnings.push(`раздел ${title} упоминает текущую порцию ${declaredSlice}.`);
-  const unchecked = [...rest.matchAll(UNCHECKED_RE)].length;
+  const currentSlice = declaredSlice !== null && mentionsSlice(rest, declaredSlice);
+  if (currentSlice) warnings.push(`раздел ${title} упоминает текущую порцию ${declaredSlice}.`);
+  const unchecked = markdownLines(rest).filter(({ line, code }) => !code && UNCHECKED_RE.test(line)).length;
   if (unchecked > 0) warnings.push(`в разделе ${title} неотмеченных пунктов [ ]: ${formatChars(unchecked)}.`);
   const already = POINTER_RE.test(rest.trim());
   const marks = already ? null : openMarksWarning(title, section);
   if (marks !== null) warnings.push(marks);
-  return { choice: { heading, nested, already, warnings } };
+  return { choice: { heading, nested, already, open: unchecked > 0 || marks !== null, currentSlice, warnings } };
 }
 
 /** Строка с пометкой, не длиннее `SHOWN_CHARS` кодовых точек; слово остаётся видно и в длинной строке. */
@@ -204,6 +214,9 @@ function openMarksWarning(title: string, section: string): string | null {
   return `в разделе ${title} есть пометки незакрытого: ${found.slice(0, SHOWN_MARKS).join('; ')}${more}. Закрыто — переносите; открыто — сначала запишите в wiki/hot.md или wiki/icebox.md: обратно архив не копируют.`;
 }
 
+const findCollection = (headings: readonly PlanHeading[]): PlanHeading | undefined =>
+  headings.find((heading) => (heading.level === 2 || heading.level === 3) && COLLECTIONS.some((name) => startsWithWord(heading.title, name)));
+
 /** `active_plan` из `wiki/hot.md`. */
 export function declaredPlan(files: ReadonlyMap<string, string>): string {
   const hot = files.get(HOT_PATH);
@@ -221,7 +234,7 @@ export function resolveSections(files: ReadonlyMap<string, string>, plans: reado
   if (!plan.intact) return refuse(blocker('archive-plan-changed', 'Текст плана изменился после утверждения (approved_digest не совпадает): перенос записал бы новый отпечаток поверх неутверждённой правки. Покажите изменения человеку; после его «да» запишите отпечаток из вывода preflight и повторите.', plan.path), plan);
 
   const headings = planHeadings(plan.text);
-  const collection = headings.find((heading) => (heading.level === 2 || heading.level === 3) && COLLECTIONS.some((name) => startsWithWord(heading.title, name)));
+  const collection = findCollection(headings);
   if (collection === undefined) return refuse(blocker('archive-section-no-collection', `В плане нет раздела «${COLLECTIONS[0]}» или «${COLLECTIONS[1]}»: переносить можно только правки, которые стоят ниже него.`, plan.path), plan);
 
   const chosen: SectionChoice[] = [];
@@ -237,6 +250,35 @@ export function resolveSections(files: ReadonlyMap<string, string>, plans: reado
     }
   }
   return { plan, chosen, blockers };
+}
+
+export interface PlanEdits {
+  plan: PlanFile;
+  /** Правки, которые `--section` перенёс бы, в порядке плана; вложенные в уже названную не повторяются. */
+  edits: SectionChoice[];
+}
+
+/**
+ * Правки активного плана, которые можно перенести через `--section`: без раздела текущей порции,
+ * сборников, записи об утверждении и уже перенесённых. Ничего не меняет и не блокирует.
+ * `null` — активного плана или сборника правок нет.
+ */
+export function listPlanEdits(files: ReadonlyMap<string, string>, plans: readonly PlanFile[]): PlanEdits | null {
+  const declared = declaredPlan(files);
+  if (declared === ACTIVE_PLAN_NONE || !isWikiRelativePlanRef(declared)) return null;
+  const plan = plans.find((item) => item.path === `wiki/${declared}`);
+  if (plan === undefined || plan.meta === null) return null;
+  const headings = planHeadings(plan.text);
+  const collection = findCollection(headings);
+  if (collection === undefined) return null;
+  const edits: SectionChoice[] = [];
+  for (const heading of headings) {
+    if ((heading.level !== 2 && heading.level !== 3) || heading.start <= collection.start) continue;
+    if (edits.some((other) => heading.start < other.heading.end)) continue;
+    const { choice } = examineSection(plan.text, plan, heading, headings, collection);
+    if (choice !== undefined && !choice.already) edits.push(choice);
+  }
+  return { plan, edits };
 }
 
 export interface SectionCut {

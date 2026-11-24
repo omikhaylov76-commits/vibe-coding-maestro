@@ -41,7 +41,24 @@ const ARCHIVE_PATHS = ['wiki/log/', 'wiki/plans/archive/', 'wiki/audits/archive/
 /** Те же пять слов, что у `archive`: держит тест. */
 export const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не\s+проверено|открыто)(?![\p{L}\p{N}_])/iu;
 const CLOSED_FINDINGS_RE = /Находки:\s*critical\s+\d+,\s*high\s+\d+,\s*medium\s+\d+,\s*low\s+\d+;\s*открыто\s+0(?!\d)/;
-const FINDINGS_RE = /^\s*(?:[-*]\s+)?Находки:\s*critical\s+(\d+),\s*high\s+(\d+),\s*medium\s+(\d+),\s*low\s+(\d+);\s*открыто\s+(\d+)\b.*$/gm;
+/**
+ * Строка находок. Метка проверки — до двоеточия («Находки ревью порции: critical …») или
+ * после него через тире («Находки: ревью порции — critical …»); без метки — как раньше.
+ */
+const FINDINGS_RE = /^\s*(?:[-*]\s+)?Находки(?:[ \t]+[^:\r\n]{1,80})?:[ \t]*(?:[^;:\r\n]{1,80}?[ \t]+[—–-][ \t]+)?critical\s+(\d+),\s*high\s+(\d+),\s*medium\s+(\d+),\s*low\s+(\d+);\s*открыто\s+(\d+)\b.*$/gm;
+/** Счёт цели в передаче посреди порции: строка образца передачи; первая передача — без «в прошлой передаче K». */
+const GOAL_RE = /Цель:\*{0,2}[ \t]*доказано[ \t]+(\d+)[ \t]+из[ \t]+(\d+)(?:[ \t]*[;,(][ \t]*в[ \t]+прошлой[ \t]+передаче[ \t]+(\d+))?/;
+/** Инструменты, которые правят файлы: первая правка — конец старта сессии. */
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+/** Причины сжатия, которые идут в отчёт словом; любое другое значение журнала — other. */
+const COMPACT_TRIGGERS = ['auto', 'manual'];
+/** Сессия короче — старта не видно. */
+const START_MIN_STEPS = 20;
+/** Шаг относится к ближайшему следующему коммиту, если тот не позже. */
+const NEXT_COMMIT_WINDOW = 3 * 3600 * 1000;
+/** Коммит передачи относится к сессии, если её последний шаг до него не старше. */
+const SESSION_NEAR_COMMIT = 900 * 1000;
+const COMMIT_KINDS = ['code', 'notes', 'audit', 'handoff', 'plan', 'none'];
 /** В архиве плана адрес на уровень глубже: `archive` переписывает его на `../../handoffs/`. */
 const RESULT_LINE_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[xX]\].*? → \[итог\]\((?:\.\.\/)+handoffs\/([^\s()/]+\.md)\)$/gm;
 /** Ссылка на сам отчёт, а не упоминание папки: оно есть в образце передачи. */
@@ -70,6 +87,7 @@ export function allowedFields(entry) {
   const tools = Array.isArray(content) ? content.filter((block) => block?.type === 'tool_use').map((block) => block.name) : [];
   const usage = message.usage ?? {};
   const number = (value) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
+  const compact = entry?.compactMetadata ?? {};
   return {
     type: entry?.type,
     subtype: entry?.subtype,
@@ -83,6 +101,9 @@ export function allowedFields(entry) {
     usage: { input: number(usage.input_tokens), read: number(usage.cache_read_input_tokens), write: number(usage.cache_creation_input_tokens), output: number(usage.output_tokens) },
     blocks,
     tools,
+    // Причина сжатия — только известное слово, иначе other; размер — только число.
+    compactTrigger: typeof compact.trigger !== 'string' ? undefined : COMPACT_TRIGGERS.includes(compact.trigger) ? compact.trigger : 'other',
+    compactPreTokens: number(compact.preTokens),
   };
 }
 
@@ -93,6 +114,7 @@ const stepCost = ({ input, read, write, output }) => PRICE.input * input + PRICE
 async function readJournal(path, period, subagent = false) {
   const steps = new Map();
   const counts = { compactions: 0, human: 0, noOrigin: 0, ask: 0 };
+  const compacted = [];
   for await (const line of createInterface({ input: createReadStream(path, 'utf8'), crlfDelay: Infinity })) {
     let fields;
     try {
@@ -103,7 +125,10 @@ async function readJournal(path, period, subagent = false) {
     const time = Date.parse(fields.timestamp ?? '');
     const inPeriod = time >= period.from && time <= period.to;
     if (fields.type === 'system') {
-      if (fields.subtype === 'compact_boundary' && inPeriod) counts.compactions += 1;
+      if (fields.subtype === 'compact_boundary' && inPeriod) {
+        counts.compactions += 1;
+        compacted.push({ trigger: fields.compactTrigger ?? 'unknown', preTokens: fields.compactPreTokens });
+      }
     } else if (fields.type === 'user') {
       const text = fields.blocks.includes('text') && !fields.blocks.includes('tool_result');
       if (!inPeriod || !text || fields.isMeta || fields.hasToolResult || fields.isSidechain || fields.isCompactSummary) continue;
@@ -112,11 +137,13 @@ async function readJournal(path, period, subagent = false) {
     } else if (fields.type === 'assistant' && (subagent || !fields.isSidechain)) {
       if (inPeriod) counts.ask += fields.tools.filter((name) => name === 'AskUserQuestion').length;
       if (typeof fields.id !== 'string' || stepSize(fields.usage) === 0) continue;
-      steps.set(fields.id, { size: stepSize(fields.usage), cost: stepCost(fields.usage), time });
+      // Один шаг пишется несколькими строками: правка могла быть в любой из них.
+      const edit = steps.get(fields.id)?.edit === true || fields.tools.some((name) => EDIT_TOOLS.has(name));
+      steps.set(fields.id, { size: stepSize(fields.usage), cost: stepCost(fields.usage), time, edit });
     }
   }
   const all = [...steps.values()];
-  return { ...counts, all, steps: all.filter((step) => step.time >= period.from && step.time <= period.to) };
+  return { ...counts, compacted, all, steps: all.filter((step) => step.time >= period.from && step.time <= period.to) };
 }
 
 const listDir = (path, withTypes = false) => {
@@ -220,13 +247,33 @@ export function findingsIn(text) {
   return { critical: pick(1), high: pick(2), medium: pick(3), low: pick(4), open: pick(5) };
 }
 
+/** Счёт цели передачи: доказано, всего, в прошлой передаче (null — не названо); null — строки нет. */
+export function goalIn(text) {
+  const match = GOAL_RE.exec(text);
+  if (match === null) return null;
+  return { proven: Number(match[1]), total: Number(match[2]), previous: match[3] === undefined ? null : Number(match[3]) };
+}
+
 const needsReport = (found) => found.critical > 0 || found.high > 0 || found.open > 0;
 
 /** Раздел трений: `text` — строки, `none` — «нет», `missing` — раздела нет. */
 export function frictionsIn(text) {
   const section = sectionOf(text, FRICTION_SECTION);
   if (section === null) return { kind: 'missing', lines: [] };
-  const lines = section.split('\n').map((line) => line.trim().replace(/^[-*]\s+/, '').trim()).filter(Boolean);
+  // Пункт с переносом — одна строка: продолжение без маркера приклеивается к пункту.
+  const lines = [];
+  let open = false;
+  for (const raw of section.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      open = false;
+      continue;
+    }
+    const item = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line);
+    if (item === null && open) lines[lines.length - 1] += ` ${line}`;
+    else lines.push((item?.[1] ?? line).trim());
+    open = true;
+  }
   if (lines.length === 0) return { kind: 'missing', lines: [] };
   if (lines.length === 1 && /^нет[.!]?$/i.test(lines[0] ?? '')) return { kind: 'none', lines: [] };
   return { kind: 'text', lines };
@@ -359,6 +406,178 @@ function auditReports(cwd, period) {
   return { inAudits: inFolder('wiki/audits').length, inArchive: inFolder('wiki/audits/archive').length, open, addedInPeriod: sum(added, (item) => item.rest.filter(Boolean).length) };
 }
 
+/** Вид коммита по его файлам (`status` и `path` из `git log --name-status`). */
+export function commitKind(files) {
+  if (files.length === 0) return 'none';
+  if (files.some((file) => file.status.startsWith('A') && /^wiki\/handoffs\/[^/]+\.md$/.test(file.path))) return 'handoff';
+  if (files.some((file) => !file.path.startsWith('wiki/'))) return 'code';
+  if (files.some((file) => file.path.startsWith('wiki/audits/'))) return 'audit';
+  if (files.some((file) => file.path.startsWith('wiki/plans/'))) return 'plan';
+  return 'notes';
+}
+
+/** Коммиты первой линии с видом, по времени. */
+function commitsOf(cwd) {
+  return gitLog(cwd, ['--first-parent', '-M', '--name-status']).map(({ time, rest }) => {
+    const files = rest.filter((line) => line.trim() !== '').map((line) => {
+      const parts = line.split('\t');
+      return { status: parts[0] ?? '', path: posixPath(parts.at(-1) ?? '') };
+    });
+    return { time, kind: commitKind(files) };
+  }).sort((left, right) => left.time - right.time);
+}
+
+const spread = (values) => ({ median: median(values), p75: quantile(values, 0.75) });
+
+/** Старт сессии: от первого шага до первой правки файла. Сессии, начатые в периоде. */
+function startOf(sessions, period, cost) {
+  const rows = [];
+  let before = 0;
+  for (const { all } of sessions) {
+    const first = all[0];
+    // Шаг без времени в период не попадает: сравнение с NaN всегда ложно.
+    if (first === undefined || !(first.time >= period.from && first.time <= period.to) || all.length < START_MIN_STEPS) continue;
+    const edit = all.findIndex((step) => step.edit);
+    rows.push({ first: first.size, edit, minutes: edit === -1 ? null : (all[edit].time - first.time) / 60_000, size: edit === -1 ? null : all[edit].size });
+    if (edit !== -1) before += sum(all.slice(0, edit), (step) => step.cost);
+  }
+  const edited = rows.filter((row) => row.edit !== -1);
+  return {
+    sessions: rows.length,
+    withoutEdit: rows.length - edited.length,
+    sizeFirst: median(rows.map((row) => row.first)),
+    stepsBeforeFirstEdit: spread(edited.map((row) => row.edit)),
+    minutesToFirstEdit: median(edited.map((row) => row.minutes)),
+    sizeAtFirstEdit: median(edited.map((row) => row.size)),
+    costShareBeforeFirstEdit: ratio(before, cost),
+  };
+}
+
+/** Хвост: от первого шага за верхним порогом до коммита передачи и после него. */
+function tailOf(sessions, commits, period, cost) {
+  const handoffTimes = commits.filter((commit) => commit.kind === 'handoff').map((commit) => commit.time);
+  const to = [];
+  const after = [];
+  let toCost = 0;
+  let afterCost = 0;
+  for (const { all } of sessions) {
+    const start = all.findIndex((step) => step.size >= SIZE_THRESHOLDS[1]);
+    if (start === -1 || !(all[start].time >= period.from && all[start].time <= period.to)) continue;
+    const handoff = handoffTimes.find((time) => time >= all[start].time);
+    if (handoff === undefined || handoff > all.at(-1).time + SESSION_NEAR_COMMIT) continue;
+    const rest = all.slice(start);
+    const head = rest.filter((step) => step.time <= handoff);
+    const tail = rest.filter((step) => step.time > handoff);
+    to.push(head.length);
+    after.push(tail.length);
+    toCost += sum(head, (step) => step.cost);
+    afterCost += sum(tail, (step) => step.cost);
+  }
+  return { sessions: to.length, stepsToHandoff: spread(to), stepsAfterHandoff: spread(after), costShareToHandoff: ratio(toCost, cost), costShareAfterHandoff: ratio(afterCost, cost) };
+}
+
+/** Каждый шаг периода отнесён к ближайшему следующему коммиту; при параллельных сессиях — приближение. */
+function byCommitOf(steps, commits, period) {
+  const result = Object.fromEntries([...COMMIT_KINDS, 'noCommit'].map((kind) => [kind, { steps: 0, cost: 0 }]));
+  const times = commits.map((commit) => commit.time);
+  for (const step of steps) {
+    let low = 0;
+    let high = times.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (times[middle] < step.time) low = middle + 1;
+      else high = middle;
+    }
+    const kind = low < times.length && times[low] - step.time <= NEXT_COMMIT_WINDOW ? commits[low].kind : 'noCommit';
+    result[kind].steps += 1;
+    result[kind].cost += step.cost;
+  }
+  const cost = sum(steps, (step) => step.cost);
+  const inside = commits.filter(inPeriod(period));
+  for (const [kind, item] of Object.entries(result)) {
+    const count = inside.filter((commit) => commit.kind === kind).length;
+    result[kind] = { steps: item.steps, stepShare: ratio(item.steps, steps.length), costShare: ratio(item.cost, cost), ...(kind === 'noCommit' ? {} : { commits: count, stepsPerCommit: ratio(item.steps, count) }) };
+  }
+  return result;
+}
+
+/** Запись передачи: шаги ближайшей сессии от предыдущего коммита до коммита передачи. */
+function handoffWriteOf(sessions, commits, period) {
+  const counts = [];
+  commits.forEach((commit, index) => {
+    if (commit.kind !== 'handoff' || commit.time < period.from || commit.time > period.to) return;
+    let best = null;
+    for (const session of sessions) {
+      const last = session.all.findLast((step) => step.time <= commit.time);
+      if (last !== undefined && commit.time - last.time < SESSION_NEAR_COMMIT && (best === null || last.time > best.time)) best = { session, time: last.time };
+    }
+    if (best === null) return;
+    const previous = commits[index - 1]?.time ?? 0;
+    counts.push(best.session.all.filter((step) => step.time > previous && step.time <= commit.time).length);
+  });
+  return { handoffs: counts.length, steps: spread(counts) };
+}
+
+/** Капсула порции на коммите передачи: по полю `slice`, иначе самая большая активная. Знаков; null — нет. */
+function capsuleCharsAt(cwd, commit, slice) {
+  const list = (pattern) => (git(cwd, ['grep', '-l', '-E', pattern, commit, '--', ':(glob)wiki/progress/*.md']) ?? '').split('\n').filter(Boolean).map((line) => posixPath(line.slice(commit.length + 1)));
+  const sizes = (paths, accept) => paths.map((path) => show(cwd, commit, path) ?? '').filter(accept).map((text) => text.length);
+  const escaped = slice === null ? null : slice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const named = escaped === null ? [] : sizes(list(`^slice:[[:space:]]*["']?${escaped}["']?[[:space:]]*$`), (text) => sliceValue(frontmatter(text).slice) === slice);
+  const found = named.length > 0 ? named : sizes(list('^status:[[:space:]]*active'), (text) => frontmatter(text).status === 'active');
+  return found.length === 0 ? null : Math.max(...found);
+}
+
+/** Передачи по порциям: сколько на порцию, счёт цели и порции, где он не рос. */
+function goalOf(cwd, handoffs) {
+  const slices = new Map();
+  const capsules = [];
+  let midSliceWithGoal = 0;
+  let midSlice = 0;
+  for (const item of handoffs) {
+    const { plan, slice } = frontmatter(item.text);
+    const named = sliceValue(slice) === null || slice === 'none' ? null : slice;
+    const goal = goalIn(item.text);
+    if (item.midSlice) {
+      midSlice += 1;
+      if (goal !== null) midSliceWithGoal += 1;
+      const chars = capsuleCharsAt(cwd, item.hash, named);
+      if (chars !== null) capsules.push(chars);
+    }
+    if (named === null) continue;
+    const key = `${plan}\n${named}`;
+    slices.set(key, [...(slices.get(key) ?? []), goal]);
+  }
+  let withoutGrowth = 0;
+  let stalled = 0;
+  for (const goals of slices.values()) {
+    // Передача без роста: счёт не больше, чем в прошлой передаче порции (или чем названо в строке).
+    let last = null;
+    let run = 0;
+    let longest = 0;
+    for (const goal of goals) {
+      if (goal === null) continue;
+      const before = last ?? goal.previous;
+      run = before !== null && goal.proven <= before ? run + 1 : 0;
+      longest = Math.max(longest, run);
+      last = goal.proven;
+    }
+    if (longest >= 1) withoutGrowth += 1;
+    if (longest >= 2) stalled += 1;
+  }
+  const perSlice = [...slices.values()].map((goals) => goals.length);
+  return {
+    slices: slices.size,
+    handoffsPerSlice: { median: median(perSlice), max: perSlice.length === 0 ? null : Math.max(...perSlice) },
+    midSliceHandoffs: midSlice,
+    midSliceWithGoal,
+    slicesWithGoal: [...slices.values()].filter((goals) => goals.some((goal) => goal !== null)).length,
+    slicesWithoutGrowth: withoutGrowth,
+    stalledSlices: stalled,
+    capsuleChars: { handoffs: capsules.length, median: median(capsules), max: capsules.length === 0 ? null : Math.max(...capsules) },
+  };
+}
+
 async function measureProject(path, claudeDir, period) {
   const name = leafName(path);
   const version = JSON.parse(readFileSync(join(path, MANIFEST), 'utf8')).product?.version ?? null;
@@ -400,6 +619,8 @@ async function measureProject(path, claudeDir, period) {
     return gaps;
   });
   const [low, high] = SIZE_THRESHOLDS;
+  const compacted = sessions.flatMap((session) => session.compacted);
+  const preTokens = compacted.map((item) => item.preTokens).filter((value) => value > 0);
   const q1 = {
     sessions: sessions.length,
     steps: steps.length,
@@ -413,6 +634,8 @@ async function measureProject(path, claudeDir, period) {
     endedAbove400: ends.filter((size) => size >= low).length,
     endedAbove600: ends.filter((size) => size >= high).length,
     compactions: sum(sessions, (session) => session.compactions),
+    compactionTriggers: compacted.reduce((counts, item) => ({ ...counts, [item.trigger]: (counts[item.trigger] ?? 0) + 1 }), {}),
+    compactionPreTokens: { median: median(preTokens), min: preTokens.length === 0 ? null : Math.min(...preTokens), max: preTokens.length === 0 ? null : Math.max(...preTokens) },
     subagentCost: Math.round(subagentCost),
     subagentShare: ratio(subagentCost, cost + subagentCost),
     stepsPerSlice: { median: median(stepsPerSlice), p75: quantile(stepsPerSlice, 0.75), p90: quantile(stepsPerSlice, 0.9) },
@@ -461,7 +684,7 @@ async function measureProject(path, claudeDir, period) {
     if (needsReport(found) && !REPORT_LINK_RE.test(item.text)) q4.lost.push(item.path);
   }
   for (const found of bySlice.values()) addFindings(found);
-  for (const commit of gitLog(path, ['-p', '-U0', '-GНаходки: critical', '--', PLANS]).filter(inside)) {
+  for (const commit of gitLog(path, ['-p', '-U0', '-GНаходки.*critical', '--', PLANS]).filter(inside)) {
     const lines = addedLines(commit.rest).join('\n');
     const found = findingsIn(lines);
     if (found === null) continue;
@@ -476,7 +699,11 @@ async function measureProject(path, claudeDir, period) {
   const ask = sum(sessions, (session) => session.ask);
   const q6 = { human, noOrigin: sum(sessions, (session) => session.noOrigin), humanPerSlice: ratio(human, closed.length), ask, askPerSlice: ratio(ask, closed.length) };
 
-  return { name, path, version, q1, q2, q3, q4, q5, q6 };
+  const commits = lagReadable(path) ? commitsOf(path) : [];
+  const q7 = { start: startOf(sessions, period, cost), tail: tailOf(sessions, commits, period, cost), byCommit: byCommitOf(steps, commits, period), handoffWrite: handoffWriteOf(sessions, commits, period) };
+  const q8 = goalOf(path, handoffs);
+
+  return { name, path, version, q1, q2, q3, q4, q5, q6, q7, q8 };
 }
 
 /** Папки журналов с префиксом `--root` без своего проекта: только токены, по папкам. */
@@ -554,6 +781,7 @@ const ROWS = [
   ['1', 'сессии, закончившиеся от 400 тыс.', (r) => percent(per(r.q1.endedAbove400, r.q1.sessions))],
   ['1', 'сессии, закончившиеся от 600 тыс.', (r) => percent(per(r.q1.endedAbove600, r.q1.sessions))],
   ['1', 'сжатий на 1000 шагов', (r) => plain((per(r.q1.compactions, r.q1.steps) ?? 0) * 1000)],
+  ['1', 'размер перед сжатием, медиана', (r) => plain(r.q1.compactionPreTokens.median)],
   ['1', 'доля субагентов в стоимости', (r) => percent(r.q1.subagentShare)],
   ['1', 'шагов на порцию, медиана', (r) => plain(r.q1.stepsPerSlice.median)],
   ['1', 'передач посреди порции', (r) => percent(per(r.q1.midSliceHandoffs, r.q1.handoffs))],
@@ -576,7 +804,37 @@ const ROWS = [
   ['5', 'коммитов кода после передачи сейчас', (r) => plain(r.q5.now.codeCommitsAfterHandoff)],
   ['6', 'сообщений человека на порцию', (r) => plain(r.q6.humanPerSlice)],
   ['6', 'вопросов AskUserQuestion на порцию', (r) => plain(r.q6.askPerSlice)],
+  ['7', 'старт: шагов до первой правки, медиана', (r) => plain(r.q7.start.stepsBeforeFirstEdit.median)],
+  ['7', 'старт: размер на первом шаге, медиана', (r) => plain(r.q7.start.sizeFirst)],
+  ['7', 'старт: размер на первой правке, медиана', (r) => plain(r.q7.start.sizeAtFirstEdit)],
+  ['7', 'старт: доля стоимости до первой правки', (r) => percent(r.q7.start.costShareBeforeFirstEdit)],
+  ['7', 'хвост: шагов от 600 тыс. до коммита передачи, медиана', (r) => plain(r.q7.tail.stepsToHandoff.median)],
+  ['7', 'хвост: доля стоимости от 600 тыс. до передачи', (r) => percent(r.q7.tail.costShareToHandoff)],
+  ['7', 'запись передачи: шагов от прошлого коммита, медиана', (r) => plain(r.q7.handoffWrite.steps.median)],
+  ['7', 'шагов на коммит передачи', (r) => plain(r.q7.byCommit.handoff.stepsPerCommit)],
+  ['7', 'доля стоимости: отрезки с кодом', (r) => percent(r.q7.byCommit.code.costShare)],
+  ['7', 'доля стоимости: только рабочие записи', (r) => percent(r.q7.byCommit.notes.costShare)],
+  ['7', 'доля стоимости: отчёты проверок', (r) => percent(r.q7.byCommit.audit.costShare)],
+  ['7', 'доля стоимости: передачи', (r) => percent(r.q7.byCommit.handoff.costShare)],
+  ['7', 'доля стоимости: план', (r) => percent(r.q7.byCommit.plan.costShare)],
+  ['7', 'доля стоимости: без коммита за 3 часа', (r) => percent(r.q7.byCommit.noCommit.costShare)],
+  ['8', 'передач на порцию, медиана', (r) => plain(r.q8.handoffsPerSlice.median)],
+  ['8', 'передач на порцию, наибольшее', (r) => plain(r.q8.handoffsPerSlice.max)],
+  ['8', 'передач посреди порции со счётом цели', (r) => percent(per(r.q8.midSliceWithGoal, r.q8.midSliceHandoffs))],
+  ['8', 'порций, где счёт цели не вырос', (r) => plain(r.q8.slicesWithoutGrowth)],
+  ['8', 'порций, где счёт не рос две передачи подряд', (r) => plain(r.q8.stalledSlices)],
+  ['8', 'капсула на передаче посреди порции, знаков, медиана', (r) => plain(r.q8.capsuleChars.median)],
 ];
+
+/** Значение строки сравнения; у замера прежней версии скрипта новых разделов нет. */
+const cell = (pick, report) => {
+  if (report === undefined) return '—';
+  try {
+    return pick(report);
+  } catch {
+    return '—';
+  }
+};
 
 const closedSlices = (report) => sum(Object.values(report.projects), (project) => project.q1.closedSlices);
 
@@ -587,7 +845,7 @@ export function compareReports(before, after) {
     const was = before.projects[name];
     const now = after.projects[name];
     lines.push(`## ${name}`, '', '| Вопрос | Показатель | Было | Стало |', '|---|---|---|---|');
-    for (const [question, title, pick] of ROWS) lines.push(`| ${question} | ${title} | ${was === undefined ? '—' : pick(was)} | ${now === undefined ? '—' : pick(now)} |`);
+    for (const [question, title, pick] of ROWS) lines.push(`| ${question} | ${title} | ${cell(pick, was)} | ${cell(pick, now)} |`);
     const frictions = now?.q3.lines ?? [];
     if (frictions.length > 0) lines.push('', 'Что мешало:', ...frictions.map((line) => `- ${line}`));
     const candidates = now?.q2.openMarkCandidates ?? [];
@@ -657,7 +915,7 @@ async function main(argv) {
     measured[report.name] = report;
   }
   const report = {
-    reportVersion: 1,
+    reportVersion: 2,
     label: options.label,
     from: options.from,
     to: options.to,

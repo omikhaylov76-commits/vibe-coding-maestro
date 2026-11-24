@@ -53,8 +53,8 @@ const UPDATED_IN_043 = union([
   '.claude/agents/code-reviewer.md', 'maestro/runbooks/cowork-audit.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/status.md', 'protocols/wiki.md',
 ], UPDATED_IN_042);
 
-/** То же для проектов 0.3.0 и новее: у них уже есть правила Maestro, образец передачи и README и шаблон планов. */
-const UPDATED_IN_043_SINCE_030 = union(UPDATED_IN_043, ['.claude/rules/maestro.md', 'maestro/templates/handoff.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md']);
+/** То же для проектов 0.3.0 и новее: у них уже есть правила Maestro, образцы передачи и капсулы (капсулу переписал 0.4.6) и README и шаблон планов. */
+const UPDATED_IN_043_SINCE_030 = union(UPDATED_IN_043, ['.claude/rules/maestro.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md']);
 
 /** Новые пути 0.4.3: образец отчёта проверки (Maestro) и Icebox (проект). */
 const NEW_IN_043 = ['maestro/templates/audit.md', 'wiki/icebox.md'];
@@ -112,6 +112,9 @@ const FIXTURES_043 = ['0.4.3-light', '0.4.3-standard', '0.4.3-advanced'];
 
 /** Проекты опубликованного 0.4.4: после них 0.4.5 только переписал тексты, состав тот же. */
 const FIXTURES_044 = ['0.4.4-light', '0.4.4-standard', '0.4.4-advanced'];
+
+/** Проекты опубликованного 0.4.5: после них 0.4.6 только переписал тексты, состав тот же. */
+const FIXTURES_045 = ['0.4.5-light', '0.4.5-standard', '0.4.5-advanced'];
 
 /** Всё, что upgrade с 0.4.0 переписывает на нетронутом проекте: закреплённая версия и тексты про context и pack. */
 const UPDATED_FROM_040 = union(['.claude/commands/build.md', '.claude/rules/maestro.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md'], UPDATED_IN_043_SINCE_030);
@@ -214,7 +217,7 @@ describe('реестр опубликованных канонов', () => {
     }
   });
 
-  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042, ...FIXTURES_043, ...FIXTURES_044])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
+  it.each([...FIXTURES, ...FIXTURES_03X, ...FIXTURES_040, ...FIXTURES_041, ...FIXTURES_042, ...FIXTURES_043, ...FIXTURES_044, ...FIXTURES_045])('слепок реестра совпадает с проектом, который записал опубликованный пакет (%s)', async (id) => {
     const data = await fixture(id);
     const release = findRelease(data.version);
     expect(release).toBeDefined();
@@ -495,7 +498,8 @@ describe('upgrade с опубликованного 0.4.0 на текущую в
     const result = await upgradeProject(root, { apply: true });
     expect(result.error).toBeUndefined();
     expect(result.applied).toBe(true);
-    expect(await readUtf8(root, 'protocols/handoff.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro context --path .`);
+    // С 0.4.6 полная команда — в правилах, которые загружены всегда; протокол передачи на неё ссылается.
+    expect(await readUtf8(root, 'protocols/handoff.md')).toContain('по выводу `context` (`.claude/rules/maestro.md`)');
     expect(await readUtf8(root, '.claude/rules/maestro.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro context --path .`);
     expect(await readUtf8(root, 'protocols/completion.md')).toContain(`create-vibe-maestro@${VERSION} vibe-maestro pack --path . --tag`);
     expect(await readUtf8(root, 'wiki/passport.md')).toBe(passport);
@@ -780,9 +784,9 @@ describe('upgrade с опубликованного 0.4.1 на текущую в
 });
 
 describe('upgrade с опубликованного 0.4.2 на текущую версию', () => {
-  /** Всё, что upgrade с 0.4.2 переписывает на нетронутом проекте: изменения 0.4.3 и закреплённая версия в командах. */
+  /** Всё, что upgrade с 0.4.2 переписывает на нетронутом проекте: изменения 0.4.3 – 0.4.6 и закреплённая версия в командах. */
   const UPDATED_FROM_042 = [
-    '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/handoff.md',
+    '.claude/agents/code-reviewer.md', '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md',
     'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md', 'protocols/status.md', 'protocols/wiki.md',
     'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
   ];
@@ -853,9 +857,9 @@ describe('upgrade с опубликованного 0.4.2 на текущую в
 });
 
 describe('upgrade с опубликованного 0.4.3 на текущую версию', () => {
-  /** Всё, что upgrade с 0.4.3 переписывает на нетронутом проекте: изменения 0.4.4 и 0.4.5 и закреплённая версия в командах. */
+  /** Всё, что upgrade с 0.4.3 переписывает на нетронутом проекте: изменения 0.4.4 – 0.4.6 и закреплённая версия в командах. */
   const UPDATED_FROM_043 = [
-    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md',
+    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', 'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md',
     'protocols/plan.md', 'protocols/start.md', 'protocols/status.md', 'protocols/wiki.md', 'wiki/plans/README.md', 'wiki/plans/TEMPLATE.md',
   ];
   const OWNED = ['wiki/hot.md', 'wiki/log.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'wiki/icebox.md'];
@@ -940,9 +944,9 @@ describe('upgrade с опубликованного 0.4.3 на текущую в
 });
 
 describe('upgrade с опубликованного 0.4.4 на текущую версию', () => {
-  /** Всё, что upgrade с 0.4.4 переписывает на нетронутом проекте: изменения 0.4.5 и закреплённая версия в командах. */
+  /** Всё, что upgrade с 0.4.4 переписывает на нетронутом проекте: изменения 0.4.5 и 0.4.6 и закреплённая версия в командах. */
   const UPDATED_FROM_044 = [
-    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'protocols/audit.md', 'protocols/build.md',
+    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md', 'protocols/audit.md', 'protocols/build.md',
     'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md',
   ];
   const OWNED = ['wiki/hot.md', 'wiki/log.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'wiki/icebox.md'];
@@ -996,6 +1000,77 @@ describe('upgrade с опубликованного 0.4.4 на текущую в
   });
 
   it.each(FIXTURES_044.filter((id) => id.endsWith('standard')))('%s: archive без upgrade отказывает и называет upgrade; после upgrade — работает', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const refused = await archiveProject(root, { apply: true });
+    expect(refused.blockers.map((item) => item.code)).toEqual(['archive-version-mismatch']);
+    expect(refused.blockers[0]?.message).toContain('upgrade');
+    expect(await snapshotTree(root)).toEqual(before);
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect((await archiveProject(root, { apply: true })).ok).toBe(true);
+  });
+});
+
+describe('upgrade с опубликованного 0.4.5 на текущую версию', () => {
+  /** Всё, что upgrade с 0.4.5 переписывает на нетронутом проекте: десять файлов с правками 0.4.6 и два только с закреплённой версией. */
+  const UPDATED_FROM_045 = [
+    '.claude/commands/build.md', '.claude/rules/maestro.md', 'maestro/runbooks/cowork-audit.md', 'maestro/templates/audit.md', 'maestro/templates/handoff.md', 'maestro/templates/progress.md',
+    'protocols/audit.md', 'protocols/build.md', 'protocols/completion.md', 'protocols/handoff.md', 'protocols/plan.md', 'protocols/start.md',
+  ];
+  const OWNED = ['wiki/hot.md', 'wiki/log.md', 'wiki/roadmap.md', 'wiki/index.md', 'wiki/plans/0001-starter.md', 'wiki/concepts/discovery.md', '.claude/rules/project.md', '.claude/settings.json', 'wiki/passport.md', 'wiki/restore.md', 'wiki/icebox.md'];
+
+  it.each(FIXTURES_045)('%s: dry-run и --diff ни байта не пишут; новых файлов, удалений и напоминаний нет', async (id) => {
+    const { root } = await materialize(id);
+    const before = await snapshotTree(root);
+    const { analysis } = await analyzeUpgrade(root);
+    expect(analysis.blockers).toEqual([]);
+    expect(analysis.fromVersion).toBe('0.4.5');
+    expect(analysis.creates).toEqual([]);
+    expect(analysis.removes).toEqual([]);
+    expect(analysis.notes).toEqual([]);
+    expect(analysis.updates.map((item) => item.path).sort()).toEqual(UPDATED_FROM_045);
+    for (const path of OWNED) expect(analysis.preserves, path).toContain(path);
+    const cli = collect();
+    expect(await runMaestroCli(['upgrade', '--path', root, '--diff'], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('maestro/templates/progress.md');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it.each(FIXTURES_045)('%s: --apply даёт канон текущей версии, файлы проекта не тронуты, doctor --strict зелёный', async (id) => {
+    const { root, data } = await materialize(id);
+    const result = await upgradeProject(root, { apply: true });
+    expect(result.error).toBeUndefined();
+    expect(result.applied).toBe(true);
+    for (const path of OWNED) expect(await readUtf8(root, path), path).toBe(data.files[path]);
+    const fresh = join(await makeTempDir('fresh-045-'), data.folder);
+    expect((await initProject({ target: fresh, name: 'Проект фикстуры', startingPoint: 'idea', depth: data.depth, git: false, now: FIXED_NOW })).ok).toBe(true);
+    expect((await loadManifest(root)).inventory).toEqual((await loadManifest(fresh)).inventory);
+    const withoutDate = (text: string): string => text.replace(/^updated: .*$/m, '');
+    for (const path of UPDATED_FROM_045) expect(withoutDate(await readUtf8(root, path)), path).toBe(withoutDate(await readUtf8(fresh, path)));
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await analyzeUpgrade(root)).analysis.status).toBe('current');
+  });
+
+  it('действующая капсула старого вида и открытый отчёт «не исправляем» после upgrade остаются как были, doctor --strict зелёный', async () => {
+    const { root } = await materialize('0.4.5-standard');
+    const capsule = ['---', 'type: progress', 'status: active', 'plan: none', 'updated: 2026-11-10', '---', '', '# Ход работы: порция', '', '## Цель', 'Одна фраза.', '', '## Сделано', '- Факт.', '', '## Проверки', '- Команда.', '', '## Дальше', '- Шаг.', ''].join('\n');
+    await writeFile(join(root, 'wiki/progress/slice.md'), capsule, 'utf8');
+    await writeFile(join(root, 'wiki/hot.md'), (await readUtf8(root, 'wiki/hot.md')).replace(/^active_progress: .*$/m, 'active_progress: progress/slice.md'), 'utf8');
+    const audit = ['---', 'audit_id: AUD-2026-11-10-old', 'status: open', '---', '', '# Проверка', '', '## Finding AUD-2026-11-10-old-F001', '- severity: medium', '- target: src/a.ts:1', '- evidence: воспроизведено',
+      '- status: open', '- resolution: не исправляем — редкий случай; wiki/icebox.md', ''].join('\n');
+    await writeFile(join(root, 'wiki/audits/AUD-2026-11-10-old.md'), audit, 'utf8');
+    expect((await upgradeProject(root, { apply: true })).applied).toBe(true);
+    expect(await readUtf8(root, 'wiki/progress/slice.md')).toBe(capsule);
+    expect(await readUtf8(root, 'wiki/audits/AUD-2026-11-10-old.md')).toBe(audit);
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    // Открытый отчёт archive не уносит; закрытый по новому правилу — уносит.
+    expect((await archiveProject(root, { apply: true })).audits.moved).toEqual([]);
+    await writeFile(join(root, 'wiki/audits/AUD-2026-11-10-old.md'), audit.replace('status: open\n---', 'status: resolved\n---').replace('- status: open', '- status: resolved'), 'utf8');
+    expect((await doctorProject(root, { strict: true })).findings).toEqual([]);
+    expect((await archiveProject(root, { apply: true })).audits.moved.map((item) => item.from)).toEqual(['wiki/audits/AUD-2026-11-10-old.md']);
+  });
+
+  it.each(FIXTURES_045.filter((id) => id.endsWith('standard')))('%s: archive без upgrade отказывает и называет upgrade; после upgrade — работает', async (id) => {
     const { root } = await materialize(id);
     const before = await snapshotTree(root);
     const refused = await archiveProject(root, { apply: true });

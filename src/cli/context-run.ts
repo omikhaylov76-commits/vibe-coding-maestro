@@ -22,6 +22,22 @@ export function tokensWord(value: number): string {
   return 'токенов';
 }
 
+/** «1 шаг», «2 шага», «5 шагов». */
+export function stepsWord(value: number): string {
+  const n = Math.abs(Math.round(value));
+  if (n % 10 === 1 && n % 100 !== 11) return 'шаг';
+  if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return 'шага';
+  return 'шагов';
+}
+
+/** Сколько шагов осталось до порога новой сессии и когда проверить размер снова. */
+function stepsLine(growth: number, steps: number, threshold: number): string {
+  const rate = `сессия растёт примерно на ${formatTokens(growth)} ${tokensWord(growth)} за шаг`;
+  if (steps < 2) return `Сейчас ${rate}: до порога ${formatTokens(threshold)} остался примерно один шаг. Проверьте размер сразу после него.`;
+  const half = Math.max(1, Math.floor(steps / 2));
+  return `Сейчас ${rate}: до порога ${formatTokens(threshold)} осталось примерно ${formatTokens(steps)} ${stepsWord(steps)}. Оценка грубая — проверьте размер снова не позже чем через ${formatTokens(half)} ${stepsWord(half)}.`;
+}
+
 const ADVICE: Readonly<Record<ContextLevel, string>> = {
   continue: 'Можно продолжать в этой сессии.',
   'finish-slice': 'Порцию лучше закончить в этой сессии, а следующую начать в новой — после передачи дел (/handoff).',
@@ -50,6 +66,9 @@ export async function executeContextCommand(options: ContextRunOptions, io: CliI
   io.out(`Размер сессии: ${formatTokens(tokens)} ${tokensWord(tokens)} (${report.percent}% окна модели в ${formatTokens(report.budget)}).`);
   io.out(windowLine(report.windowSource, report.model, report.budget));
   io.out(ADVICE[report.level]);
+  if (report.growthPerStep !== undefined && report.stepsToNewSession !== undefined) {
+    io.out(stepsLine(report.growthPerStep, report.stepsToNewSession, thresholdsFor(report.budget).newSessionTokens));
+  }
   const total = report.totalInputTokens ?? 0;
   io.out(`За сессию модель получила на вход ${formatTokens(total)} ${tokensWord(total)} (шагов модели: ${report.requests}): каждый шаг заново пересылает всю историю.`);
   const { finishSliceTokens, newSessionTokens } = thresholdsFor(report.budget);

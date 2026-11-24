@@ -21,7 +21,7 @@ import { countChars, formatChars, LOG_KEEP, LOG_LIMIT } from './limits.js';
 import { rebaseLinks } from './links.js';
 import { appendToMonth, LOG_DIR, LOG_PATH, parseLog, rotateLog } from './log.js';
 import { eolOf, withoutBom } from './markdown.js';
-import { appendToPlanArchive, cutSections, declaredPlan, digestLine, planArchivePath, planFiles, PLANS_ARCHIVE_DIR, resolveSections, sectionChars, writeDigest } from './plan.js';
+import { appendToPlanArchive, cutSections, declaredPlan, digestLine, listPlanEdits, planArchivePath, planFiles, PLANS_ARCHIVE_DIR, resolveSections, sectionChars, writeDigest } from './plan.js';
 import type { SectionChoice } from './plan.js';
 import { blocker } from './types.js';
 import type { ArchiveBlocker } from './types.js';
@@ -61,6 +61,23 @@ export interface ArchiveSectionReport {
   warnings: string[];
 }
 
+export interface ArchivePlanEditReport {
+  heading: string;
+  chars: number;
+  /** В правке есть неотмеченный пункт `[ ]` или пометка незакрытого: переносить рано. */
+  open: boolean;
+  /** Текст правки упоминает текущую порцию. */
+  currentSlice: boolean;
+}
+
+export interface ArchivePlanEditsReport {
+  plan: string;
+  /** Текст плана совпадает с отпечатком; нет — перенос остановит `archive-plan-changed`. */
+  intact: boolean;
+  /** Правки, которые перенёс бы `--section`, в порядке плана. */
+  sections: ArchivePlanEditReport[];
+}
+
 export interface ArchiveReport {
   reportVersion: 1;
   ok: boolean;
@@ -81,6 +98,8 @@ export interface ArchiveReport {
   /** Куда переносятся разделы. */
   planArchive: string | null;
   sections: ArchiveSectionReport[];
+  /** Без `--section`: правки активного плана, которые можно перенести; `null` — `--section` задан либо плана или сборника правок нет. */
+  planEdits: ArchivePlanEditsReport | null;
   /** Планы, у которых записан новый отпечаток. */
   digests: { plan: string; before: string; after: string }[];
   /** Файлы, где изменились только адреса ссылок. */
@@ -139,7 +158,7 @@ function report(root: string, patch: Partial<ArchiveReport>): ArchiveReport {
   const blockers = patch.blockers ?? [];
   return {
     reportVersion: 1, ok: blockers.length === 0, applied: false, rolledBack: false, partial: false, root, blockers,
-    log: null, logNote: null, audits: { moved: [], kept: [] }, plan: null, planArchive: null, sections: [], digests: [], relinked: [], writes: [], ...patch,
+    log: null, logNote: null, audits: { moved: [], kept: [] }, plan: null, planArchive: null, sections: [], planEdits: null, digests: [], relinked: [], writes: [], ...patch,
   };
 }
 
@@ -234,6 +253,14 @@ async function archiveMemory(root: string, rootInput: string, options: ArchiveOp
     warnings: choice.warnings,
   }));
 
+  // Подсказка, а не перенос: считается по плану как он есть сейчас, отпечаток не сверяется и ничего не блокирует.
+  const listing = wanted.length > 0 ? null : listPlanEdits(files, plans);
+  const planEdits: ArchivePlanEditsReport | null = listing === null ? null : {
+    plan: listing.plan.path,
+    intact: listing.plan.intact,
+    sections: listing.edits.map((edit) => ({ heading: edit.heading.title, chars: sectionChars(listing.plan.text, edit.heading), open: edit.open, currentSlice: edit.currentSlice })),
+  };
+
   const disk = projectDisk(root, [...files.keys()].filter((path) => AUDIT_FILE_RE.test(path)));
   const { moved, kept } = selectAudits(files, plans, disk);
   const audits: ArchiveAuditsReport = { moved: [...moved].map(([from, to]) => ({ from, to })), kept };
@@ -324,7 +351,7 @@ async function archiveMemory(root: string, rootInput: string, options: ArchiveOp
     }
   }
   const relinked = writes.filter((write) => write.action === 'update' && !touched.has(write.path)).map((write) => write.path);
-  const details = { log, logNote, audits, plan: sectionPlan?.path ?? null, planArchive: sectionPlan === null ? null : planArchivePath(sectionPlan.path), sections, digests, relinked };
+  const details = { log, logNote, audits, plan: sectionPlan?.path ?? null, planArchive: sectionPlan === null ? null : planArchivePath(sectionPlan.path), sections, planEdits, digests, relinked };
   if (blockers.length > 0) return report(root, { blockers, ...details });
   if (options.apply !== true || writes.length === 0) return report(root, { ...details, writes });
 

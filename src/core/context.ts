@@ -52,6 +52,15 @@ export const NEW_SESSION_TOKENS = 600_000;
 const FINISH_SLICE_PERCENT = 40;
 const NEW_SESSION_PERCENT = 70;
 
+/**
+ * Оценка «сколько шагов до порога»: рост считается по последним шагам сессии.
+ * Шагов меньше `GROWTH_MIN_STEPS` или сессия не растёт — оценки нет.
+ */
+export const GROWTH_STEPS = 30;
+export const GROWTH_MIN_STEPS = 10;
+/** Размер упал больше чем вдвое — сессию сжали: рост считается только после сжатия. */
+const COMPACTION_DROP = 0.5;
+
 export type ContextLevel = 'continue' | 'finish-slice' | 'new-session';
 
 export interface ContextReport {
@@ -75,6 +84,10 @@ export interface ContextReport {
   /** Сколько токенов модель получила на входе за всю сессию. */
   totalInputTokens?: number;
   requests?: number;
+  /** Только на уровне `finish-slice`: на сколько токенов сессия растёт за шаг модели — по последним шагам. */
+  growthPerStep?: number;
+  /** Только на уровне `finish-slice`: сколько шагов при таком росте осталось до `newSessionTokens`. Оценка грубая. */
+  stepsToNewSession?: number;
 }
 
 export interface ContextOptions {
@@ -175,6 +188,24 @@ export function thresholdsFor(budget: number): { finishSliceTokens: number; newS
   };
 }
 
+/**
+ * Рост сессии за шаг по размерам последних шагов (по одному числу на ответ модели, в порядке журнала).
+ * `null` — шагов мало или сессия не растёт.
+ */
+export function growthPerStep(sizes: readonly number[]): number | null {
+  let recent = sizes.slice(-(GROWTH_STEPS + 1));
+  for (let index = recent.length - 1; index > 0; index -= 1) {
+    if (recent[index]! < recent[index - 1]! * COMPACTION_DROP) {
+      recent = recent.slice(index);
+      break;
+    }
+  }
+  const steps = recent.length - 1;
+  if (steps < GROWTH_MIN_STEPS) return null;
+  const growth = (recent[steps]! - recent[0]!) / steps;
+  return growth >= 1 ? Math.round(growth) : null;
+}
+
 export function levelFor(tokens: number, budget: number): ContextLevel {
   const { finishSliceTokens, newSessionTokens } = thresholdsFor(budget);
   if (tokens >= newSessionTokens) return 'new-session';
@@ -195,6 +226,8 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
   }
 
   const seen = new Set<string>();
+  /** Размер каждого шага модели: один ответ бывает записан несколькими строками, берётся последняя. */
+  const stepSizes = new Map<string, number>();
   let last: Usage | null = null;
   let lastModel: string | undefined;
   /** Самый большой контекст у каждой модели: после смены модели окно судится по ней одной. */
@@ -222,6 +255,7 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     lastModel = typeof entry.message?.model === 'string' ? entry.message.model : undefined;
     largest = Math.max(largest, size);
     largestByModel.set(lastModel ?? '', Math.max(largestByModel.get(lastModel ?? '') ?? 0, size));
+    stepSizes.set(id, size);
     if (seen.has(id)) continue;
     seen.add(id);
     totalInput += count(usage.input_tokens) + count(usage.cache_read_input_tokens) + count(usage.cache_creation_input_tokens);
@@ -240,6 +274,9 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     // Смотрится только эта модель: прежняя модель с большим окном не раздувает окно новой.
     if ((byModel === null ? largest : largestByModel.get(lastModel ?? '') ?? 0) > budget) budget = LARGE_WINDOW;
   }
+  const level = levelFor(contextTokens, budget);
+  const thresholds = thresholdsFor(budget);
+  const growth = level === 'finish-slice' ? growthPerStep([...stepSizes.values()]) : null;
   return {
     reportVersion: 1,
     ok: true,
@@ -250,9 +287,10 @@ export async function measureContext(options: ContextOptions): Promise<ContextRe
     ...(lastModel === undefined ? {} : { model: lastModel }),
     windowSource,
     percent: Math.round((contextTokens / budget) * 100),
-    level: levelFor(contextTokens, budget),
-    ...thresholdsFor(budget),
+    level,
+    ...thresholds,
     totalInputTokens: totalInput,
     requests: seen.size,
+    ...(growth === null ? {} : { growthPerStep: growth, stepsToNewSession: Math.floor((thresholds.newSessionTokens - contextTokens) / growth) }),
   };
 }

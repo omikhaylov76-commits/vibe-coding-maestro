@@ -57,7 +57,7 @@ export async function checkSources(root: string, findings: DoctorFinding[]): Pro
     const actualPaths = await sourceFiles(root, join(root, SOURCES_DIR), findings);
     const actualSet = new Set(actualPaths);
     for (const path of actualPaths) {
-      if (!(path in hashes)) findings.push(critical('source-hash-missing', 'Для source отсутствует versioned hash.', path));
+      if (!(path in hashes)) findings.push(critical('source-hash-missing', 'Файл в maestro/sources/ не записан в снимке: эта папка — только для снимков команды `vibe-maestro sources --write`. Свой материал переложите в maestro/inbox/ — там он не замечание.', path));
       else if (sha256(await readFile(join(root, path))) !== hashes[path]) findings.push(critical('source-hash-mismatch', 'Source не совпадает с versioned hash.', path));
     }
     for (const path of Object.keys(hashes).sort()) {

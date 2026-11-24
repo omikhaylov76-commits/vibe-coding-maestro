@@ -202,8 +202,9 @@ function decideForPlan(plan: PlanDocument, planPath: string, digest: string, dig
     route = 'human';
     at('preflight-blocking-questions', `Открытых блокирующих вопросов: ${plan.blockingQuestions}. Их закрывает человек, а не агент.`);
   }
-  if (plan.specDelta !== 'none') {
-    at('preflight-spec-delta', `Объявлен spec delta (${plan.specDelta}): граница изменилась и требует повторного утверждения.`);
+  // `resolved` — правка уже утверждена: текст после неё держит отпечаток, блокировать нечего.
+  if (plan.specDelta === 'open') {
+    at('preflight-spec-delta', 'Объявлен spec delta (open): граница изменилась и требует повторного утверждения.');
   }
   if (plan.kind === 'program') {
     if (plan.activePhase === null) {
@@ -219,6 +220,9 @@ function decideForPlan(plan: PlanDocument, planPath: string, digest: string, dig
   const allowed: PreflightFinding[] = [
     finding('info', 'preflight-slice-selected', `Разрешена ровно одна порция: ${plan.currentSlice}. Остановка на её стоп-гейте обязательна.`, planPath),
   ];
+  if (plan.specDelta === 'resolved') {
+    allowed.push(finding('info', 'preflight-spec-delta-resolved', 'В плане записано spec_delta: resolved — правка границы уже утверждена, работе это не мешает. Верните в поле none: так видно, что открытых правок нет.', planPath));
+  }
   if (plan.approvedDigest === null) {
     allowed.push(finding('info', 'preflight-digest-missing', 'Отпечаток утверждения не записан: правку текста плана после утверждения гейт не заметит. Запишите в approved_digest строку «Отпечаток плана».', planPath));
   }

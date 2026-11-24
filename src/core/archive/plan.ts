@@ -93,7 +93,8 @@ const WORD_RE = /^[\p{L}\p{N}_]/u;
 const COLLECTIONS = ['Правки после утверждения', 'Изменения после утверждения'];
 const APPROVAL = 'Утверждение';
 const POINTER_RE = /^В архиве: \[[^\]]*\]\(archive\/[^)]*\)\.?$/;
-const UNCHECKED_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]/gm;
+/** Неотмеченный пункт списка; в блоках кода не считается. */
+const UNCHECKED_RE = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]/;
 /** Пометки незакрытого: целым словом, в любом регистре. Само слово не значит «открыто», поэтому только предупреждение. */
 const OPEN_MARK_RE = /(?<![\p{L}\p{N}_])(?:UNKNOWN|OPEN_QUESTION|HYPOTHESIS|не\s+проверено|открыто)(?![\p{L}\p{N}_])/iu;
 /** Строка находок с нулём открытых содержит «открыто», но пометкой не является. */
@@ -181,7 +182,7 @@ function examineSection(text: string, plan: PlanFile, heading: PlanHeading, head
   const warnings: string[] = [];
   const currentSlice = declaredSlice !== null && mentionsSlice(rest, declaredSlice);
   if (currentSlice) warnings.push(`раздел ${title} упоминает текущую порцию ${declaredSlice}.`);
-  const unchecked = [...rest.matchAll(UNCHECKED_RE)].length;
+  const unchecked = markdownLines(rest).filter(({ line, code }) => !code && UNCHECKED_RE.test(line)).length;
   if (unchecked > 0) warnings.push(`в разделе ${title} неотмеченных пунктов [ ]: ${formatChars(unchecked)}.`);
   const already = POINTER_RE.test(rest.trim());
   const marks = already ? null : openMarksWarning(title, section);

@@ -555,13 +555,13 @@ const V046_MANAGED_SHA256: Readonly<Record<string, string>> = {
   ...V045_MANAGED_SHA256,
   '.claude/rules/maestro.md': '0c5e6ae045e30dd7958be90cf72506c815986632f3bd411d23ae7f49c3036050',
   'maestro/runbooks/cowork-audit.md': '2ea1a68f5957d63b695b1feade45f0ee592de9300d417db1e402e21ae1a28a25',
-  'maestro/templates/audit.md': '37c3cb7109568900f6bb6608da0092273b2596640926243d6f7e417174be2367',
+  'maestro/templates/audit.md': '10175a75dbce2e5029d54b9e435693f69302d37bcd276ea16669fa95f7ad0506',
   'maestro/templates/handoff.md': '23b934d6b341c8f70135639b3d67359985e7026a238ca8c04f960d616e29579d',
   'maestro/templates/progress.md': '9e836f73439c5d6473068d4e32b0ce5cb4ead37e2de676db54aca29e06e77f95',
   'protocols/audit.md': '1e682a0cc9983f87d09c887618f1e4679abf1352a73a5b213fce0c10983f7034',
-  'protocols/build.md': '2686c404df4c2adcdb12793060b1bdcb9322ec8580cbe4e7efdf324a244fd424',
+  'protocols/build.md': '6e41450c5eb07c227b45cc0849a4e3ccd70cce05c13380e96363dc5e22840dd0',
   'protocols/completion.md': 'c3cd2acae8a875a3b5fcbf12866a44d07eee4d86b53534d2cd9dc4a3ee48a773',
-  'protocols/handoff.md': 'a463365f689c15e3b3f6d66989bd64b2529df18bbfc694bc10bf751a6767c65d',
+  'protocols/handoff.md': '54e66cb88838da341bd3f1d8d3f4b0ae697302a43b22d693d95de3918d229c91',
   'protocols/plan.md': '9e91ef7b822da16bc1dab81b496db85357c5dc647767b81a46c8443c931a4469',
 };
 

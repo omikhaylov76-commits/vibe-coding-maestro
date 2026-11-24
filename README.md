@@ -41,7 +41,7 @@ You need Node.js 20.10 or newer (it brings npm; get it at nodejs.org), Git (git-
 
 What you will see next:
 
-1. A short guided setup with no more than three decisions: create a new project or check an existing one, the project name, and whether you start from an idea or from materials. A simple name creates the folder on your Desktop; an explicit path always wins.
+1. A short guided setup with no more than three decisions: create a new project or check an existing one, the project name, and what you start from: an idea, materials, a ready description or existing code. A simple name creates the folder on your Desktop; an explicit path always wins.
 2. A new project folder with its first Git commit and a passed check. The panel «ПРОЕКТ ГОТОВ» shows where the project is.
 3. The next steps, printed in the same panel: open the folder in Claude Code and type `/start`. From there the agent leads you with questions, one at a time.
 
@@ -55,7 +55,7 @@ The setup and the generated project speak Russian (English is planned before a g
 создание → /start → /plan → человек утверждает план → /build одной порции → /handoff
 ```
 
-1. **Создайте проект.** Откройте терминал (на Mac — программа «Терминал», в Windows — PowerShell) и наберите `npx create-vibe-maestro@latest`. Нужны Node.js версии 20.10 или новее (ставится с сайта nodejs.org) и Git (git-scm.com); проверить, что они есть, можно командами `node --version` и `git --version`. Мастер задаст до трёх вопросов: создать новый проект или проверить готовый, как назвать проект и с чего вы начинаете — с идеи или с материалов. Папка появится на рабочем столе, а в конце вы увидите панель «ПРОЕКТ ГОТОВ» с её адресом.
+1. **Создайте проект.** Откройте терминал (на Mac — программа «Терминал», в Windows — PowerShell) и наберите `npx create-vibe-maestro@latest`. Нужны Node.js версии 20.10 или новее (ставится с сайта nodejs.org) и Git (git-scm.com); проверить, что они есть, можно командами `node --version` и `git --version`. Мастер задаст до трёх вопросов: создать новый проект или проверить готовый, как назвать проект и с чего вы начинаете — с идеи, материалов, готового описания или кода. Папка появится на рабочем столе, а в конце вы увидите панель «ПРОЕКТ ГОТОВ» с её адресом.
 2. **Откройте папку проекта в Claude Code**: выберите эту папку в приложении Claude Code либо в терминале наберите `cd`, пробел и адрес папки из панели, а затем `claude`.
 3. **Материалы**, если есть, — заметки, требования, скриншоты — положите в `maestro/inbox/`. Готовый код оставьте, где лежит: агент спросит путь и прочитает его, ничего не меняя.
 4. **Напишите `/start`** — знакомство с задачей. Агент сначала читает, что уже есть, потом спрашивает по одному вопросу: что делаем, для кого, что значит «готово», кто решает, как передавать пароли и ключи доступа. «Не знаю» — нормальный ответ. Можно прерваться и продолжить. В конце агент показывает сводку; после вашего «да» ответы записываются в проект.
@@ -281,7 +281,7 @@ For scripts, pass every decision explicitly:
 npx create-vibe-maestro@latest --yes --target "My Project" --name "My Project" --start materials --depth standard --json
 ```
 
-`--start` is `idea` or `materials`. Two optional flags: `--github` creates a private GitHub repository after the first commit (it needs the GitHub CLI `gh`, logged in; a `gh` failure is only a warning with the command for later), and `--push-without-asking` lets the agent run a plain `git push` without a question while force pushes still ask. Without them `create --yes` creates no repository and keeps the default protections. Set `NO_COLOR=1` for plain output.
+`--start` is `idea`, `materials`, `spec` or `code`. Two optional flags: `--github` creates a private GitHub repository after the first commit (it needs the GitHub CLI `gh`, logged in; a `gh` failure is only a warning with the command for later), and `--push-without-asking` lets the agent run a plain `git push` without a question while force pushes still ask. Without them `create --yes` creates no repository and keeps the default protections. Set `NO_COLOR=1` for plain output.
 
 Service commands (run from the project folder; in a real project use the exact version from its `.claude/rules/maestro.md`):
 

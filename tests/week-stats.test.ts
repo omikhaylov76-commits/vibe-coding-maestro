@@ -431,9 +431,12 @@ describe('0.4.6: скрипт недели — старт, хвост, виды 
     expect(JSON.stringify(fields)).not.toContain(SECRET);
     const planted = allowedFields({ type: 'system', compactMetadata: { trigger: SECRET, preTokens: SECRET } });
     expect(planted).toMatchObject({ compactPreTokens: 0 });
-    expect(planted.compactTrigger).toBeUndefined();
+    expect(planted.compactTrigger).toBe('other');
     expect(JSON.stringify(planted)).not.toContain(SECRET);
-    expect(allowedFields({ type: 'system', compactMetadata: { trigger: 'Manual run' } }).compactTrigger).toBeUndefined();
+    // Любое незнакомое слово журнала, даже короткое латиницей и имя свойства объекта, в отчёт не идёт.
+    for (const word of ['Manual run', 'secretword', 'constructor', '__proto__']) expect(allowedFields({ type: 'system', compactMetadata: { trigger: word } }).compactTrigger, word).toBe('other');
+    expect(allowedFields({ type: 'system', compactMetadata: { trigger: 'manual' } }).compactTrigger).toBe('manual');
+    expect(allowedFields({ type: 'system', compactMetadata: {} }).compactTrigger).toBeUndefined();
   });
 
   it('причина и размер сжатий попадают в отчёт числами', async () => {
@@ -476,6 +479,9 @@ describe('0.4.6: скрипт недели — старт, хвост, виды 
     expect(goalIn('- Цель: доказано 1 из 3.')).toEqual({ proven: 1, total: 3, previous: null });
     expect(goalIn('- Цель: доказано 1 из 3; прошлой передачи по порции не было.')).toEqual({ proven: 1, total: 3, previous: null });
     expect(goalIn('- Цель: доказано 1 из 3; в прошлой передаче 0 (это первая передача порции).')).toEqual({ proven: 1, total: 3, previous: 0 });
+    // Правило в build.md и живые передачи пишут счёт и с запятой, и жирным: читается так же.
+    expect(goalIn('- Цель: доказано 2 из 5, в прошлой передаче 1.')).toEqual({ proven: 2, total: 5, previous: 1 });
+    expect(goalIn('- **Цель:** доказано 2 из 5 (в прошлой передаче 2).')).toEqual({ proven: 2, total: 5, previous: 2 });
     expect(goalIn('- Цель порции — разбор строки.')).toBeNull();
   });
 

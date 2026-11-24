@@ -47,9 +47,11 @@ const CLOSED_FINDINGS_RE = /Находки:\s*critical\s+\d+,\s*high\s+\d+,\s*me
  */
 const FINDINGS_RE = /^\s*(?:[-*]\s+)?Находки(?:[ \t]+[^:\r\n]{1,80})?:[ \t]*(?:[^;:\r\n]{1,80}?[ \t]+[—–-][ \t]+)?critical\s+(\d+),\s*high\s+(\d+),\s*medium\s+(\d+),\s*low\s+(\d+);\s*открыто\s+(\d+)\b.*$/gm;
 /** Счёт цели в передаче посреди порции: строка образца передачи; первая передача — без «в прошлой передаче K». */
-const GOAL_RE = /Цель:[ \t]*доказано[ \t]+(\d+)[ \t]+из[ \t]+(\d+)(?:[ \t]*;[ \t]*в[ \t]+прошлой[ \t]+передаче[ \t]+(\d+))?/;
+const GOAL_RE = /Цель:\*{0,2}[ \t]*доказано[ \t]+(\d+)[ \t]+из[ \t]+(\d+)(?:[ \t]*[;,(][ \t]*в[ \t]+прошлой[ \t]+передаче[ \t]+(\d+))?/;
 /** Инструменты, которые правят файлы: первая правка — конец старта сессии. */
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+/** Причины сжатия, которые идут в отчёт словом; любое другое значение журнала — other. */
+const COMPACT_TRIGGERS = ['auto', 'manual'];
 /** Сессия короче — старта не видно. */
 const START_MIN_STEPS = 20;
 /** Шаг относится к ближайшему следующему коммиту, если тот не позже. */
@@ -99,8 +101,8 @@ export function allowedFields(entry) {
     usage: { input: number(usage.input_tokens), read: number(usage.cache_read_input_tokens), write: number(usage.cache_creation_input_tokens), output: number(usage.output_tokens) },
     blocks,
     tools,
-    // Причина сжатия — только короткое слово латиницей, размер — только число.
-    compactTrigger: typeof compact.trigger === 'string' && /^[a-z_]{1,24}$/.test(compact.trigger) ? compact.trigger : undefined,
+    // Причина сжатия — только известное слово, иначе other; размер — только число.
+    compactTrigger: typeof compact.trigger !== 'string' ? undefined : COMPACT_TRIGGERS.includes(compact.trigger) ? compact.trigger : 'other',
     compactPreTokens: number(compact.preTokens),
   };
 }
@@ -433,7 +435,8 @@ function startOf(sessions, period, cost) {
   let before = 0;
   for (const { all } of sessions) {
     const first = all[0];
-    if (first === undefined || first.time < period.from || first.time > period.to || all.length < START_MIN_STEPS) continue;
+    // Шаг без времени в период не попадает: сравнение с NaN всегда ложно.
+    if (first === undefined || !(first.time >= period.from && first.time <= period.to) || all.length < START_MIN_STEPS) continue;
     const edit = all.findIndex((step) => step.edit);
     rows.push({ first: first.size, edit, minutes: edit === -1 ? null : (all[edit].time - first.time) / 60_000, size: edit === -1 ? null : all[edit].size });
     if (edit !== -1) before += sum(all.slice(0, edit), (step) => step.cost);
@@ -459,7 +462,7 @@ function tailOf(sessions, commits, period, cost) {
   let afterCost = 0;
   for (const { all } of sessions) {
     const start = all.findIndex((step) => step.size >= SIZE_THRESHOLDS[1]);
-    if (start === -1 || all[start].time < period.from || all[start].time > period.to) continue;
+    if (start === -1 || !(all[start].time >= period.from && all[start].time <= period.to)) continue;
     const handoff = handoffTimes.find((time) => time >= all[start].time);
     if (handoff === undefined || handoff > all.at(-1).time + SESSION_NEAR_COMMIT) continue;
     const rest = all.slice(start);

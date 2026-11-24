@@ -856,7 +856,7 @@ describe('0.4.5 archive: незакрытое в разделе', () => {
 describe('0.4.6 archive: правки плана на виду без --section', () => {
   const KEYS_045 = ['applied', 'audits', 'blockers', 'digests', 'log', 'logNote', 'ok', 'partial', 'plan', 'planArchive', 'relinked', 'reportVersion', 'rolledBack', 'root', 'sections', 'writes'];
 
-  it('форма Промтары: список с размерами, без раздела текущей порции, сборника и утверждения; ни байта', async () => {
+  it('план со сборником правок: список с размерами, без раздела текущей порции, сборника и утверждения; ни байта', async () => {
     const root = await project();
     const text = await withPlan(root, PROMTARA, { slice: '1.6a' });
     const before = await snapshotTree(root);
@@ -922,7 +922,7 @@ describe('0.4.6 archive: правки плана на виду без --section'
     await silent();
   });
 
-  it('форма хаба: раздел второго уровня показан целиком, вложенные не повторяются', async () => {
+  it('план с правками ниже «Утверждение»: раздел второго уровня показан целиком, вложенные не повторяются', async () => {
     const root = await project();
     await withPlan(root, HUB, { slice: '12-capsule' });
     expect((await archiveProject(root)).planEdits?.sections.map((item) => item.heading)).toEqual(['Порция 01 — итог (30.10.2026)', 'SPEC DELTA 9 — заказ капсулой (01.11.2026)']);

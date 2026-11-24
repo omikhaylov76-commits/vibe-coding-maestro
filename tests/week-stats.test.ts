@@ -18,6 +18,9 @@ const TO = '2026-10-20';
 
 interface Week {
   allowedFields(entry: unknown): Record<string, unknown>;
+  commitKind(files: { status: string; path: string }[]): string;
+  goalIn(text: string): { proven: number; total: number; previous: number | null } | null;
+  sectionOf(text: string, title: string): string | null;
   findingsIn(text: string): Record<string, number> | null;
   frictionsIn(text: string): { kind: string; lines: string[] };
   frontmatter(text: string): Record<string, string>;
@@ -119,7 +122,7 @@ async function sample(): Promise<{ root: string; claudeDir: string; path: string
     assistant('m1', 100_000, '2026-10-12T09:01:00Z', {}, [{ type: 'text', text: SECRET }]),
     assistant('m1', 100_000, '2026-10-12T09:01:00Z', {}, [{ type: 'tool_use', name: 'AskUserQuestion', input: { question: SECRET } }]),
     assistant('m2', 450_000, '2026-10-12T09:02:00Z', {}, [{ type: 'tool_use', name: 'Bash', input: { command: SECRET } }]),
-    { type: 'system', subtype: 'compact_boundary', timestamp: '2026-10-12T09:03:00Z', content: SECRET },
+    { type: 'system', subtype: 'compact_boundary', timestamp: '2026-10-12T09:03:00Z', content: SECRET, compactMetadata: { trigger: 'auto', preTokens: 450_012, postTokens: 9, note: SECRET, preservedSegment: { text: SECRET } } },
     assistant('sub', 900_000, '2026-10-12T09:03:30Z', { isSidechain: true }),
     assistant('m3', 650_000, '2026-10-16T09:04:00Z'),
   ], '{"type":"assistant","message":{"id":"торн');
@@ -132,10 +135,18 @@ async function sample(): Promise<{ root: string; claudeDir: string; path: string
 interface Report {
   label: string;
   projects: Record<string, {
-    q1: Record<string, unknown>; q2: Record<string, unknown> & { openMarkCandidates: string[] }; q3: Record<string, unknown>;
+    q1: Record<string, unknown>; q7: Q7; q8: Record<string, unknown>; q2: Record<string, unknown> & { openMarkCandidates: string[] }; q3: Record<string, unknown>;
     q4: Record<string, unknown> & { reports: Record<string, number> }; q5: Record<string, unknown>; q6: Record<string, number | null>;
   }>;
   logDirsWithoutProject: Record<string, { sessions: number; steps: number; cost: number }>;
+}
+
+interface Spread { median: number | null; p75: number | null }
+interface Q7 {
+  start: Record<string, unknown> & { stepsBeforeFirstEdit: Spread };
+  tail: Record<string, unknown> & { stepsToHandoff: Spread; stepsAfterHandoff: Spread };
+  byCommit: Record<string, { steps: number; stepShare: number | null; costShare: number | null; commits?: number; stepsPerCommit?: number | null }>;
+  handoffWrite: { handoffs: number; steps: Spread };
 }
 
 const measure = (setup: { root: string; claudeDir: string; out: string }, label = 'start'): Run =>
@@ -406,6 +417,182 @@ describe('0.4.5: скрипт недели', () => {
     expect(run(['--from', FROM, '--to', TO], claudeDir).code).toBe(2);
     expect(run(['--что-то'], claudeDir).code).toBe(2);
     expect(run(['--project', await makeTempDir('week-'), '--from', FROM, '--to', TO], claudeDir).stderr).toContain('не проект Maestro');
+  });
+});
+
+/** Время шага в местном поясе: коммиты учебного проекта стоят в 12:00 местного времени. */
+const local = (day: number, hour: number, minute: number): string => new Date(2026, 9, day, hour, minute, 0).toISOString();
+
+describe('0.4.6: скрипт недели — старт, хвост, виды коммитов, счёт цели', () => {
+  it('новые поля белого списка: слово причины сжатия и число; чужой текст в них не проходит', async () => {
+    const { allowedFields } = await week();
+    const fields = allowedFields({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 264_000, note: SECRET, preservedSegment: { text: SECRET } } });
+    expect(fields).toMatchObject({ compactTrigger: 'auto', compactPreTokens: 264_000 });
+    expect(JSON.stringify(fields)).not.toContain(SECRET);
+    const planted = allowedFields({ type: 'system', compactMetadata: { trigger: SECRET, preTokens: SECRET } });
+    expect(planted).toMatchObject({ compactPreTokens: 0 });
+    expect(planted.compactTrigger).toBeUndefined();
+    expect(JSON.stringify(planted)).not.toContain(SECRET);
+    expect(allowedFields({ type: 'system', compactMetadata: { trigger: 'Manual run' } }).compactTrigger).toBeUndefined();
+  });
+
+  it('причина и размер сжатий попадают в отчёт числами', async () => {
+    const setup = await sample();
+    expect(measure(setup).code).toBe(0);
+    const text = await readFile(setup.out, 'utf8');
+    expect(text).not.toContain(SECRET);
+    const data = (JSON.parse(text) as Report).projects['учебный проект'];
+    expect(data?.q1).toMatchObject({ compactions: 1, compactionTriggers: { auto: 1 }, compactionPreTokens: { median: 450_012, min: 450_012, max: 450_012 } });
+  });
+
+  it('строка находок с меткой проверки читается; строгая — как раньше; похожий текст — нет', async () => {
+    const { findingsIn } = await week();
+    const counts = { critical: 1, high: 2, medium: 3, low: 4, open: 5 };
+    expect(findingsIn('Находки: critical 1, high 2, medium 3, low 4; открыто 5.')).toEqual(counts);
+    expect(findingsIn('Находки: ревью порции — critical 1, high 2, medium 3, low 4; открыто 5 (с причиной).')).toEqual(counts);
+    expect(findingsIn('Находки ревью порции: critical 1, high 2, medium 3, low 4; открыто 5.')).toEqual(counts);
+    expect(findingsIn('- Находки смены 31 (`wiki/audits/AUD-1.md`): critical 1, high 2, medium 3, low 4; открыто 5.')).toEqual(counts);
+    expect(findingsIn('Находки: план - critical 1, high 2, medium 3, low 4; открыто 5.')).toEqual(counts);
+    expect(findingsIn('Находки разбора для отдельных правок (не 3.9): письмо ведёт не туда.')).toBeNull();
+    expect(findingsIn('Находки: critical 0, high 0, medium 0, low 0 новых; открыто F011.')).toBeNull();
+    expect(findingsIn('Итог: critical 1, high 2, medium 3, low 4; открыто 5.')).toBeNull();
+  });
+
+  it('пункт трений с переносом — одна строка', async () => {
+    const { frictionsIn } = await week();
+    expect(frictionsIn('## Что мешало в работе\n- тест падал\n  на старом Node\nдважды\n- порт занят\n\n## Следующий шаг\n')).toEqual({ kind: 'text', lines: ['тест падал на старом Node дважды', 'порт занят'] });
+    expect(frictionsIn('## Что мешало в работе\n1. первое\n2) второе\n').lines).toEqual(['первое', 'второе']);
+    expect(frictionsIn('## Что мешало в работе\nОдна строка\n\nдругой абзац\n').lines).toEqual(['Одна строка', 'другой абзац']);
+  });
+
+  it('счёт цели привязан к строке образца передачи; первая передача — без «в прошлой передаче»', async () => {
+    const { goalIn } = await week();
+    const sampleText = await readFile(join(process.cwd(), 'templates/project/maestro/templates/handoff.md'), 'utf8');
+    const SAMPLE = 'Цель: доказано N из M; в прошлой передаче K.';
+    expect(sampleText).toContain(SAMPLE);
+    expect(goalIn(sampleText)).toBeNull();
+    const line = sampleText.split('\n').find((item) => item.includes(SAMPLE)) ?? '';
+    expect(goalIn(line.replace(' N из M', ' 2 из 3').replace('передаче K', 'передаче 1'))).toEqual({ proven: 2, total: 3, previous: 1 });
+    expect(goalIn('- Цель: доказано 1 из 3.')).toEqual({ proven: 1, total: 3, previous: null });
+    expect(goalIn('- Цель: доказано 1 из 3; прошлой передачи по порции не было.')).toEqual({ proven: 1, total: 3, previous: null });
+    expect(goalIn('- Цель: доказано 1 из 3; в прошлой передаче 0 (это первая передача порции).')).toEqual({ proven: 1, total: 3, previous: 0 });
+    expect(goalIn('- Цель порции — разбор строки.')).toBeNull();
+  });
+
+  it('окончания строк Windows: шапка, разделы, находки, трения и счёт цели читаются так же', async () => {
+    const { findingsIn, frictionsIn, frontmatter, goalIn, sectionOf } = await week();
+    const text = FULL('Находки: ревью порции — critical 0, high 1, medium 2, low 3; открыто 1.', '- тест падал\n  на старом Node\n- порт занят')
+      .replace('type: handoff', 'type: handoff\nslice: 01-next').replace('- факты', '- Цель: доказано 2 из 3; в прошлой передаче 1.').replace(/\n/g, '\r\n');
+    expect(text).toContain('\r\n');
+    expect(frontmatter(text)).toMatchObject({ type: 'handoff', slice: '01-next' });
+    expect(sectionOf(text, 'Состояние')).toContain('Цель: доказано 2 из 3');
+    expect(findingsIn(text)).toEqual({ critical: 0, high: 1, medium: 2, low: 3, open: 1 });
+    expect(frictionsIn(text)).toEqual({ kind: 'text', lines: ['тест падал на старом Node', 'порт занят'] });
+    expect(goalIn(text)).toEqual({ proven: 2, total: 3, previous: 1 });
+  });
+
+  it('вид коммита: передача, код, отчёт, план, рабочие записи', async () => {
+    const { commitKind } = await week();
+    const files = (...items: string[]) => items.map((item) => ({ status: item.slice(0, 1), path: item.slice(2) }));
+    expect(commitKind([])).toBe('none');
+    expect(commitKind(files('A wiki/handoffs/2026-10-12-a.md', 'M src/a.ts', 'M wiki/hot.md'))).toBe('handoff');
+    expect(commitKind(files('M wiki/handoffs/2026-10-12-a.md', 'M wiki/hot.md'))).toBe('notes');
+    expect(commitKind(files('A wiki/handoffs/archive/2026-10-12-a.md'))).toBe('notes');
+    expect(commitKind(files('M src/a.ts', 'A wiki/audits/AUD-1.md'))).toBe('code');
+    expect(commitKind(files('A wiki/audits/AUD-1.md', 'M wiki/plans/0001.md'))).toBe('audit');
+    expect(commitKind(files('M wiki/plans/0001.md', 'M wiki/hot.md'))).toBe('plan');
+    expect(commitKind(files('M wiki/progress/01.md', 'M wiki/hot.md', 'M wiki/log.md'))).toBe('notes');
+  });
+
+  it('старт, хвост, запись передачи и доли по виду коммита считаются по шагам сессии', async () => {
+    const root = await makeTempDir('week-');
+    const claudeDir = await makeTempDir('week-claude-');
+    const path = await project(root);
+    // 25 шагов до коммитов передачи 14.10 в 12:00, первая правка — девятый шаг, порог 600 тыс. — с двадцать первого; два шага после.
+    const size = (index: number): number => (index < 8 ? 100_000 : index < 20 ? 300_000 : 650_000);
+    const steps = Array.from({ length: 25 }, (_, index) => assistant(`s${index}`, size(index), local(14, 11, 30 + index), {}, index === 8 ? [{ type: 'tool_use', name: 'Edit', input: { file_path: SECRET } }] : [{ type: 'tool_use', name: 'Bash', input: { command: SECRET } }]));
+    await journal(claudeDir, path, 's7', [...steps, assistant('after1', 660_000, local(14, 12, 1)), assistant('after2', 670_000, local(14, 12, 2))]);
+    // Короткая сессия перед коммитом кода 16.10: в старт не идёт, её шаги — отрезок с кодом.
+    await journal(claudeDir, path, 's8', Array.from({ length: 5 }, (_, index) => assistant(`short${index}`, 90_000, local(16, 11, index))));
+    const out = join(await makeTempDir('week-out-'), 'q7.json');
+    expect(run(['--project', path, '--from', FROM, '--to', TO, '--out', out], claudeDir).code).toBe(0);
+    const text = await readFile(out, 'utf8');
+    expect(text).not.toContain(SECRET);
+    const data = (JSON.parse(text) as Report).projects['учебный проект'];
+    expect(data?.q7.start).toMatchObject({ sessions: 1, withoutEdit: 0, sizeFirst: 100_012, stepsBeforeFirstEdit: { median: 8, p75: 8 }, minutesToFirstEdit: 8, sizeAtFirstEdit: 300_012 });
+    expect(data?.q7.tail).toMatchObject({ sessions: 1, stepsToHandoff: { median: 5, p75: 5 }, stepsAfterHandoff: { median: 2, p75: 2 } });
+    // Два коммита передачи в одну секунду: вся запись — у первого, у второго шагов нет.
+    expect(data?.q7.handoffWrite).toEqual({ handoffs: 2, steps: { median: 12.5, p75: 25 } });
+    expect(data?.q7.byCommit.handoff).toMatchObject({ steps: 25, commits: 3 });
+    expect(data?.q7.byCommit.handoff?.stepsPerCommit).toBeCloseTo(25 / 3, 5);
+    expect(data?.q7.byCommit.noCommit).toMatchObject({ steps: 2 });
+    expect(data?.q7.byCommit.code).toMatchObject({ steps: 5, commits: 5 });
+    expect(data?.q7.byCommit.plan).toMatchObject({ steps: 0, commits: 1 });
+    expect(data?.q7.byCommit.notes).toMatchObject({ steps: 0, commits: 0, stepsPerCommit: null });
+    const shares = Object.values(data?.q7.byCommit ?? {}).reduce((total, item) => total + (item.costShare ?? 0), 0);
+    expect(shares).toBeCloseTo(1, 5);
+  });
+
+  it('передачи порции и счёт цели: порция без роста счёта и порция, где он не рос дважды подряд; файлы с CRLF', async () => {
+    const root = await makeTempDir('week-');
+    const claudeDir = await makeTempDir('week-claude-');
+    const path = await project(root);
+    await git(path, 'config', 'core.autocrlf', 'false');
+    const crlf = (value: string): string => value.replace(/\n/g, '\r\n');
+    const capsule = crlf('---\ntype: progress\nstatus: active\nplan: PLAN-0002\nslice: 01-next\n---\n\n# Порция\n\n## Цель и готово\n1. Первое.\n');
+    await mkdir(join(path, 'wiki/progress'), { recursive: true });
+    await writeFile(join(path, 'wiki/progress/01-next.md'), capsule, 'utf8');
+    await writeFile(join(path, 'wiki/progress/old.md'), crlf(`---\ntype: progress\nstatus: done\nslice: 00-old\n---\n\n${'x'.repeat(5_000)}\n`), 'utf8');
+    const of = (slice: string, goal: string): string => crlf(FULL('Находки: ревью порции — critical 0, high 0, medium 1, low 0; открыто 0.', '- тест падал\n  на старом Node')
+      .replace('type: handoff', `type: handoff\nplan: PLAN-0002\nslice: ${slice}`).replace('- факты', `- ${goal}`));
+    const days: [number, string, string, string][] = [
+      [19, 'g1', '01-next', 'Цель: доказано 1 из 3.'],
+      [20, 'g2', '01-next', 'Цель: доказано 1 из 3; в прошлой передаче 1.'],
+      [21, 'g3', '01-next', 'Цель: доказано 1 из 3; в прошлой передаче 1.'],
+      [22, 'h1', '02-other', 'Цель: доказано 2 из 4; в прошлой передаче 2.'],
+      [23, 'h2', '02-other', 'Цель: доказано 3 из 4; в прошлой передаче 2.'],
+      [24, 'k1', '03-third', 'Цель порции названа в капсуле.'],
+    ];
+    for (const [day, name, slice, goal] of days) {
+      await writeFile(join(path, `wiki/handoffs/2026-10-${day}-${name}.md`), of(slice, goal), 'utf8');
+      await commit(path, `2026-10-${day}`, `передача ${name}`);
+    }
+    const out = join(await makeTempDir('week-out-'), 'q8.json');
+    expect(run(['--project', path, '--from', '2026-10-19', '--to', '2026-10-30', '--out', out], claudeDir).code).toBe(0);
+    const data = (JSON.parse(await readFile(out, 'utf8')) as Report).projects['учебный проект'];
+    expect(data?.q8).toEqual({
+      slices: 3, handoffsPerSlice: { median: 2, max: 3 }, midSliceHandoffs: 6, midSliceWithGoal: 5, slicesWithGoal: 2, slicesWithoutGrowth: 2, stalledSlices: 1,
+      // У 01-next капсула названа полем slice; у остальных порций берётся активная — та же.
+      capsuleChars: { handoffs: 6, median: capsule.length, max: capsule.length },
+    });
+    expect(data?.q2).toMatchObject({ handoffs: 6, byTemplate: 6 });
+    expect(data?.q3).toEqual({ withText: 6, none: 0, missing: 0, lines: Array.from({ length: 6 }, () => 'тест падал на старом Node') });
+    // Строка находок — на порцию: у трёх порций по одной.
+    expect(data?.q4).toMatchObject({ medium: 3, handoffsWithLine: 6 });
+  });
+
+  it('--compare с замером прежней версии скрипта не падает: новых строк там нет — прочерк', async () => {
+    const setup = await sample();
+    expect(measure(setup).code).toBe(0);
+    const report = JSON.parse(await readFile(setup.out, 'utf8')) as { reportVersion: number; projects: Record<string, Record<string, Record<string, unknown>>> };
+    expect(report.reportVersion).toBe(2);
+    const old = structuredClone(report);
+    old.reportVersion = 1;
+    for (const item of Object.values(old.projects)) {
+      delete item.q7;
+      delete item.q8;
+      delete item.q1?.compactionTriggers;
+      delete item.q1?.compactionPreTokens;
+    }
+    const oldPath = join(dirname(setup.out), 'old.json');
+    await writeFile(oldPath, JSON.stringify(old), 'utf8');
+    for (const pair of [[oldPath, setup.out], [setup.out, oldPath]]) {
+      const compared = run(['--compare', ...pair], setup.claudeDir);
+      expect([compared.code, compared.stderr]).toEqual([0, '']);
+      expect(compared.stdout).toMatch(/\| 7 \| шагов на коммит передачи \| (?:— \| [^—|]+|[^—|]+ \| —) \|/);
+      expect(compared.stdout).toContain('| 8 | передач на порцию, медиана |');
+      expect(compared.stdout).toMatch(/\| 1 \| размер перед сжатием, медиана \| (?:— \| 450012|450012 \| —) \|/);
+    }
   });
 });
 

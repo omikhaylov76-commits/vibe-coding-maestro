@@ -852,3 +852,135 @@ describe('0.4.5 archive: незакрытое в разделе', () => {
     expect(await readUtf8(root, PLAN_ARCHIVE)).toContain('HYPOTHESIS: проверить.');
   });
 });
+
+describe('0.4.6 archive: правки плана на виду без --section', () => {
+  const KEYS_045 = ['applied', 'audits', 'blockers', 'digests', 'log', 'logNote', 'ok', 'partial', 'plan', 'planArchive', 'relinked', 'reportVersion', 'rolledBack', 'root', 'sections', 'writes'];
+
+  it('форма Промтары: список с размерами, без раздела текущей порции, сборника и утверждения; ни байта', async () => {
+    const root = await project();
+    const text = await withPlan(root, PROMTARA, { slice: '1.6a' });
+    const before = await snapshotTree(root);
+    const report = await archiveProject(root);
+    expect(report.ok).toBe(true);
+    expect([report.plan, report.planArchive, report.sections]).toEqual([null, null, []]);
+    expect(report.planEdits).toMatchObject({ plan: PLAN, intact: true });
+    expect(report.planEdits?.sections.map((item) => item.heading)).toEqual([
+      'SPEC DELTA-01 (2026-10-12) — доступ к Railway', 'SPEC DELTA-02 (2026-10-13) — бэкапы', 'SPEC DELTA-12 (2026-10-15) — Prom и наличие',
+      'Приёмка 1.4a и переход к 1.4d (2026-10-24, слово владельца)',
+    ]);
+    const first = text.slice(text.indexOf('### SPEC DELTA-01'), text.indexOf('### SPEC DELTA-02'));
+    expect(report.planEdits?.sections[0]).toEqual({ heading: 'SPEC DELTA-01 (2026-10-12) — доступ к Railway', chars: [...first].length, open: false, currentSlice: false });
+    expect(await snapshotTree(root)).toEqual(before);
+
+    const cli = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root], cli.io)).toBe(0);
+    const out = cli.stdout();
+    expect(out).toContain('Переносить в архив нечего: журнал не больше порога');
+    expect(out).toContain(`- Правки плана ${PLAN}, которые можно перенести в архив: 4, вместе `);
+    expect(out).toContain(`  - «SPEC DELTA-01 (2026-10-12) — доступ к Railway»: ${[...first].length} знаков.`);
+    expect(out).toContain('Переносите только правки, все порции которых закрыты');
+    expect(out).toContain('--section "начало заголовка". Отпечаток плана перезапишется сам.');
+    expect(out).not.toContain('SPEC DELTA-41');
+    expect(out).not.toContain('archive-plan-changed');
+    expect(await snapshotTree(root)).toEqual(before);
+  });
+
+  it('правка с [ ] или пометкой — «есть незакрытое»; упоминание текущей порции — отдельной пометкой', async () => {
+    const root = await project();
+    const body = ['# Работа', '', '## Правки после утверждения', '', '### Правка 1', '', '- [ ] пункт', '', '### Правка 2', '', 'Закрыта.', '',
+      '### Правка 3', '', 'HYPOTHESIS: проверить.', '', '### Правка 4', '', 'Идёт вместе с порцией 02-vyhod.', '', '## Утверждение', '', 'Да.', ''].join('\n');
+    await withPlan(root, body, { slice: '02-vyhod' });
+    const report = await archiveProject(root);
+    expect(report.planEdits?.sections.map((item) => [item.heading, item.open, item.currentSlice])).toEqual([
+      ['Правка 1', true, false], ['Правка 2', false, false], ['Правка 3', true, false], ['Правка 4', false, true],
+    ]);
+    const cli = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root], cli.io)).toBe(0);
+    expect(cli.stdout()).toMatch(/«Правка 1»: \d+ знаков — есть незакрытое, переносить рано\./);
+    expect(cli.stdout()).toMatch(/«Правка 2»: \d+ знаков\./);
+    expect(cli.stdout()).toMatch(/«Правка 3»: \d+ знаков — есть незакрытое, переносить рано\./);
+    expect(cli.stdout()).toMatch(/«Правка 4»: \d+ знаков — упоминает текущую порцию, проверьте\./);
+  });
+
+  it('нет сборника, нет активного плана, всё уже перенесено — молчит; прежний текст цел', async () => {
+    const root = await project();
+    const silent = async (): Promise<void> => {
+      const report = await archiveProject(root);
+      const cli = collectIo();
+      expect(await runMaestroCli(['archive', '--path', root], cli.io)).toBe(0);
+      expect(cli.stdout()).toBe('Переносить в архив нечего: журнал не больше порога, закрытых отчётов нет.');
+      expect(report.planEdits?.sections ?? []).toEqual([]);
+    };
+    expect((await archiveProject(root)).planEdits).toBeNull();
+    await silent();
+    await withPlan(root, '# План\n\n## Цель\n\nТекст.\n\n## Порция 1\n\nТекст.\n');
+    expect((await archiveProject(root)).planEdits).toBeNull();
+    await silent();
+    await withPlan(root, '# План\n\n## Правки после утверждения\n\n### Правка 1\n\nТекст.\n\n## Утверждение\n\nДа.\n');
+    expect((await archiveProject(root, { apply: true, sections: ['Правка 1'], now: FIXED_NOW })).applied).toBe(true);
+    expect((await archiveProject(root)).planEdits).toEqual({ plan: PLAN, intact: true, sections: [] });
+    await silent();
+  });
+
+  it('форма хаба: раздел второго уровня показан целиком, вложенные не повторяются', async () => {
+    const root = await project();
+    await withPlan(root, HUB, { slice: '12-capsule' });
+    expect((await archiveProject(root)).planEdits?.sections.map((item) => item.heading)).toEqual(['Порция 01 — итог (30.10.2026)', 'SPEC DELTA 9 — заказ капсулой (01.11.2026)']);
+  });
+
+  it('с --section списка нет; --json — прежние ключи и planEdits', async () => {
+    const root = await project();
+    await withPlan(root, PROMTARA);
+    expect((await archiveProject(root, { sections: ['SPEC DELTA-01'] })).planEdits).toBeNull();
+    const named = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root, '--section', 'SPEC DELTA-01'], named.io)).toBe(0);
+    expect(named.stdout()).not.toContain('которые можно перенести');
+
+    const json = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root, '--json'], json.io)).toBe(0);
+    const report = JSON.parse(json.stdout()) as Record<string, unknown>;
+    expect(Object.keys(report).sort()).toEqual([...KEYS_045, 'planEdits'].sort());
+    expect(report).toMatchObject({ reportVersion: 1, ok: true, plan: null, sections: [], planEdits: { plan: PLAN, intact: true } });
+  });
+
+  it('отпечаток не совпал: список есть и говорит об этом, а перенос блокирует archive-plan-changed', async () => {
+    const root = await project();
+    await withPlan(root, PROMTARA);
+    await put(root, PLAN, (await readUtf8(root, PLAN)).replace('Текст цели.', 'Текст цели, правка без утверждения.'));
+    const report = await archiveProject(root);
+    expect(report.ok).toBe(true);
+    expect(report.planEdits).toMatchObject({ intact: false });
+    expect(report.planEdits?.sections.length).toBe(5);
+    const cli = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root], cli.io)).toBe(0);
+    expect(cli.stdout()).toContain('Сейчас перенос остановит archive-plan-changed');
+    await expectRefused(root, ['SPEC DELTA-01'], 'archive-plan-changed');
+  });
+
+  it('правок больше десяти — показаны десять самых больших и остаток одной строкой', async () => {
+    const root = await project();
+    const edits = Array.from({ length: 13 }, (_, index) => `### Правка ${String(index + 1).padStart(2, '0')}\n\n${'текст '.repeat(index + 1)}\n`);
+    await withPlan(root, `# План\n\n## Правки после утверждения\n\n${edits.join('\n')}\n## Утверждение\n\nДа.\n`);
+    const cli = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root], cli.io)).toBe(0);
+    const lines = cli.stdout().split('\n').filter((line) => line.startsWith('  - '));
+    expect(lines).toHaveLength(11);
+    expect(lines[0]).toContain('«Правка 13»');
+    expect(lines[9]).toContain('«Правка 04»');
+    expect(lines[10]).toMatch(/^ {2}- и ещё 3 поменьше, вместе \d+ знаков\.$/);
+  });
+
+  it('вместе с переносом отчётов список тоже виден: и в пробном запуске, и после --apply', async () => {
+    const root = await project();
+    await withPlan(root, PROMTARA);
+    await put(root, 'wiki/audits/AUD-9.md', closedAudit('AUD-9'));
+    const dry = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root], dry.io)).toBe(0);
+    expect(dry.stdout()).toContain('будет перенесено в архив');
+    expect(dry.stdout()).toContain('которые можно перенести в архив: 5');
+    const applied = collectIo();
+    expect(await runMaestroCli(['archive', '--path', root, '--apply'], applied.io)).toBe(0);
+    expect(applied.stdout()).toContain('которые можно перенести в архив: 5');
+    expect(await readUtf8(root, PLAN)).toContain('### SPEC DELTA-01');
+  });
+});

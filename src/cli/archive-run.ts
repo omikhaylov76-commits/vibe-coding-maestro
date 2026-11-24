@@ -18,8 +18,31 @@ export interface ArchiveRunOptions {
 }
 
 const DIGEST_SHOWN = 12;
+/** Сколько правок плана показать: у живых планов их десятки. */
+const EDITS_SHOWN = 10;
+const EDIT_TITLE_CHARS = 80;
 
-function describe(report: ArchiveReport, io: CliIo): void {
+/** Без `--section`: какие правки плана можно перенести. Только подсказка: сама команда их не трогает. */
+function describePlanEdits(report: ArchiveReport, path: string, io: CliIo): void {
+  const edits = report.planEdits;
+  if (edits === null || edits.sections.length === 0) return;
+  const total = edits.sections.reduce((sum, item) => sum + item.chars, 0);
+  io.out(`- Правки плана ${edits.plan}, которые можно перенести в архив: ${formatChars(edits.sections.length)}, вместе ${formatChars(total)} знаков. Сама команда их не трогает — называйте по одной через --section:`);
+  const shown = [...edits.sections].sort((left, right) => right.chars - left.chars).slice(0, EDITS_SHOWN);
+  for (const item of shown) {
+    const title = [...item.heading].length > EDIT_TITLE_CHARS ? `${[...item.heading].slice(0, EDIT_TITLE_CHARS).join('')}…` : item.heading;
+    const note = item.open ? ' — есть незакрытое, переносить рано' : item.currentSlice ? ' — упоминает текущую порцию, проверьте' : '';
+    io.out(`  - «${title}»: ${formatChars(item.chars)} знаков${note}.`);
+  }
+  if (edits.sections.length > shown.length) {
+    const rest = total - shown.reduce((sum, item) => sum + item.chars, 0);
+    io.out(`  - и ещё ${formatChars(edits.sections.length - shown.length)} поменьше, вместе ${formatChars(rest)} знаков.`);
+  }
+  io.out(`  Переносите только правки, все порции которых закрыты: ${serviceInvocation(VERSION)} archive --path ${quotePathArg(path)} --section "начало заголовка". Отпечаток плана перезапишется сам.`);
+  if (!edits.intact) io.out('  Сейчас перенос остановит archive-plan-changed: текст плана изменился после утверждения. Сначала покажите изменения человеку и запишите новый отпечаток.');
+}
+
+function describe(report: ArchiveReport, path: string, io: CliIo): void {
   const { log, audits } = report;
   if (log !== null) {
     const months = log.months.map((month) => `${month.path} (${month.entries})`).join(', ');
@@ -36,6 +59,7 @@ function describe(report: ArchiveReport, io: CliIo): void {
   for (const digest of report.digests) io.out(`- Отпечаток ${digest.plan}: ${digest.before.slice(0, DIGEST_SHOWN)}… → ${digest.after.slice(0, DIGEST_SHOWN)}…; оба записаны в архиве плана.`);
   if (report.relinked.length > 0) io.out(`- Адреса ссылок поправлены в файлах: ${report.relinked.length}.`);
   for (const item of audits.kept) io.out(`- Остаётся ${item.path}: ${item.reason}`);
+  describePlanEdits(report, path, io);
 }
 
 /**
@@ -61,17 +85,17 @@ export async function executeArchiveCommand(options: ArchiveRunOptions, io: CliI
   if (report.writes.length === 0) {
     const reasons = [report.logNote === null ? 'журнал не больше порога' : null, report.audits.kept.length === 0 ? 'закрытых отчётов нет' : null].filter((reason) => reason !== null);
     io.out(`Переносить в архив нечего${reasons.length > 0 ? `: ${reasons.join(', ')}` : ''}.`);
-    describe(report, io);
+    describe(report, options.path, io);
     return EXIT_OK;
   }
   if (report.applied) {
     io.out('Vibe Coding Maestro archive: перенесено в архив.');
-    describe(report, io);
+    describe(report, options.path, io);
     io.out('Ничего не удалено: перенесённый текст — в файлах архива. Проект в git — закоммитьте изменения.');
     return EXIT_OK;
   }
   io.out('Vibe Coding Maestro archive: будет перенесено в архив (пробный запуск, ни байта не записано).');
-  describe(report, io);
+  describe(report, options.path, io);
   const named = (options.sections ?? []).map((section) => ` --section "${plainTitle(section)}"`).join('');
   io.out(`Перенести: ${serviceInvocation(VERSION)} archive --path ${quotePathArg(options.path)}${named} --apply`);
   return EXIT_OK;
